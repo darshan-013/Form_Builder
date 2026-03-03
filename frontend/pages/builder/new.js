@@ -42,6 +42,7 @@ export default function NewBuilderPage() {
                 defaultValue: f.defaultValue || null,
                 validationRegex: f.validationRegex || null,
                 validationJson: f.validationJson || null,
+                rulesJson: f.rulesJson || null,
                 sharedOptionsId: f.sharedOptionsId || null,
                 fieldOrder: i,
             })),

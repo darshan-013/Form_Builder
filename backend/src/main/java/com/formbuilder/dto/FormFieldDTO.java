@@ -13,6 +13,8 @@ public class FormFieldDTO {
     private String defaultValue;
     private String validationRegex;
     private String validationJson;
+    /** Conditional Rule Engine config JSON — stored and returned, never evaluated by backend. */
+    private String rulesJson;
     /**
      * FK → shared_options.id
      * Must be set for dropdown/radio fields.

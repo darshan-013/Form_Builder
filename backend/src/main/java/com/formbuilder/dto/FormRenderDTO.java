@@ -24,9 +24,11 @@ public class FormRenderDTO {
         private boolean required;
         private String validationRegex;
         private String validationJson;
+        /** Conditional Rule Engine config — passed through to frontend for live evaluation. */
+        private String rulesJson;
         private String defaultValue;
         private int fieldOrder;
-        /** Populated for dropdown/radio — from dropdown_schema or options_json */
+        /** Populated for dropdown/radio — from shared_options table */
         private List<OptionDTO> options;
     }
 

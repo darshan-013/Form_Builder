@@ -65,6 +65,15 @@ public class FormFieldEntity {
     private String validationJson;
 
     /**
+     * Conditional Rule Engine config — stored as TEXT, evaluated ONLY on the frontend.
+     * Structure: { combinator:"AND"|"OR", conditions:[...], actions:[{type, setValue?}] }
+     * Backend stores this and passes it through in the render API — never evaluates it.
+     * Security: backend validates all required fields independently of rule state.
+     */
+    @Column(name = "rules_json", columnDefinition = "TEXT")
+    private String rulesJson;
+
+    /**
      * FK → shared_options.id
      * ALL dropdown/radio fields must have this set.
      * Options are ALWAYS stored in the shared_options table — never inline in form_fields.

@@ -57,6 +57,9 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         exec("ALTER TABLE form_fields DROP COLUMN IF EXISTS dropdown_schema_id");
         exec("ALTER TABLE form_fields DROP COLUMN IF EXISTS options_json");
 
+        // 6. Conditional Rule Engine column
+        exec("ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS rules_json TEXT");
+
         // Log final table structure
         try {
             var cols = jdbc.queryForList(

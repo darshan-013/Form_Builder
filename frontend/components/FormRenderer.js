@@ -1,16 +1,32 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import ValidationEngine from '../services/validation';
+import RuleEngine from '../services/RuleEngine';
 
 /**
- * FormRenderer — enterprise dynamic form renderer.
+ * FormRenderer — enterprise dynamic form renderer with Conditional Rule Engine.
  *
- * Validation lifecycle:
- *   onChange → live sync validation on EVERY keystroke (shows errors as you type)
- *   onBlur   → marks field touched so errors stay visible even if emptied
- *   onSubmit → full async validation (image dimensions etc.) + blocks if any error
+ * Rule Engine lifecycle:
+ *   Fields load  → withParsedRules()    pre-parses all rulesJson ONCE (not per keystroke)
+ *                → buildDependencyMap() maps source→target field relationships
+ *                → applyRules()         sets initial field states
+ *   onChange     → applyRules() re-evaluates all rules with new values
+ *                → cascading setValue handled internally (MAX_PASSES = 5)
+ *                → fieldStates drives visible / required / disabled / setValue per field
+ *   onSubmit     → validates VISIBLE fields only (hidden = skip validation)
+ *                → hidden field VALUES preserved in state and sent to backend
+ *                → backend validates independently — never trusts frontend rule state
+ *
+ * Priority: ascending fieldOrder. Higher order = evaluated later = wins conflicts.
  */
 export default function FormRenderer({ form, isPreview = false, onSubmit }) {
-  const fields = form?.fields || [];
+  const rawFields = form?.fields || [];
+
+  // Pre-parse rulesJson once — avoids repeated JSON.parse inside evaluation loops
+  const fields = useMemo(() => RuleEngine.withParsedRules(rawFields), [rawFields]);
+
+  // Dependency map: { sourceKey → Set<targetKey> }
+  // eslint-disable-next-line no-unused-vars
+  const depMap = useMemo(() => RuleEngine.buildDependencyMap(fields), [fields]);
 
   // ── Build initial values from field defaults ───────────────────────────────
   function makeInitialValues() {
@@ -27,6 +43,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   const [values,      setValues]      = useState(makeInitialValues);
   const [errors,      setErrors]      = useState({});  // { fieldKey: string[] }
   const [touched,     setTouched]     = useState({});  // { fieldKey: boolean }
+  const [fieldStates, setFieldStates] = useState(() => RuleEngine.applyRules(fields, makeInitialValues()));
   const [serverError, setServerError] = useState('');
   const [submitting,  setSubmitting]  = useState(false);
   const [submitted,   setSubmitted]   = useState(false);
@@ -38,34 +55,68 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   const valuesRef = useRef(values);
   useEffect(() => { valuesRef.current = values; }, [values]);
 
-  // ── onChange — live validation on every keystroke ──────────────────────────
+  // Re-initialise when fields change (async load or form switch)
+  useEffect(() => {
+    const initial = makeInitialValues();
+    setValues(initial);
+    valuesRef.current = initial;
+    filesRef.current  = {};
+    setErrors({});
+    setTouched({});
+    setFieldStates(RuleEngine.applyRules(fields, initial));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fields]);
+
+  // ── onChange — live validation + rule re-evaluation on every keystroke ─────
   function handleChange(field, value) {
-    // 1. Update value in state
+    // 1. Update raw value
     const newValues = { ...valuesRef.current, [field.fieldKey]: value };
-    setValues(newValues);
-    valuesRef.current = newValues;
 
     // 2. Update file ref
     if (field.fieldType === 'file' && value instanceof File) {
       filesRef.current = { ...filesRef.current, [field.fieldKey]: value };
     }
 
-    // 3. Run sync validation immediately — show errors AS the user types
-    const errs = ValidationEngine.validateFieldSync(field, value, newValues, filesRef.current);
+    // 3. Re-evaluate all rules — cascading setValue handled internally (MAX_PASSES = 5)
+    const newStates = RuleEngine.applyRules(fields, newValues);
+    setFieldStates(newStates);
+
+    // 4. Apply any setValue overrides from rules back into values (cascade result)
+    let finalValues = { ...newValues };
+    for (const [key, st] of Object.entries(newStates)) {
+      if (st.setValue !== null && String(finalValues[key] ?? '') !== String(st.setValue)) {
+        finalValues[key] = st.setValue;
+      }
+    }
+    setValues(finalValues);
+    valuesRef.current = finalValues;
+
+    // 5. Validate changed field using rule-adjusted required flag
+    const effectiveField = {
+      ...field,
+      required: newStates[field.fieldKey]?.required ?? field.required,
+    };
+    const errs = ValidationEngine.validateFieldSync(
+      effectiveField, finalValues[field.fieldKey], finalValues, filesRef.current
+    );
     setErrors((prev) => ({ ...prev, [field.fieldKey]: errs }));
 
-    // 4. Mark field touched (so error stays visible)
+    // 6. Mark field touched (so error stays visible)
     setTouched((prev) => ({ ...prev, [field.fieldKey]: true }));
 
-    // 5. Clear server banner
+    // 7. Clear server banner
     if (serverError) setServerError('');
   }
 
   // ── onBlur — ensure touched is set so error persists ──────────────────────
   function handleBlur(field, value) {
     setTouched((prev) => ({ ...prev, [field.fieldKey]: true }));
-    // Re-run validation on blur too (catches paste/autofill that skips onChange)
-    const errs = ValidationEngine.validateFieldSync(field, value, valuesRef.current, filesRef.current);
+    // Re-run validation on blur (catches paste/autofill that skips onChange)
+    const effectiveField = {
+      ...field,
+      required: fieldStates[field.fieldKey]?.required ?? field.required,
+    };
+    const errs = ValidationEngine.validateFieldSync(effectiveField, value, valuesRef.current, filesRef.current);
     setErrors((prev) => ({ ...prev, [field.fieldKey]: errs }));
   }
 
@@ -78,8 +129,17 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     const allTouched = Object.fromEntries(fields.map((f) => [f.fieldKey, true]));
     setTouched(allTouched);
 
-    // Full async validation (covers image dimensions, etc.)
-    const allErrors = await ValidationEngine.validateForm(fields, valuesRef.current, filesRef.current);
+    // Validate VISIBLE fields only — hidden fields skip validation.
+    // Hidden field VALUES are preserved in state and sent to backend.
+    // Backend validates all required constraints independently of rule state.
+    const visibleFields = fields
+      .filter(f => fieldStates[f.fieldKey]?.visible !== false)
+      .map(f => ({
+        ...f,
+        required: fieldStates[f.fieldKey]?.required ?? f.required,
+      }));
+
+    const allErrors = await ValidationEngine.validateForm(visibleFields, valuesRef.current, filesRef.current);
     setErrors(allErrors);
     setServerError('');
 
@@ -174,6 +234,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
               filesRef.current = {};
               setErrors({});
               setTouched({});
+              setFieldStates(RuleEngine.applyRules(fields, fresh));
               setSubmitted(false);
             }}
           >
@@ -220,19 +281,32 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
         ) : (
           <div className="form-renderer-body">
             {[...fields]
-              .sort((a, b) => a.fieldOrder - b.fieldOrder)
-              .map((field) => (
-                <FieldInput
-                  key={field.id || field.fieldKey}
-                  field={field}
-                  value={values[field.fieldKey]}
-                  errors={errors[field.fieldKey] || []}
-                  touched={!!touched[field.fieldKey]}
-                  onChange={(val) => handleChange(field, val)}
-                  onBlur={(val)   => handleBlur(field, val)}
-                  disabled={isPreview}
-                />
-              ))}
+              .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0))
+              .map((field) => {
+                const st = fieldStates[field.fieldKey] || {};
+
+                // Hidden fields — render nothing, value preserved in state
+                // (enterprise standard: keep value, skip validation, include in payload)
+                if (st.visible === false) return null;
+
+                // Effective value: rule setValue override takes precedence over user input
+                const effectiveValue = (st.setValue !== null && st.setValue !== undefined)
+                  ? st.setValue
+                  : values[field.fieldKey];
+
+                return (
+                  <FieldInput
+                    key={field.id || field.fieldKey}
+                    field={{ ...field, required: st.required ?? field.required }}
+                    value={effectiveValue}
+                    errors={errors[field.fieldKey] || []}
+                    touched={!!touched[field.fieldKey]}
+                    onChange={(val) => handleChange(field, val)}
+                    onBlur={(val)   => handleBlur(field, val)}
+                    disabled={isPreview || !!st.disabled}
+                  />
+                );
+              })}
           </div>
         )}
 

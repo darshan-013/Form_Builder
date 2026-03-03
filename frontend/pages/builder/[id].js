@@ -40,6 +40,7 @@ export default function EditBuilderPage() {
                         validationRegex: f.validationRegex || '',
                         sharedOptionsId: f.sharedOptionsId || null,
                         validationJson: f.validationJson || null,
+                        rulesJson: f.rulesJson || null,
                         fieldOrder: f.fieldOrder,
                     }))
                 );
@@ -62,6 +63,7 @@ export default function EditBuilderPage() {
                 defaultValue: f.defaultValue || null,
                 validationRegex: f.validationRegex || null,
                 validationJson: f.validationJson || null,
+                rulesJson: f.rulesJson || null,
                 sharedOptionsId: f.sharedOptionsId || null,
                 fieldOrder: i,
             })),

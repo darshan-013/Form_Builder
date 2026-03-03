@@ -1216,5 +1216,149 @@
     flex-shrink: 0;
 }
 
+/* ══════════════════════════════════════════════════
+   Conditional Rule Builder
+   ══════════════════════════════════════════════════ */
 
+.rule-builder {
+    padding: 2px 0;
+}
 
+/* IF / THEN section boxes */
+.rule-section {
+    background: rgba(99, 102, 241, 0.05);
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.rule-section-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent, #6366f1);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 10px;
+}
+
+/* Condition groups */
+.rule-group {
+    border-left: 2px solid rgba(99, 102, 241, 0.22);
+    padding-left: 10px;
+    margin-bottom: 6px;
+}
+
+.rule-group-depth-0 {
+    border-left: none;
+    padding-left: 0;
+}
+
+.rule-group-header {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.rule-group-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rule-group-footer {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.rule-group-label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* AND / OR combinator buttons */
+.rule-combinator-btn {
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 4px;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.rule-combinator-btn.active {
+    background: rgba(99, 102, 241, 0.2);
+    color: #818cf8;
+    border-color: #6366f1;
+}
+
+.rule-combinator-btn:hover:not(.active) {
+    background: rgba(99, 102, 241, 0.08);
+}
+
+/* Condition / action rows */
+.rule-condition-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.rule-field-select {
+    flex: 0 0 150px;
+    min-width: 120px;
+}
+
+.rule-op-select {
+    flex: 0 0 130px;
+    min-width: 110px;
+}
+
+/* Remove (×) button */
+.rule-remove-btn {
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 13px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+
+.rule-remove-btn:hover {
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* Add condition / group buttons */
+.rule-add-btn {
+    font-size: 12px;
+}
+
+/* Info box — priority / conflict documentation shown to admin */
+.rule-info-box {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: rgba(99, 102, 241, 0.07);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+}
+
+.rule-info-box strong {
+    color: var(--text-primary);
+}
+
+.rule-info-box em {
+    color: #818cf8;
+    font-style: normal;
+}
