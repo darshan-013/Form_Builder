@@ -1,0 +1,485 @@
+/* ══════════════════════════════════════════════════
+   FormRenderer — dynamic form display styles
+   Used by both /preview/[id] and /submit/[id]
+   ══════════════════════════════════════════════════ */
+
+/* ── Page wrapper ─────────────────────────────────── */
+.form-page {
+    min-height: 100vh;
+    padding: 40px 24px 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* ── Form card ────────────────────────────────────── */
+.form-renderer-card {
+    width: 100%;
+    max-width: 640px;
+    background: rgba(15, 15, 28, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    animation: scaleIn 0.3s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* Gradient accent bar at top */
+.form-renderer-card::before {
+    content: '';
+    display: block;
+    height: 3px;
+    background: linear-gradient(90deg, #8B5CF6 0%, #6366F1 50%, #EC4899 100%);
+}
+
+/* ── Header ───────────────────────────────────────── */
+.form-renderer-header {
+    padding: 28px 32px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.form-renderer-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.form-renderer-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.form-renderer-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.form-renderer-meta-item {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* ── Preview banner ───────────────────────────────── */
+.preview-banner {
+    background: rgba(245, 158, 11, 0.1);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+    padding: 10px 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #FCD34D;
+}
+
+/* ── Form body ────────────────────────────────────── */
+.form-renderer-body {
+    padding: 28px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+/* ── Field wrapper ────────────────────────────────── */
+.form-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    animation: fadeIn 0.2s ease forwards;
+}
+
+.form-field-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.form-field-required-star {
+    color: var(--error);
+    font-size: 15px;
+    line-height: 1;
+}
+
+/* Inputs inside renderer are the same as globals, but with contextual override */
+.form-renderer-body .form-input {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.form-renderer-body .form-input:focus {
+    border-color: var(--accent);
+    background: rgba(139, 92, 246, 0.07);
+}
+
+.form-renderer-body .form-input.input-error {
+    border-color: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.06);
+}
+
+/* ── Boolean field ────────────────────────────────── */
+.bool-toggle-wrap {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.bool-toggle-wrap:hover {
+    background: rgba(139, 92, 246, 0.06);
+    border-color: rgba(139, 92, 246, 0.3);
+}
+
+.bool-toggle-wrap input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.bool-toggle-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    user-select: none;
+}
+
+/* ── Error message ────────────────────────────────── */
+.form-field-error {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #FCA5A5;
+    padding-left: 2px;
+    animation: fadeIn 0.15s ease;
+}
+
+.form-field-error::before {
+    content: '⚠';
+    font-size: 11px;
+}
+
+/* ── Submit button ────────────────────────────────── */
+.form-renderer-footer {
+    padding: 0 32px 28px;
+}
+
+.form-submit-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, #8B5CF6, #6366F1, #EC4899);
+    color: #fff;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    box-shadow: 0 4px 24px rgba(139, 92, 246, 0.35);
+}
+
+.form-submit-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 32px rgba(139, 92, 246, 0.5);
+}
+
+.form-submit-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.form-submit-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ── Success state ────────────────────────────────── */
+.form-success-state {
+    text-align: center;
+    padding: 60px 32px;
+    animation: scaleIn 0.4s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.success-icon-ring {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: rgba(16, 185, 129, 0.12);
+    border: 2px solid rgba(16, 185, 129, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    margin: 0 auto 20px;
+}
+
+.form-success-state h2 {
+    font-family: 'Outfit', sans-serif;
+    font-size: 22px;
+    color: #34D399;
+    margin-bottom: 8px;
+}
+
+.form-success-state p {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.success-another-btn {
+    margin-top: 24px;
+}
+
+/* ── Empty form state ─────────────────────────────── */
+.form-empty-state {
+    padding: 48px 32px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* ── Back nav ─────────────────────────────────────── */
+.form-page-nav {
+    width: 100%;
+    max-width: 640px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   SECTION 6 — FORM CANVAS SOLID WHITE PROTECTION
+   The rendered form card must be pure white — no glass, no blur,
+   no transparency. It should feel published, professional, print-ready.
+   Zero logic or rendering changes — CSS only.
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Core card override ──────────────────────────────────────────────────── */
+
+.form-renderer-card {
+    /* SOLID white — no rgba(), no opacity, no transparency */
+    background: #ffffff;
+
+    /* Remove all glass effects */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+
+    /* Clean professional border — subtle shadow to lift off page */
+    border: 1px solid rgba(0, 0, 0, 0.09);
+    border-radius: 20px;
+    box-shadow:
+        0 8px 32px rgba(15, 23, 42, 0.08),
+        0 2px 8px rgba(15, 23, 42, 0.04),
+        0 0 0 1px rgba(255, 255, 255, 0.80) inset;
+
+    /* Keep smooth entrance */
+    animation: scaleIn 0.3s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+
+/* Gradient accent bar retained — it identifies the form brand */
+.form-renderer-card::before {
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-3) 100%);
+}
+
+/* ── Header on white card ────────────────────────────────────────────────── */
+
+.form-renderer-header {
+    border-bottom-color: rgba(0, 0, 0, 0.07);
+}
+
+.form-renderer-title {
+    color: #0f172a;
+    /* near-black — maximum legibility */
+    font-weight: 900;
+}
+
+.form-renderer-desc {
+    color: #475569;
+    /* slate-500 — warm secondary text */
+}
+
+.form-renderer-meta-item {
+    color: #94a3b8;
+    /* slate-400 — quiet label text */
+}
+
+/* ── Field labels ────────────────────────────────────────────────────────── */
+
+.form-field-label {
+    color: #374151;
+    /* gray-700 — readable on white */
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+/* ── Inputs on white background ──────────────────────────────────────────── */
+/* Fully solid, high-contrast — no translucency allowed.                  */
+
+.form-renderer-body .form-input,
+.form-renderer-body .form-select,
+.form-renderer-body .form-textarea {
+    background: #f8fafc;
+    /* very light slate — differentiates from card bg */
+    border-color: #e2e8f0;
+    /* cool gray border — clean on white */
+    color: #0f172a;
+    /* near-black text */
+}
+
+.form-renderer-body .form-input:focus,
+.form-renderer-body .form-select:focus,
+.form-renderer-body .form-textarea:focus {
+    background: #ffffff;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79, 110, 192, 0.12);
+    color: #0f172a;
+}
+
+.form-renderer-body .form-input.input-error {
+    background: #fff5f5;
+    /* very light red for error state */
+    border-color: #fca5a5;
+    color: #0f172a;
+}
+
+.form-renderer-body .form-input::placeholder {
+    color: #94a3b8;
+}
+
+/* ── Boolean toggle on white card ───────────────────────────────────────── */
+
+.bool-toggle-wrap {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+.bool-toggle-wrap:hover {
+    background: #eff6ff;
+    /* very light blue on hover */
+    border-color: rgba(79, 110, 192, 0.35);
+}
+
+.bool-toggle-label {
+    color: #374151;
+}
+
+/* ── Error messages on white ─────────────────────────────────────────────── */
+
+.form-field-error {
+    color: #dc2626;
+    /* solid red — max contrast on white */
+}
+
+/* ── Preview banner on white card ───────────────────────────────────────── */
+
+.preview-banner {
+    background: rgba(245, 158, 11, 0.08);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.18);
+    color: #92400e;
+    /* amber-800 — readable on white */
+}
+
+/* ── Submit button — keep accent gradient ───────────────────────────────── */
+
+.form-submit-btn {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 50%, var(--accent-3) 100%);
+    box-shadow: 0 4px 20px rgba(79, 110, 192, 0.30);
+}
+
+.form-submit-btn:hover:not(:disabled) {
+    box-shadow: 0 8px 28px rgba(79, 110, 192, 0.45);
+}
+
+/* ── Success state on white ──────────────────────────────────────────────── */
+
+.form-success-state h2 {
+    color: #059669;
+    /* solid green — readable on white */
+}
+
+.form-success-state p {
+    color: #475569;
+}
+
+.success-icon-ring {
+    background: rgba(5, 150, 105, 0.08);
+    border-color: rgba(5, 150, 105, 0.28);
+}
+
+/* ── Page background under the white card ───────────────────────────────── */
+/* Keep light gradient — the white card sits cleanly on top of it.        */
+
+.form-page {
+    background: transparent;
+    /* inherits body gradient from globals.css */
+}
+
+/* ── Radio Group Styles ────────────────────────────────────────────────── */
+
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.radio-option:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.radio-option input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+
+.radio-option input[type="radio"]:checked + span {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.radio-option span {
+    color: var(--text-secondary);
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+/* ── End Form Canvas Solid White Protection ──────────────────────────────── */
