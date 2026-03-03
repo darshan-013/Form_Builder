@@ -7,7 +7,6 @@ import com.formbuilder.dto.FormRenderDTO.OptionDTO;
 import com.formbuilder.dto.FormRenderDTO.RenderFieldDTO;
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormFieldEntity;
-import com.formbuilder.entity.SharedOptionsEntity;
 import com.formbuilder.repository.FormJpaRepository;
 import com.formbuilder.repository.SharedOptionsRepository;
 import lombok.RequiredArgsConstructor;
@@ -60,6 +59,7 @@ public class FormRenderService {
                 .required(f.isRequired())
                 .validationRegex(f.getValidationRegex())
                 .validationJson(f.getValidationJson())
+                .rulesJson(f.getRulesJson())
                 .defaultValue(f.getDefaultValue())
                 .fieldOrder(f.getFieldOrder())
                 .options(options)

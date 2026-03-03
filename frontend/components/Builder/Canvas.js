@@ -34,6 +34,7 @@ export default function Canvas({ fields, setFields }) {
             fieldOrder: fields.length,
             sharedOptionsId: null,
             validationJson: null,
+            rulesJson: null,
         };
 
         setFields((prev) => {
@@ -182,6 +183,7 @@ export default function Canvas({ fields, setFields }) {
                     field={editField}
                     onSave={updateField}
                     onClose={() => setEditField(null)}
+                    siblingFields={fields.filter(f => f.id !== editField?.id)}
                 />
             )}
         </>

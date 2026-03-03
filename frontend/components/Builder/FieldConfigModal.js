@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { getForms, getForm, createSharedOptions, updateSharedOptions, getSharedOptions } from '../../services/api';
+import RuleBuilder from './RuleBuilder';
 
 /**
  * FieldConfigModal — Slide-up modal to edit all field properties.
  * Options for dropdown/radio are loaded from the shared_options table via sharedOptionsId.
  * "Use Existing Dropdown" lets admin link to another field's shared_options row.
+ * siblingFields: all OTHER fields on the form — used by RuleBuilder as condition sources.
  */
-export default function FieldConfigModal({ field, onSave, onClose }) {
+export default function FieldConfigModal({ field, onSave, onClose, siblingFields = [] }) {
     const [local, setLocal] = useState({ ...field });
     const [options, setOptions] = useState(['Option 1', 'Option 2']);
 
@@ -18,9 +20,59 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
     });
 
     const [validationExpanded, setValidationExpanded] = useState(false);
+    const [rulesExpanded,      setRulesExpanded]      = useState(false);
     const [pickerOpen, setPickerOpen] = useState(false);
     const [sharedOptionsId, setSharedOptionsId] = useState(field.sharedOptionsId || null);
     const [unlinkNotice, setUnlinkNotice] = useState(false);
+
+    /**
+     * Sibling fields enriched with resolved options[] arrays.
+     * RuleBuilder's ValueInput needs options:[{label,value}] on dropdown/radio fields
+     * so the "— select —" dropdown is populated. We fetch from shared_options API
+     * for every sibling that is a dropdown/radio with a sharedOptionsId.
+     */
+    const [enrichedSiblings, setEnrichedSiblings] = useState([]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function enrichSiblings() {
+            const result = await Promise.all(
+                siblingFields.map(async (f) => {
+                    const isChoice = f.fieldType === 'dropdown' || f.fieldType === 'radio';
+                    if (!isChoice) return f;
+
+                    // Priority 1: in-memory options already stored on the field from last save
+                    if (Array.isArray(f._resolvedOptions) && f._resolvedOptions.length > 0) {
+                        return { ...f, options: f._resolvedOptions };
+                    }
+
+                    // Priority 2: fetch from shared_options API via sharedOptionsId
+                    if (f.sharedOptionsId) {
+                        try {
+                            const shared = await getSharedOptions(f.sharedOptionsId);
+                            const parsed = JSON.parse(shared.optionsJson || '[]');
+                            const opts = parsed.map(o =>
+                                typeof o === 'string'
+                                    ? { label: o, value: o }
+                                    : { label: o.label || o.value || '', value: o.value || o.label || '' }
+                            );
+                            return { ...f, options: opts };
+                        } catch {
+                            return f; // API failed — text input fallback in ValueInput
+                        }
+                    }
+
+                    // Priority 3: no options available — ValueInput shows text input fallback
+                    return f;
+                })
+            );
+            if (!cancelled) setEnrichedSiblings(result);
+        }
+
+        enrichSiblings();
+        return () => { cancelled = true; };
+    }, [siblingFields]);
 
     // Load options from shared_options API whenever sharedOptionsId changes
     useEffect(() => {
@@ -47,6 +99,7 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
         setLocal({ ...field });
         setSharedOptionsId(field.sharedOptionsId || null);
         setUnlinkNotice(false);
+        setRulesExpanded(false);
         if (field.validationJson) {
             try { setValidationRules(JSON.parse(field.validationJson)); } catch { setValidationRules({}); }
         } else {
@@ -102,12 +155,18 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
                 }
             }
 
+            const isChoice = local.fieldType === 'dropdown' || local.fieldType === 'radio';
             const updatedField = {
                 ...local,
                 fieldKey: local.fieldKey || toKey(local.label),
                 sharedOptionsId: finalSharedOptionsId,
                 // Never send optionsJson in the field payload — it lives in shared_options only
                 optionsJson: undefined,
+                // _resolvedOptions: in-memory options array for RuleBuilder condition value picker
+                // Not sent to backend — used only in Canvas local state for sibling field enrichment
+                _resolvedOptions: isChoice
+                    ? options.filter(o => o.trim()).map(o => ({ label: o, value: o }))
+                    : undefined,
             };
 
             updatedField.validationJson = Object.keys(validationRules).length > 0
@@ -1068,6 +1127,35 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
                             <div className="form-help" style={{ marginTop: 0 }}>Submission blocked if this field is empty</div>
                         </div>
                     </label>
+
+                    {/* ── Conditional Rules ─────────────────────────── */}
+                    <div className="validation-section" style={{ marginTop: 8 }}>
+                        <button
+                            type="button"
+                            className="validation-toggle"
+                            onClick={() => setRulesExpanded(r => !r)}
+                        >
+                            <span className="toggle-icon">{rulesExpanded ? '▼' : '▶'}</span>
+                            <span className="toggle-label">Conditional Rules</span>
+                            {local.rulesJson && (
+                                <span className="validation-count" style={{
+                                    background: 'rgba(99,102,241,0.15)',
+                                    color: '#818cf8',
+                                    border: '1px solid rgba(99,102,241,0.3)',
+                                }}>active</span>
+                            )}
+                        </button>
+
+                        {rulesExpanded && (
+                            <div className="validation-content">
+                                <RuleBuilder
+                                    fields={enrichedSiblings}
+                                    rulesJson={local.rulesJson || null}
+                                    onChange={json => set('rulesJson', json)}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Footer */}

@@ -113,6 +113,7 @@ public class FormService {
                     existingField.setDefaultValue(dtoField.getDefaultValue());
                     existingField.setValidationRegex(dtoField.getValidationRegex());
                     existingField.setValidationJson(dtoField.getValidationJson());
+                    existingField.setRulesJson(dtoField.getRulesJson());
                     existingField.setSharedOptionsId(dtoField.getSharedOptionsId());
                     existingField.setFieldOrder(dtoField.getFieldOrder());
                 } else {
@@ -180,6 +181,7 @@ public class FormService {
                 .defaultValue(dto.getDefaultValue())
                 .validationRegex(dto.getValidationRegex())
                 .validationJson(dto.getValidationJson())
+                .rulesJson(dto.getRulesJson())
                 .sharedOptionsId(dto.getSharedOptionsId())
                 .fieldOrder(dto.getFieldOrder())
                 .build();
@@ -202,4 +204,3 @@ public class FormService {
         }
     }
 }
-
