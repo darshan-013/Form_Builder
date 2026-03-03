@@ -120,6 +120,28 @@ export async function submitForm(formId, data) {
 export const getSubmissions = (formId) =>
     request('GET', `/forms/${formId}/submissions`);
 
+// ── Form Render (public) ──────────────────────────────────────
+
+export const getFormRender = (formId) =>
+    request('GET', `/forms/${formId}/render`);
+
+// ── Dropdown Schemas ──────────────────────────────────────────
+
+// ── Shared Options ────────────────────────────────────────────
+// Manages the shared_options table — canonical option lists shared across form fields.
+
+/** Create a new shared_options row. Returns {id, optionsJson, createdAt, updatedAt}. */
+export const createSharedOptions = (optionsJson) =>
+    request('POST', '/shared-options', { optionsJson });
+
+/** Get a single shared_options row by id. */
+export const getSharedOptions = (id) =>
+    request('GET', `/shared-options/${id}`);
+
+/** Update the options_json of a shared_options row. All linked fields reflect this instantly. */
+export const updateSharedOptions = (id, optionsJson) =>
+    request('PUT', `/shared-options/${id}`, { optionsJson });
+
 // ── File Operations ───────────────────────────────────────────
 
 /**

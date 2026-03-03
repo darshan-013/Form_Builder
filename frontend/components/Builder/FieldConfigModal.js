@@ -1,70 +1,64 @@
 import { useState, useEffect } from 'react';
+import { getForms, getForm, createSharedOptions, updateSharedOptions, getSharedOptions } from '../../services/api';
 
 /**
  * FieldConfigModal — Slide-up modal to edit all field properties.
- * Controlled component: receives field state, notifies parent on save.
+ * Options for dropdown/radio are loaded from the shared_options table via sharedOptionsId.
+ * "Use Existing Dropdown" lets admin link to another field's shared_options row.
  */
 export default function FieldConfigModal({ field, onSave, onClose }) {
     const [local, setLocal] = useState({ ...field });
-    const [options, setOptions] = useState(() => {
-        // Parse optionsJson if present
-        if (field.optionsJson) {
-            try {
-                return JSON.parse(field.optionsJson);
-            } catch {
-                return ['Option 1', 'Option 2'];
-            }
-        }
-        return ['Option 1', 'Option 2'];
-    });
+    const [options, setOptions] = useState(['Option 1', 'Option 2']);
 
-    // Parse validation_json if present
     const [validationRules, setValidationRules] = useState(() => {
         if (field.validationJson) {
-            try {
-                return JSON.parse(field.validationJson);
-            } catch {
-                return {};
-            }
+            try { return JSON.parse(field.validationJson); } catch { return {}; }
         }
         return {};
     });
 
-    // State for collapsible validation section
     const [validationExpanded, setValidationExpanded] = useState(false);
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [sharedOptionsId, setSharedOptionsId] = useState(field.sharedOptionsId || null);
+    const [unlinkNotice, setUnlinkNotice] = useState(false);
 
-    // Sync if field prop changes (e.g. user opens a different field)
+    // Load options from shared_options API whenever sharedOptionsId changes
+    useEffect(() => {
+        if (!sharedOptionsId) {
+            // New field with no shared options yet — start with defaults
+            setOptions(['Option 1', 'Option 2']);
+            return;
+        }
+        getSharedOptions(sharedOptionsId)
+            .then(shared => {
+                try {
+                    const parsed = JSON.parse(shared.optionsJson || '[]');
+                    const labels = parsed.map(o => (typeof o === 'string' ? o : (o.label || o.value || '')));
+                    setOptions(labels.filter(l => l.trim()) || ['Option 1', 'Option 2']);
+                } catch {
+                    setOptions(['Option 1', 'Option 2']);
+                }
+            })
+            .catch(() => setOptions(['Option 1', 'Option 2']));
+    }, [sharedOptionsId]);
+
+    // Sync when field prop changes (e.g. switching which field is being edited)
     useEffect(() => {
         setLocal({ ...field });
-        if (field.optionsJson) {
-            try {
-                setOptions(JSON.parse(field.optionsJson));
-            } catch {
-                setOptions(['Option 1', 'Option 2']);
-            }
-        } else {
-            setOptions(['Option 1', 'Option 2']);
-        }
-
-        // Sync validation rules
+        setSharedOptionsId(field.sharedOptionsId || null);
+        setUnlinkNotice(false);
         if (field.validationJson) {
-            try {
-                setValidationRules(JSON.parse(field.validationJson));
-            } catch {
-                setValidationRules({});
-            }
+            try { setValidationRules(JSON.parse(field.validationJson)); } catch { setValidationRules({}); }
         } else {
             setValidationRules({});
         }
     }, [field]);
 
-    const set = (key, value) => setLocal((prev) => ({ ...prev, [key]: value }));
+    const set = (key, value) => setLocal(prev => ({ ...prev, [key]: value }));
 
-    // Update validation rules (remove empty/false values)
     const setValidation = (key, value) => {
         setValidationRules(prev => {
             const updated = { ...prev };
-            // Remove if value is empty, false, null, or undefined
             if (value === '' || value === false || value === null || value === undefined) {
                 delete updated[key];
             } else {
@@ -74,45 +68,85 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
         });
     };
 
-    // Auto-generate fieldKey from label (only when the user hasn't manually set it)
     const handleLabelChange = (e) => {
         const label = e.target.value;
         set('label', label);
-        // Only auto-derive key if the current key was auto-derived (or empty)
         const autoKey = toKey(field.label);
         if (!local.fieldKey || local.fieldKey === toKey(field.label) || local.fieldKey === autoKey) {
             set('fieldKey', toKey(label));
         }
     };
 
-    const handleSave = () => {
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState(null);
+
+    const handleSave = async () => {
         if (!local.label.trim()) return;
-        if (!local.fieldKey.trim()) {
-            set('fieldKey', toKey(local.label));
-        }
-        const updatedField = {
-            ...local,
-            fieldKey: local.fieldKey || toKey(local.label)
-        };
+        setSaving(true);
+        setSaveError(null);
 
-        // Add optionsJson for dropdown/radio
-        if (local.fieldType === 'dropdown' || local.fieldType === 'radio') {
-            updatedField.optionsJson = JSON.stringify(options.filter(o => o.trim()));
-        }
+        try {
+            let finalSharedOptionsId = sharedOptionsId || null;
 
-        // Add validation_json (only if rules exist)
-        if (Object.keys(validationRules).length > 0) {
-            updatedField.validationJson = JSON.stringify(validationRules);
-        } else {
-            updatedField.validationJson = null;
-        }
+            if (local.fieldType === 'dropdown' || local.fieldType === 'radio') {
+                const filtered = options.filter(o => o.trim());
+                const optionsJson = JSON.stringify(filtered.map(o => ({ label: o, value: o })));
 
-        onSave(updatedField);
+                if (finalSharedOptionsId) {
+                    // Already linked — update the existing shared_options row
+                    await updateSharedOptions(finalSharedOptionsId, optionsJson);
+                } else {
+                    // New standalone field — create a shared_options row now
+                    const created = await createSharedOptions(optionsJson);
+                    finalSharedOptionsId = created.id;
+                }
+            }
+
+            const updatedField = {
+                ...local,
+                fieldKey: local.fieldKey || toKey(local.label),
+                sharedOptionsId: finalSharedOptionsId,
+                // Never send optionsJson in the field payload — it lives in shared_options only
+                optionsJson: undefined,
+            };
+
+            updatedField.validationJson = Object.keys(validationRules).length > 0
+                ? JSON.stringify(validationRules) : null;
+
+            onSave(updatedField);
+        } catch (err) {
+            setSaveError('Failed to save options: ' + (err.message || 'Unknown error'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // Called by ExistingDropdownPicker — receives {optionsJson, sharedOptionsId}
+    const handlePickOptions = ({ optionsJson: rawOptionsJson, sharedOptionsId: sid }) => {
+        try {
+            const parsed = JSON.parse(rawOptionsJson || '[]');
+            const labels = parsed.map(o => (typeof o === 'string' ? o : (o.label || o.value || '')));
+            setOptions(labels.filter(l => l.trim()));
+        } catch { /* keep existing */ }
+        setSharedOptionsId(sid);
+        setUnlinkNotice(false);
+        setPickerOpen(false);
+    };
+
+    // When admin manually edits an option — keep sharedOptionsId linked.
+    // On save, updateSharedOptions() will push the new options to the same row.
+    // All other forms sharing this row will see the updated options instantly.
+    const handleOptionEdit = (idx, val) => {
+        const newOpts = [...options];
+        newOpts[idx] = val;
+        setOptions(newOpts);
+        // DO NOT clear sharedOptionsId — the same shared_options row gets updated on save
     };
 
     const TYPE_ICONS = { text: '𝐓', number: '#', date: '📅', boolean: '✓', dropdown: '▼', radio: '◉', file: '📎' };
 
     return (
+        <>
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
                 {/* Header */}
@@ -154,7 +188,7 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
                         <p className="form-help">Snake_case identifier — becomes the database column name. Auto-generated from label.</p>
                     </div>
 
-                    {/* Default Value (hidden for boolean) */}
+                    {/* Default Value */}
                     {local.fieldType !== 'boolean' && (
                         <div className="form-group">
                             <label className="form-label" htmlFor="cfg-default">Default Value</label>
@@ -169,7 +203,7 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
                         </div>
                     )}
 
-                    {/* Validation Regex (text / number only) */}
+                    {/* Validation Regex */}
                     {(local.fieldType === 'text' || local.fieldType === 'number') && (
                         <div className="form-group">
                             <label className="form-label" htmlFor="cfg-regex">Validation Regex</label>
@@ -185,20 +219,56 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
                         </div>
                     )}
 
-                    {/* Options Editor (dropdown / radio only) */}
+                    {/* ── Options Editor (dropdown / radio only) ── */}
                     {(local.fieldType === 'dropdown' || local.fieldType === 'radio') && (
                         <div className="form-group">
-                            <label className="form-label">Options</label>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                                <label className="form-label" style={{ margin: 0 }}>Options</label>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => setPickerOpen(true)}
+                                    title="Copy options from an existing form's dropdown or radio field"
+                                >
+                                    📋 Use Existing Dropdown
+                                </button>
+                            </div>
+
+                            {/* Live-link banner */}
+                            {sharedOptionsId && (
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    padding: '8px 12px', marginBottom: 10, borderRadius: 8,
+                                    background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)',
+                                    fontSize: 12, color: 'var(--accent, #6366f1)',
+                                }}>
+                                    <span>🔗 Shared options — any edits here will update ALL forms using this option list</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSharedOptionsId(null); setUnlinkNotice(true); setTimeout(() => setUnlinkNotice(false), 3000); }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'inherit', padding: '0 0 0 8px', fontWeight: 700 }}
+                                        title="Unlink — create a new independent copy of these options"
+                                    >× Unlink</button>
+                                </div>
+                            )}
+
+                            {/* Unlink notice */}
+                            {unlinkNotice && (
+                                <div style={{
+                                    padding: '6px 12px', marginBottom: 8, borderRadius: 8,
+                                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)',
+                                    fontSize: 12, color: '#92400e',
+                                }}>
+                                    ⚠ Link removed — options are now a static copy.
+                                </div>
+                            )}
+
                             {options.map((opt, idx) => (
                                 <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                                     <input
                                         className="form-input"
                                         value={opt}
-                                        onChange={(e) => {
-                                            const newOpts = [...options];
-                                            newOpts[idx] = e.target.value;
-                                            setOptions(newOpts);
-                                        }}
+                                        onChange={(e) => handleOptionEdit(idx, e.target.value)}
                                         placeholder={`Option ${idx + 1}`}
                                     />
                                     <button
@@ -207,19 +277,15 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
                                         onClick={() => setOptions(options.filter((_, i) => i !== idx))}
                                         disabled={options.length <= 1}
                                         title="Remove option"
-                                    >
-                                        ×
-                                    </button>
+                                    >×</button>
                                 </div>
                             ))}
                             <button
                                 type="button"
                                 className="btn btn-secondary btn-sm"
                                 onClick={() => setOptions([...options, `Option ${options.length + 1}`])}
-                            >
-                                + Add Option
-                            </button>
-                            <p className="form-help">Define the list of choices for this field</p>
+                            >+ Add Option</button>
+                            <p className="form-help">Define choices, or link to an existing field — linked options update automatically.</p>
                         </div>
                     )}
 
@@ -1013,6 +1079,16 @@ export default function FieldConfigModal({ field, onSave, onClose }) {
                 </div>
             </div>
         </div>
+
+        {/* Existing Dropdown Picker (modal) */}
+        {pickerOpen && (
+            <ExistingDropdownPicker
+                fieldType={local.fieldType}
+                onPick={handlePickOptions}
+                onClose={() => setPickerOpen(false)}
+            />
+        )}
+        </>
     );
 }
 
@@ -1023,4 +1099,123 @@ function toKey(label = '') {
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '')
         .substring(0, 60) || '';
+}
+
+/**
+ * ExistingDropdownPicker — shows all unique shared_options rows (by sharedOptionsId).
+ * Groups by sharedOptionsId so duplicates never appear.
+ * Fetches actual options from GET /api/shared-options/{id}.
+ * On selection: passes back the sharedOptionsId so all forms sharing it stay in sync.
+ */
+function ExistingDropdownPicker({ onPick, onClose }) {
+    const [rows,    setRows]    = useState([]); // [{sharedOptionsId, options:[{label,value}]}]
+    const [loading, setLoading] = useState(true);
+    const [error,   setError]   = useState(null);
+    const [picking, setPicking] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        setError(null);
+
+        getForms()
+            .then(async (forms) => {
+                if (cancelled || !Array.isArray(forms)) return;
+
+                // Fetch all form details in parallel
+                const results = await Promise.allSettled(
+                    forms.map(f => getForm(f.id).then(detail => detail.fields || []))
+                );
+
+                if (cancelled) return;
+
+                // Collect all unique sharedOptionsIds from dropdown/radio fields
+                const seenIds = new Set();
+                const uniqueIds = [];
+                results.forEach(r => {
+                    if (r.status !== 'fulfilled') return;
+                    r.value
+                        .filter(fld => (fld.fieldType === 'dropdown' || fld.fieldType === 'radio') && fld.sharedOptionsId)
+                        .forEach(fld => {
+                            if (!seenIds.has(fld.sharedOptionsId)) {
+                                seenIds.add(fld.sharedOptionsId);
+                                uniqueIds.push(fld.sharedOptionsId);
+                            }
+                        });
+                });
+
+                // Fetch actual options for each unique sharedOptionsId
+                const optionResults = await Promise.allSettled(
+                    uniqueIds.map(id => getSharedOptions(id).then(shared => ({
+                        sharedOptionsId: id,
+                        options: (() => {
+                            try {
+                                const parsed = JSON.parse(shared.optionsJson || '[]');
+                                return parsed.map(o => typeof o === 'string' ? o : (o.label || o.value || ''));
+                            } catch { return []; }
+                        })(),
+                    })))
+                );
+
+                if (cancelled) return;
+
+                const loaded = optionResults
+                    .filter(r => r.status === 'fulfilled')
+                    .map(r => r.value)
+                    .filter(r => r.options.length > 0);
+
+                setRows(loaded);
+            })
+            .catch(err => { if (!cancelled) setError(err.message || 'Failed to load'); })
+            .finally(() => { if (!cancelled) setLoading(false); });
+
+        return () => { cancelled = true; };
+    }, []);
+
+    const handlePick = (row) => {
+        setPicking(row.sharedOptionsId);
+        const optionsJson = JSON.stringify(row.options.map(o => ({ label: o, value: o })));
+        onPick({ optionsJson, sharedOptionsId: row.sharedOptionsId });
+    };
+
+    return (
+        <div className="picker-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+            <div className="picker-box">
+                <div className="picker-header">
+                    <span className="picker-title">📋 Use Existing Dropdown</span>
+                    <button className="modal-close" onClick={onClose} aria-label="Close">×</button>
+                </div>
+                <div className="picker-body">
+                    {loading && (
+                        <div className="picker-state"><span className="spinner" /> Loading…</div>
+                    )}
+                    {!loading && error && (
+                        <div className="picker-state picker-error">⚠ {error}</div>
+                    )}
+                    {!loading && !error && rows.length === 0 && (
+                        <div className="picker-state picker-empty">
+                            No shared option lists found. Save a dropdown field first.
+                        </div>
+                    )}
+                    {!loading && !error && rows.map((row) => (
+                        <button
+                            key={row.sharedOptionsId}
+                            className="picker-field-row"
+                            onClick={() => handlePick(row)}
+                            disabled={picking !== null}
+                            title={`Link to shared options: ${row.options.join(', ')}`}
+                        >
+                            <span className="picker-field-icon">▼</span>
+                            <span className="picker-field-label" style={{ flex: 1, textAlign: 'left' }}>
+                                {row.options.join(' · ')}
+                            </span>
+                            <span className="picker-field-badge">
+                                {picking === row.sharedOptionsId ? '…' : `${row.options.length}`}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 }

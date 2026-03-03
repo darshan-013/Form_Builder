@@ -1,12 +1,13 @@
 package com.formbuilder.controller;
 
 import com.formbuilder.dto.FormDTO;
+import com.formbuilder.dto.FormRenderDTO;
 import com.formbuilder.entity.FormEntity;
+import com.formbuilder.service.FormRenderService;
 import com.formbuilder.service.FormService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,6 +30,7 @@ import java.util.UUID;
 public class FormController {
 
     private final FormService formService;
+    private final FormRenderService formRenderService;
 
     /** List all forms — admin dashboard */
     @GetMapping
@@ -40,6 +42,16 @@ public class FormController {
     @GetMapping("/{id}")
     public ResponseEntity<FormEntity> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(formService.getFormById(id));
+    }
+
+    /**
+     * GET /api/forms/{id}/render
+     * Public endpoint — returns resolved field options ready for rendering.
+     * Options are fetched from dropdown_schema or inline options_json.
+     */
+    @GetMapping("/{id}/render")
+    public ResponseEntity<FormRenderDTO> render(@PathVariable UUID id) {
+        return ResponseEntity.ok(formRenderService.render(id));
     }
 
     /**

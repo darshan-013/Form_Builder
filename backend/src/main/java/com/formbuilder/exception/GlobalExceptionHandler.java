@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -14,23 +15,20 @@ import java.util.NoSuchElementException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /**
+     * Validation errors — return structured { errors: [{field, message}] }
+     * where field is the fieldKey so the frontend can highlight the exact input.
+     */
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ValidationErrorResponse> handleValidation(ValidationException ex) {
         ValidationErrorResponse response = new ValidationErrorResponse();
 
-        // Convert error messages to structured format
-        // Try to extract field name from error message (e.g., "Email is required" -> field: "Email")
-        for (String errorMsg : ex.getErrors()) {
-            String field = "general"; // Default field name
-
-            // Try to extract field name from error message
-            // Error format typically: "<FieldLabel> <validation message>"
-            int firstSpace = errorMsg.indexOf(' ');
-            if (firstSpace > 0) {
-                field = errorMsg.substring(0, firstSpace);
+        Map<String, List<String>> fieldErrors = ex.getFieldErrors();
+        for (Map.Entry<String, List<String>> entry : fieldErrors.entrySet()) {
+            String fieldKey = entry.getKey();
+            for (String message : entry.getValue()) {
+                response.addError(fieldKey, message);
             }
-
-            response.addError(field, errorMsg);
         }
 
         return ResponseEntity.badRequest().body(response);
@@ -44,7 +42,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadArg(IllegalArgumentException ex) {
-        log.warn("IllegalArgumentException: {}", ex.getMessage(), ex);
+        log.warn("IllegalArgumentException: {}", ex.getMessage());
         return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
     }
 

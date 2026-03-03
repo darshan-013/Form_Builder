@@ -13,8 +13,9 @@ spring:
       mode: always                          # runs schema files on every startup
       separator: "^"                        # custom separator for PostgreSQL functions with $$
       schema-locations:
-        - classpath:users_schema.sql        # users + authorities (Spring Security)
-        - classpath:schema.sql              # forms + form_fields
+        - classpath:users_schema.sql                  # users + authorities (Spring Security)
+        - classpath:schema.sql                        # forms + form_fields
+        - classpath:migration_add_validation_json.sql # ensures validation_json column exists
 
   jpa:
     hibernate:
@@ -31,6 +32,11 @@ server:
   servlet:
     session:
       timeout: 30m                          # session lifetime
+      cookie:
+        http-only: true                     # JS cannot read the cookie
+        same-site: lax                      # allows cookie on same-site navigations (not strict cross-site)
+        secure: false                       # set true in production (HTTPS)
+        name: JSESSIONID
 
 logging:
   level:

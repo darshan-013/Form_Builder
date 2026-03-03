@@ -38,6 +38,8 @@ export default function EditBuilderPage() {
                         required: f.required,
                         defaultValue: f.defaultValue || '',
                         validationRegex: f.validationRegex || '',
+                        sharedOptionsId: f.sharedOptionsId || null,
+                        validationJson: f.validationJson || null,
                         fieldOrder: f.fieldOrder,
                     }))
                 );
@@ -59,7 +61,8 @@ export default function EditBuilderPage() {
                 required: f.required,
                 defaultValue: f.defaultValue || null,
                 validationRegex: f.validationRegex || null,
-                optionsJson: f.optionsJson || null,
+                validationJson: f.validationJson || null,
+                sharedOptionsId: f.sharedOptionsId || null,
                 fieldOrder: i,
             })),
         };

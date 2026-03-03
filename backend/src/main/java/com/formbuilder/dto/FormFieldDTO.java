@@ -1,20 +1,23 @@
 package com.formbuilder.dto;
 
 import lombok.Data;
-import java.util.List;
 import java.util.UUID;
 
 @Data
 public class FormFieldDTO {
-    private UUID id; // null for new fields; present for existing ones
+    private UUID id;
     private String fieldKey;
     private String label;
-    private String fieldType; // text | number | date | boolean | dropdown | radio | file
+    private String fieldType;
     private boolean required;
     private String defaultValue;
     private String validationRegex;
-    private String optionsJson; // JSON array for dropdown/radio (backward compatibility)
-    private String validationJson; // JSON object for advanced validation rules
-    private List<FieldOptionDTO> options; // Normalized options (alternative to optionsJson)
+    private String validationJson;
+    /**
+     * FK → shared_options.id
+     * Must be set for dropdown/radio fields.
+     * Options are stored only in shared_options table, never inline.
+     */
+    private UUID sharedOptionsId;
     private int fieldOrder;
 }

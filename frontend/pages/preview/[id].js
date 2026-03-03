@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
 import FormRenderer from '../../components/FormRenderer';
-import { getForm } from '../../services/api';
+import { getFormRender } from '../../services/api';
 import { toastError } from '../../services/toast';
 
 /**
@@ -21,17 +21,14 @@ export default function PreviewPage() {
 
     useEffect(() => {
         if (!id) return;
-        getForm(id)
+        getFormRender(id)
             .then((data) => {
-                console.log('Preview - Form loaded:', data);
-                console.log('Preview - Fields:', data?.fields);
-                // Log dropdown/radio fields specifically
-                data?.fields?.forEach(f => {
-                    if (f.fieldType === 'dropdown' || f.fieldType === 'radio') {
-                        console.log(`${f.fieldType} field "${f.label}":`, f.optionsJson);
-                    }
+                setForm({
+                    id:          data.formId,
+                    name:        data.formName,
+                    description: data.formDescription,
+                    fields:      data.fields || [],
                 });
-                setForm(data);
             })
             .catch(() => toastError('Failed to load form.'))
             .finally(() => setLoading(false));

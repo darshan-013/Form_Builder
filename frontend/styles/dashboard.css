@@ -194,12 +194,17 @@
 .confirm-box h3 {
     font-size: 18px;
     margin-bottom: 8px;
+    color: #ffffff;
 }
 
 .confirm-box p {
     font-size: 14px;
-    color: var(--text-secondary);
+    color: rgba(255, 255, 255, 0.75);
     margin-bottom: 24px;
+}
+
+.confirm-box p strong {
+    color: #ffffff;
 }
 
 .confirm-actions {

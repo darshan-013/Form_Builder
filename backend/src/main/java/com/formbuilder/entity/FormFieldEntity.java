@@ -1,13 +1,10 @@
 package com.formbuilder.entity;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -63,27 +60,18 @@ public class FormFieldEntity {
     @Column(name = "validation_regex", columnDefinition = "TEXT")
     private String validationRegex;
 
-    /** JSON array of options for dropdown/radio fields (e.g. ["Option 1", "Option 2"]) */
-    @Column(name = "options_json", columnDefinition = "TEXT")
-    private String optionsJson;
-
-    /** JSON object containing advanced validation rules */
+    /** JSON object of advanced validation rules e.g. {"minLength":3,"emailFormat":true} */
     @Column(name = "validation_json", columnDefinition = "TEXT")
     private String validationJson;
 
     /**
-     * Normalized options (alternative to optionsJson).
-     * Each option is stored as a separate row in field_options table.
-     * Benefits: better data integrity, queryability, and flexibility.
-     *
-     * Note: This is excluded from JSON serialization to avoid LazyInitializationException.
-     * Use optionsJson for API responses, or explicitly load this collection with EAGER fetch.
+     * FK → shared_options.id
+     * ALL dropdown/radio fields must have this set.
+     * Options are ALWAYS stored in the shared_options table — never inline in form_fields.
+     * ON DELETE SET NULL — if the shared_options row is deleted the field loses its options gracefully.
      */
-    @OneToMany(mappedBy = "field", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @OrderBy("optionOrder ASC")
-    @JsonIgnore
-    @Builder.Default
-    private List<FieldOptionEntity> options = new ArrayList<>();
+    @Column(name = "shared_options_id", columnDefinition = "UUID")
+    private UUID sharedOptionsId;
 
     /** Zero-based render order — maintained by drag-and-drop in the builder. */
     @Column(name = "field_order", nullable = false)

@@ -58,10 +58,14 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 // Public form read (needed for preview/submission page)
                 .requestMatchers(HttpMethod.GET,  "/api/forms/{id}").permitAll()
+                // Public form render (resolves dropdown schema options for renderer)
+                .requestMatchers(HttpMethod.GET,  "/api/forms/{id}/render").permitAll()
                 // Public form submission
                 .requestMatchers(HttpMethod.POST, "/api/forms/{id}/submit").permitAll()
                 // Everything else under /api/forms requires authentication
                 .requestMatchers("/api/forms/**").authenticated()
+                // Shared options — authenticated admin only
+                .requestMatchers("/api/shared-options/**").authenticated()
                 .anyRequest().permitAll()
             )
 

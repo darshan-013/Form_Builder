@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import FormRenderer from '../../components/FormRenderer';
-import { getForm, submitForm } from '../../services/api';
+import { getFormRender, submitForm } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 
 /**
@@ -27,17 +27,19 @@ export default function SubmitPage() {
 
     useEffect(() => {
         if (!id) return;
-        getForm(id)
+        getFormRender(id)
             .then((data) => {
-                console.log('Submit - Form loaded:', data);
-                console.log('Submit - Fields:', data?.fields);
-                // Log dropdown/radio fields specifically
-                data?.fields?.forEach(f => {
-                    if (f.fieldType === 'dropdown' || f.fieldType === 'radio') {
-                        console.log(`${f.fieldType} field "${f.label}":`, f.optionsJson);
-                    }
+                // Normalise render response to the shape FormRenderer expects:
+                // { name, description, fields: [{fieldKey, label, fieldType, required, options, ...}] }
+                setForm({
+                    id:          data.formId,
+                    name:        data.formName,
+                    description: data.formDescription,
+                    fields:      (data.fields || []).map(f => ({
+                        ...f,
+                        // options already resolved: [{label, value}]
+                    })),
                 });
-                setForm(data);
             })
             .catch((err) => {
                 if (err.status === 404) setNotFound(true);
@@ -54,12 +56,22 @@ export default function SubmitPage() {
         try {
             await submitForm(id, values);
             toastSuccess('Form submitted successfully! 🎉');
-            // FormRenderer will show its own success state after this resolves
+            // Redirect to the submissions list for this form
+            router.push(`/submissions/${id}`);
         } catch (err) {
-            // Backend validation errors or server errors
-            const msg = err.errors?.join(' · ') || err.message || 'Submission failed.';
-            toastError(msg);
-            throw err; // re-throw so FormRenderer stays in submitting=false state
+            // err.errors is an array of { field: fieldKey, message: string }
+            // coming from GlobalExceptionHandler → ValidationErrorResponse
+            if (err?.errors && Array.isArray(err.errors) && err.errors.length > 0) {
+                // Show a toast with the first error as a summary
+                const firstErr = err.errors[0];
+                const preview  = typeof firstErr === 'object'
+                    ? firstErr.message
+                    : String(firstErr);
+                toastError(preview || 'Please fix the errors and try again.');
+            } else {
+                toastError(err?.message || 'Submission failed.');
+            }
+            throw err; // re-throw so FormRenderer maps errors back to fields
         }
     };
 
