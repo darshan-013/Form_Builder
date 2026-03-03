@@ -1,0 +1,39 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/formbuilder
+    username: postgres
+    password: admin
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 30000
+
+  sql:
+    init:
+      mode: always                          # runs schema files on every startup
+      separator: "^"                        # custom separator for PostgreSQL functions with $$
+      schema-locations:
+        - classpath:users_schema.sql        # users + authorities (Spring Security)
+        - classpath:schema.sql              # forms + form_fields
+
+  jpa:
+    hibernate:
+      ddl-auto: none                        # CRITICAL: Hibernate must NOT touch schema
+    open-in-view: false                     # avoid lazy-loading pitfalls in REST layer
+    show-sql: true                          # log all JPA-generated SQL for debugging
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+server:
+  port: 8080
+  servlet:
+    session:
+      timeout: 30m                          # session lifetime
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+    com.formbuilder: DEBUG
+    org.springframework.jdbc: DEBUG

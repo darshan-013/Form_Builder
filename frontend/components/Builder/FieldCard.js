@@ -1,0 +1,86 @@
+/**
+ * FieldCard — Individual field row on the canvas.
+ * - Draggable for reordering within the canvas.
+ * - Shows type badge, label, field_key, required indicator.
+ * - Edit button → opens FieldConfigModal via onEdit callback.
+ * - Remove button → calls onRemove callback.
+ */
+
+const TYPE_META = {
+    text: { label: 'Text', cls: 'badge-text' },
+    number: { label: 'Number', cls: 'badge-number' },
+    date: { label: 'Date', cls: 'badge-date' },
+    boolean: { label: 'Boolean', cls: 'badge-boolean' },
+    dropdown: { label: 'Dropdown', cls: 'badge-dropdown' },
+    radio: { label: 'Radio', cls: 'badge-radio' },
+    file: { label: 'File', cls: 'badge-file' },
+};
+
+export default function FieldCard({
+    field,
+    index,
+    onEdit,
+    onRemove,
+    onDragStart,
+    onDragOver,
+    onDrop,
+    onDragEnd,
+    isDragging,
+    dropPosition, // 'top' | 'bottom' | null
+}) {
+    const meta = TYPE_META[field.fieldType] || { label: field.fieldType, cls: 'badge-text' };
+
+    const cardClass = [
+        'field-card',
+        isDragging ? 'dragging' : '',
+        dropPosition === 'top' ? 'drag-over-top' : '',
+        dropPosition === 'bottom' ? 'drag-over-bottom' : '',
+    ].filter(Boolean).join(' ');
+
+    return (
+        <div
+            id={`field-card-${field.id}`}
+            className={cardClass}
+            draggable
+            onDragStart={(e) => onDragStart(e, index)}
+            onDragOver={(e) => onDragOver(e, index)}
+            onDrop={(e) => onDrop(e, index)}
+            onDragEnd={onDragEnd}
+        >
+            {/* Drag handle */}
+            <span className="field-card-drag-handle" title="Drag to reorder">⠿</span>
+
+            {/* Type badge */}
+            <span className={`badge ${meta.cls}`}>{meta.label}</span>
+
+            {/* Info */}
+            <div className="field-card-info">
+                <div className="field-card-label">{field.label || <em style={{ opacity: 0.4 }}>Untitled field</em>}</div>
+                <div className="field-card-meta">
+                    <span className="field-card-key">{field.fieldKey || '—'}</span>
+                    {field.required && (
+                        <span className="field-required-dot" title="Required field" />
+                    )}
+                </div>
+            </div>
+
+            {/* Actions */}
+            <div className="field-card-actions">
+                <button
+                    className="field-action-btn edit"
+                    onClick={() => onEdit(field)}
+                    title="Configure field"
+                >
+                    ✎
+                </button>
+                <button
+                    className="field-action-btn remove"
+                    onClick={() => onRemove(field.id)}
+                    title="Remove field"
+                >
+                    ✕
+                </button>
+            </div>
+        </div>
+    );
+}

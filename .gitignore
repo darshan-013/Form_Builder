@@ -1,0 +1,26 @@
+# Ignore everything at root level
+/*
+
+# Allow specific directories only
+!frontend/
+!backend/
+!uploads/
+!.idea/
+!.gitignore
+
+# Ignore common build/dependency directories
+**/node_modules/
+**/target/
+**/.gradle/
+**/build/
+**/.next/
+**/dist/
+**/.turbo/
+
+# Ignore OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Ignore IDE files (except .idea since you want it)
+**/.vscode/
+**/*.iml

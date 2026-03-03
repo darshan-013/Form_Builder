@@ -1,0 +1,19 @@
+           tablename           
+-------------------------------
+ authorities
+ form_bhargav_9331ac
+ form_cbcgh_44e82f
+ form_college_detail_8bddf9
+ form_darshan_45d0f6
+ form_dfdf_229be7
+ form_erye_51ce58
+ form_fields
+ form_getajob_a94437
+ form_gsgs_ba4bd8
+ form_myform_b316a7
+ form_name_submission_8e60c9
+ form_normalizationtest_77217d
+ forms
+ users
+(15 rows)
+
