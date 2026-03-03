@@ -163,6 +163,13 @@
 }
 
 /* ── Error message ────────────────────────────────── */
+.form-field-errors {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 4px;
+}
+
 .form-field-error {
     display: flex;
     align-items: center;
@@ -176,6 +183,20 @@
 .form-field-error::before {
     content: '⚠';
     font-size: 11px;
+}
+
+/* Error state for checkbox (boolean) */
+.bool-toggle-error {
+    outline: 1.5px solid rgba(252, 165, 165, 0.5);
+    border-radius: 8px;
+    padding: 4px 6px;
+}
+
+/* Error state for radio group */
+.radio-group-error {
+    border-left: 2px solid rgba(252, 165, 165, 0.6);
+    padding-left: 8px;
+    border-radius: 4px;
 }
 
 /* ── Submit button ────────────────────────────────── */

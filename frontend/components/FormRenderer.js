@@ -1,459 +1,449 @@
-import { useState } from 'react';
-import ValidationRules from '../services/validation';
+import { useState, useRef, useEffect } from 'react';
+import ValidationEngine from '../services/validation';
 
 /**
- * FormRenderer — dynamically renders a form from its config and handles submission.
+ * FormRenderer — enterprise dynamic form renderer.
  *
- * Props:
- *   form       — form metadata object (name, description, fields[])
- *   isPreview  — boolean; if true shows preview banner and disables real submission
- *   onSubmit   — async (data: {[fieldKey]: value}) → called on valid submit
+ * Validation lifecycle:
+ *   onChange → live sync validation on EVERY keystroke (shows errors as you type)
+ *   onBlur   → marks field touched so errors stay visible even if emptied
+ *   onSubmit → full async validation (image dimensions etc.) + blocks if any error
  */
 export default function FormRenderer({ form, isPreview = false, onSubmit }) {
-    const fields = form?.fields || [];
+  const fields = form?.fields || [];
 
-    // ── State ────────────────────────────────────────────────────────────────
-
-    // Initialize values: use defaultValue if set, otherwise '' / false
-    const initialValues = () =>
-        Object.fromEntries(
-            fields.map((f) => [
-                f.fieldKey,
-                f.fieldType === 'boolean'
-                    ? f.defaultValue === 'true' || f.defaultValue === true
-                    : f.defaultValue || '',
-            ])
-        );
-
-    const [values, setValues] = useState(initialValues);
-    const [errors, setErrors] = useState({});           // per-fieldKey error messages
-    const [serverError, setServerError] = useState('');       // top-level server error banner
-    const [submitting, setSubmitting] = useState(false);
-    const [submitted, setSubmitted] = useState(false);
-
-    // ── Validation ───────────────────────────────────────────────────────────
-
-    async function validate() {
-        const errs = {};
-
-        // Collect all file objects for validation
-        const files = {};
-        for (const field of fields) {
-            if (field.fieldType === 'file') {
-                const fileValue = values[field.fieldKey];
-                if (fileValue instanceof File) {
-                    files[field.fieldKey] = fileValue;
-                }
-            }
-        }
-
-        // Validate all fields using advanced validation
-        const validationErrors = await ValidationRules.validateForm(fields, values, files);
-
-        // Convert validation errors to format expected by component
-        for (const [fieldKey, fieldErrors] of Object.entries(validationErrors)) {
-            if (fieldErrors.length > 0) {
-                errs[fieldKey] = fieldErrors[0]; // Show first error
-            }
-        }
-
-        return errs;
-    }
-
-    // ── Submit ────────────────────────────────────────────────────────────────
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (isPreview) return; // preview mode — block real submission
-
-        // 1. Client-side validation first — fast, no round-trip
-        const errs = await validate();
-        setErrors(errs);
-        setServerError('');
-
-        if (Object.keys(errs).length > 0) {
-            // Scroll to first error
-            const firstErrorField = Object.keys(errs)[0];
-            const element = document.querySelector(`[name="${firstErrorField}"]`);
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                element.focus();
-            }
-            return;
-        }
-
-        setSubmitting(true);
-        try {
-            // Check if any field actually has a file uploaded (not just file field exists)
-            const hasUploadedFile = fields.some(f => {
-                const fieldValue = values[f.fieldKey];
-                const isFile = f.fieldType === 'file';
-                const isFileInstance = fieldValue instanceof File;
-                const hasSize = isFileInstance && fieldValue.size > 0;
-
-                console.log(`Field check:`, {
-                    fieldKey: f.fieldKey,
-                    fieldType: f.fieldType,
-                    isFile,
-                    valueType: typeof fieldValue,
-                    isFileInstance,
-                    hasSize,
-                    value: fieldValue
-                });
-
-                return isFile && isFileInstance && hasSize;
-            });
-
-            console.log('Submission decision:', {
-                hasUploadedFile,
-                willUseMultipart: hasUploadedFile,
-                allValues: values
-            });
-
-            if (hasUploadedFile) {
-                console.log('Using FormData (multipart)');
-                // Use FormData for file uploads
-                const formData = new FormData();
-                for (const [key, val] of Object.entries(values)) {
-                    if (val instanceof File) {
-                        formData.append(key, val);
-                    } else if (val !== null && val !== undefined) {
-                        formData.append(key, val);
-                    }
-                }
-                await onSubmit(formData);
-            } else {
-                console.log('Using JSON');
-                // Use regular JSON for non-file submissions
-                await onSubmit(values);
-            }
-
-            setSubmitted(true);
-        } catch (err) {
-            // 2. Backend returned validation errors in structured format
-            //    { errors: [ { field: "fieldName", message: "error message" } ] }
-            console.log('Submission error:', err);
-
-            if (err?.errors && Array.isArray(err.errors)) {
-                const fieldErrs = {};
-                const unmatched = [];
-
-                for (const error of err.errors) {
-                    if (error.field && error.message) {
-                        // Find field by label or fieldKey
-                        const matchedField = fields.find((f) =>
-                            f.label === error.field || f.fieldKey === error.field
-                        );
-
-                        if (matchedField) {
-                            fieldErrs[matchedField.fieldKey] = error.message;
-                        } else {
-                            unmatched.push(error.message);
-                        }
-                    }
-                }
-
-                if (Object.keys(fieldErrs).length > 0) {
-                    setErrors(fieldErrs);
-                    // Scroll to first error
-                    const firstErrorField = Object.keys(fieldErrs)[0];
-                    const element = document.querySelector(`[name="${firstErrorField}"]`);
-                    if (element) {
-                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        element.focus();
-                    }
-                }
-                if (unmatched.length > 0) {
-                    setServerError(unmatched.join(' · '));
-                }
-            } else if (Array.isArray(err?.errors)) {
-                // Legacy format: array of error messages
-                const fieldErrs = {};
-                const unmatched = [];
-                for (const msg of err.errors) {
-                    const matchedField = fields.find((f) => msg.startsWith(f.label));
-                    if (matchedField) {
-                        fieldErrs[matchedField.fieldKey] = msg;
-                    } else {
-                        unmatched.push(msg);
-                    }
-                }
-                if (Object.keys(fieldErrs).length > 0) setErrors(fieldErrs);
-                if (unmatched.length > 0) setServerError(unmatched.join(' · '));
-            } else {
-                setServerError(err?.message || 'Submission failed. Please try again.');
-            }
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-
-    // ── Field value change ────────────────────────────────────────────────────
-
-    const change = (key, value) => {
-        setValues((prev) => ({ ...prev, [key]: value }));
-        // Clear both inline error and server banner on any change
-        if (errors[key]) setErrors((prev) => { const e = { ...prev }; delete e[key]; return e; });
-        if (serverError) setServerError('');
-    };
-
-    // ── Success screen ────────────────────────────────────────────────────────
-
-    if (submitted) {
-        return (
-            <div className="form-renderer-card">
-                <div className="form-success-state">
-                    <div className="success-icon-ring">✓</div>
-                    <h2>Submitted Successfully!</h2>
-                    <p>Thank you — your response has been recorded.</p>
-                    <button
-                        className="btn btn-secondary success-another-btn"
-                        onClick={() => { setValues(initialValues()); setSubmitted(false); }}
-                    >
-                        Submit another response
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    // ── Render ────────────────────────────────────────────────────────────────
-
-    return (
-        <div className="form-renderer-card">
-            {/* Preview banner */}
-            {isPreview && (
-                <div className="preview-banner">
-                    👁&nbsp;<strong>Preview Mode</strong> — submissions are disabled
-                </div>
-            )}
-
-            {/* Header */}
-            <div className="form-renderer-header">
-                <h1 className="form-renderer-title">{form.name}</h1>
-                {form.description && (
-                    <p className="form-renderer-desc">{form.description}</p>
-                )}
-                <div className="form-renderer-meta">
-                    <span className="form-renderer-meta-item">
-                        🔲 {fields.length} field{fields.length !== 1 ? 's' : ''}
-                    </span>
-                    {fields.some((f) => f.required) && (
-                        <span className="form-renderer-meta-item">
-                            <span className="form-field-required-star">*</span> Required fields marked
-                        </span>
-                    )}
-                </div>
-            </div>
-
-            {/* Server-side error banner (unmatched backend errors) */}
-            {serverError && (
-                <div className="auth-error" style={{ margin: '0 32px 0', borderRadius: 10 }}>
-                    <span>⚠</span> {serverError}
-                </div>
-            )}
-
-            {/* Fields */}
-            <form onSubmit={handleSubmit} noValidate>
-                {fields.length === 0 ? (
-                    <div className="form-empty-state">
-                        This form has no fields yet.
-                    </div>
-                ) : (
-                    <div className="form-renderer-body">
-                        {[...fields]
-                            .sort((a, b) => a.fieldOrder - b.fieldOrder)
-                            .map((field) => (
-                                <FieldInput
-                                    key={field.id || field.fieldKey}
-                                    field={field}
-                                    value={values[field.fieldKey]}
-                                    error={errors[field.fieldKey]}
-                                    onChange={(val) => change(field.fieldKey, val)}
-                                    disabled={isPreview}
-                                />
-                            ))}
-                    </div>
-                )}
-
-                {/* Submit */}
-                <div className="form-renderer-footer">
-                    <button
-                        type="submit"
-                        id="form-submit-btn"
-                        className="form-submit-btn"
-                        disabled={submitting || isPreview || fields.length === 0}
-                    >
-                        {submitting ? (
-                            <><span className="spinner" style={{ borderTopColor: '#fff', width: 18, height: 18 }} /> Submitting…</>
-                        ) : isPreview ? (
-                            '👁 Preview Mode — Submit Disabled'
-                        ) : (
-                            'Submit Form →'
-                        )}
-                    </button>
-                </div>
-            </form>
-        </div>
+  // ── Build initial values from field defaults ───────────────────────────────
+  function makeInitialValues() {
+    return Object.fromEntries(
+      fields.map((f) => [
+        f.fieldKey,
+        f.fieldType === 'boolean'
+          ? (f.defaultValue === 'true' || f.defaultValue === true)
+          : (f.defaultValue || ''),
+      ])
     );
+  }
+
+  const [values,      setValues]      = useState(makeInitialValues);
+  const [errors,      setErrors]      = useState({});  // { fieldKey: string[] }
+  const [touched,     setTouched]     = useState({});  // { fieldKey: boolean }
+  const [serverError, setServerError] = useState('');
+  const [submitting,  setSubmitting]  = useState(false);
+  const [submitted,   setSubmitted]   = useState(false);
+
+  // File objects stored in ref (avoids stale-closure issues in async handlers)
+  const filesRef = useRef({});
+
+  // Keep a ref to current values so async handlers always read the latest
+  const valuesRef = useRef(values);
+  useEffect(() => { valuesRef.current = values; }, [values]);
+
+  // ── onChange — live validation on every keystroke ──────────────────────────
+  function handleChange(field, value) {
+    // 1. Update value in state
+    const newValues = { ...valuesRef.current, [field.fieldKey]: value };
+    setValues(newValues);
+    valuesRef.current = newValues;
+
+    // 2. Update file ref
+    if (field.fieldType === 'file' && value instanceof File) {
+      filesRef.current = { ...filesRef.current, [field.fieldKey]: value };
+    }
+
+    // 3. Run sync validation immediately — show errors AS the user types
+    const errs = ValidationEngine.validateFieldSync(field, value, newValues, filesRef.current);
+    setErrors((prev) => ({ ...prev, [field.fieldKey]: errs }));
+
+    // 4. Mark field touched (so error stays visible)
+    setTouched((prev) => ({ ...prev, [field.fieldKey]: true }));
+
+    // 5. Clear server banner
+    if (serverError) setServerError('');
+  }
+
+  // ── onBlur — ensure touched is set so error persists ──────────────────────
+  function handleBlur(field, value) {
+    setTouched((prev) => ({ ...prev, [field.fieldKey]: true }));
+    // Re-run validation on blur too (catches paste/autofill that skips onChange)
+    const errs = ValidationEngine.validateFieldSync(field, value, valuesRef.current, filesRef.current);
+    setErrors((prev) => ({ ...prev, [field.fieldKey]: errs }));
+  }
+
+  // ── onSubmit — full async validation, block if any errors ─────────────────
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (isPreview) return;
+
+    // Mark all fields as touched so all errors become visible
+    const allTouched = Object.fromEntries(fields.map((f) => [f.fieldKey, true]));
+    setTouched(allTouched);
+
+    // Full async validation (covers image dimensions, etc.)
+    const allErrors = await ValidationEngine.validateForm(fields, valuesRef.current, filesRef.current);
+    setErrors(allErrors);
+    setServerError('');
+
+    if (Object.keys(allErrors).length > 0) {
+      // Scroll + focus first error field
+      const firstKey = Object.keys(allErrors)[0];
+      const el = document.getElementById(`field-${firstKey}`);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+      return;
+    }
+
+    // ── All valid — submit ───────────────────────────────────────────────────
+    setSubmitting(true);
+    try {
+      const currentValues = valuesRef.current;
+      const hasFile = fields.some(
+        (f) => f.fieldType === 'file' && filesRef.current[f.fieldKey] instanceof File
+      );
+
+      if (hasFile) {
+        const fd = new FormData();
+        for (const [key, val] of Object.entries(currentValues)) {
+          if (filesRef.current[key] instanceof File) {
+            fd.append(key, filesRef.current[key]);
+          } else if (val != null) {
+            fd.append(key, val);
+          }
+        }
+        await onSubmit(fd);
+      } else {
+        await onSubmit(currentValues);
+      }
+
+      setSubmitted(true);
+    } catch (err) {
+      if (err?.errors && Array.isArray(err.errors)) {
+        const fieldErrs = {};
+        const unmatched = [];
+
+        for (const error of err.errors) {
+          // Backend sends { field: fieldKey, message: string }
+          if (error && typeof error === 'object' && error.field && error.message) {
+            const key = error.field;
+            if (key === '__general__') {
+              unmatched.push(error.message);
+            } else {
+              // Match by fieldKey directly (primary) or label (fallback)
+              const matchedField = fields.find(
+                (f) => f.fieldKey === key || f.label === key
+              );
+              const targetKey = matchedField ? matchedField.fieldKey : key;
+              if (!fieldErrs[targetKey]) fieldErrs[targetKey] = [];
+              fieldErrs[targetKey].push(error.message);
+            }
+          } else if (typeof error === 'string') {
+            unmatched.push(error);
+          }
+        }
+
+        if (Object.keys(fieldErrs).length) {
+          setErrors(fieldErrs);
+          // Mark all backend-errored fields as touched so errors show
+          const newTouched = Object.fromEntries(Object.keys(fieldErrs).map((k) => [k, true]));
+          setTouched((prev) => ({ ...prev, ...newTouched }));
+          const firstKey = Object.keys(fieldErrs)[0];
+          const el = document.getElementById(`field-${firstKey}`);
+          if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+        }
+        if (unmatched.length) setServerError(unmatched.join(' · '));
+      } else {
+        setServerError(err?.message || 'Submission failed. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Success screen ─────────────────────────────────────────────────────────
+  if (submitted) {
+    return (
+      <div className="form-renderer-card">
+        <div className="form-success-state">
+          <div className="success-icon-ring">✓</div>
+          <h2>Submitted Successfully!</h2>
+          <p>Thank you — your response has been recorded.</p>
+          <button
+            className="btn btn-secondary success-another-btn"
+            onClick={() => {
+              const fresh = makeInitialValues();
+              setValues(fresh);
+              valuesRef.current = fresh;
+              filesRef.current = {};
+              setErrors({});
+              setTouched({});
+              setSubmitted(false);
+            }}
+          >
+            Submit another response
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main render ────────────────────────────────────────────────────────────
+  return (
+    <div className="form-renderer-card">
+      {isPreview && (
+        <div className="preview-banner">
+          👁&nbsp;<strong>Preview Mode</strong> — submissions are disabled
+        </div>
+      )}
+
+      <div className="form-renderer-header">
+        <h1 className="form-renderer-title">{form.name}</h1>
+        {form.description && <p className="form-renderer-desc">{form.description}</p>}
+        <div className="form-renderer-meta">
+          <span className="form-renderer-meta-item">
+            🔲 {fields.length} field{fields.length !== 1 ? 's' : ''}
+          </span>
+          {fields.some((f) => f.required) && (
+            <span className="form-renderer-meta-item">
+              <span className="form-field-required-star">*</span> Required fields marked
+            </span>
+          )}
+        </div>
+      </div>
+
+      {serverError && (
+        <div className="auth-error" style={{ margin: '0 32px 16px', borderRadius: 10 }}>
+          <span>⚠</span> {serverError}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} noValidate>
+        {fields.length === 0 ? (
+          <div className="form-empty-state">This form has no fields yet.</div>
+        ) : (
+          <div className="form-renderer-body">
+            {[...fields]
+              .sort((a, b) => a.fieldOrder - b.fieldOrder)
+              .map((field) => (
+                <FieldInput
+                  key={field.id || field.fieldKey}
+                  field={field}
+                  value={values[field.fieldKey]}
+                  errors={errors[field.fieldKey] || []}
+                  touched={!!touched[field.fieldKey]}
+                  onChange={(val) => handleChange(field, val)}
+                  onBlur={(val)   => handleBlur(field, val)}
+                  disabled={isPreview}
+                />
+              ))}
+          </div>
+        )}
+
+        <div className="form-renderer-footer">
+          <button
+            type="submit"
+            id="form-submit-btn"
+            className="form-submit-btn"
+            disabled={submitting || isPreview || fields.length === 0}
+          >
+            {submitting ? (
+              <><span className="spinner" style={{ borderTopColor: '#fff', width: 18, height: 18 }} /> Submitting…</>
+            ) : isPreview ? (
+              '👁 Preview Mode — Submit Disabled'
+            ) : (
+              'Submit Form →'
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
-/* ── Individual field renderer ──────────────────────────────────────────── */
+// ─── FieldInput ───────────────────────────────────────────────────────────────
+/**
+ * Renders a single form field.
+ *
+ * errors   = string[]  (all validation messages for this field)
+ * touched  = boolean   (true once user has interacted — controls whether to show errors)
+ *
+ * Shows the FIRST (highest-priority) error only for clean UX.
+ */
+function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled }) {
+  const id         = `field-${field.fieldKey}`;
+  const errorList  = Array.isArray(errors) ? errors : [];
+  // Show error only after the user has touched the field (typed or left it)
+  const shownError = touched && errorList.length > 0 ? errorList[0] : null;
+  const hasError   = !!shownError;
+  const inputClass = `form-input${hasError ? ' input-error' : ''}`;
 
-function FieldInput({ field, value, error, onChange, disabled }) {
-    const inputId = `field-${field.fieldKey}`;
+  return (
+    <div className="form-field-group" style={{ animationDelay: `${(field.fieldOrder || 0) * 40}ms` }}>
 
-    return (
-        <div className="form-field-group" style={{ animationDelay: `${field.fieldOrder * 40}ms` }}>
-            {/* Label */}
-            {field.fieldType !== 'boolean' && (
-                <label className="form-field-label" htmlFor={inputId}>
-                    {field.label}
-                    {field.required && <span className="form-field-required-star" title="Required">*</span>}
-                </label>
-            )}
+      {/* Label */}
+      {field.fieldType !== 'boolean' && (
+        <label className="form-field-label" htmlFor={id}>
+          {field.label}
+          {field.required && <span className="form-field-required-star" title="Required"> *</span>}
+        </label>
+      )}
 
-            {/* Input by type */}
-            {field.fieldType === 'text' && (
-                <input
-                    id={inputId}
-                    type="text"
-                    className={`form-input ${error ? 'input-error' : ''}`}
-                    value={value || ''}
-                    onChange={(e) => onChange(e.target.value)}
-                    placeholder={field.defaultValue ? `e.g. ${field.defaultValue}` : `Enter ${field.label.toLowerCase()}…`}
-                    required={field.required}
-                    disabled={disabled}
-                />
-            )}
+      {/* ── text ───────────────────────────────────────────────── */}
+      {field.fieldType === 'text' && (
+        <input
+          id={id}
+          type="text"
+          className={inputClass}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e)   => onBlur(e.target.value)}
+          placeholder={field.defaultValue ? `e.g. ${field.defaultValue}` : `Enter ${field.label.toLowerCase()}…`}
+          disabled={disabled}
+          autoComplete="off"
+          aria-describedby={hasError ? `${id}-err` : undefined}
+          aria-invalid={hasError || undefined}
+        />
+      )}
 
-            {field.fieldType === 'number' && (
-                <input
-                    id={inputId}
-                    type="number"
-                    className={`form-input ${error ? 'input-error' : ''}`}
-                    value={value || ''}
-                    onChange={(e) => onChange(e.target.value)}
-                    placeholder={field.defaultValue || '0'}
-                    required={field.required}
-                    disabled={disabled}
-                />
-            )}
+      {/* ── number ─────────────────────────────────────────────── */}
+      {field.fieldType === 'number' && (
+        <input
+          id={id}
+          type="number"
+          className={inputClass}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e)   => onBlur(e.target.value)}
+          placeholder={field.defaultValue || ''}
+          disabled={disabled}
+          aria-describedby={hasError ? `${id}-err` : undefined}
+          aria-invalid={hasError || undefined}
+        />
+      )}
 
-            {field.fieldType === 'date' && (
-                <input
-                    id={inputId}
-                    type="date"
-                    className={`form-input ${error ? 'input-error' : ''}`}
-                    value={value || ''}
-                    onChange={(e) => onChange(e.target.value)}
-                    required={field.required}
-                    disabled={disabled}
-                />
-            )}
+      {/* ── date ───────────────────────────────────────────────── */}
+      {field.fieldType === 'date' && (
+        <input
+          id={id}
+          type="date"
+          className={inputClass}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e)   => onBlur(e.target.value)}
+          disabled={disabled}
+          aria-describedby={hasError ? `${id}-err` : undefined}
+          aria-invalid={hasError || undefined}
+        />
+      )}
 
-            {field.fieldType === 'boolean' && (
-                <label className={`bool-toggle-wrap ${disabled ? 'opacity-50' : ''}`} htmlFor={inputId}>
-                    <input
-                        id={inputId}
-                        type="checkbox"
-                        checked={!!value}
-                        onChange={(e) => onChange(e.target.checked)}
-                        disabled={disabled}
-                    />
-                    <span className="bool-toggle-label">
-                        {field.label}
-                        {field.required && <span className="form-field-required-star"> *</span>}
-                    </span>
-                </label>
-            )}
+      {/* ── boolean ────────────────────────────────────────────── */}
+      {field.fieldType === 'boolean' && (
+        <label
+          className={`bool-toggle-wrap${disabled ? ' opacity-50' : ''}${hasError ? ' bool-toggle-error' : ''}`}
+          htmlFor={id}
+        >
+          <input
+            id={id}
+            type="checkbox"
+            checked={!!value}
+            onChange={(e) => { onChange(e.target.checked); onBlur(e.target.checked); }}
+            disabled={disabled}
+            aria-invalid={hasError || undefined}
+          />
+          <span className="bool-toggle-label">
+            {field.label}
+            {field.required && <span className="form-field-required-star"> *</span>}
+          </span>
+        </label>
+      )}
 
-            {field.fieldType === 'dropdown' && (
-                <select
-                    id={inputId}
-                    className={`form-input ${error ? 'input-error' : ''}`}
-                    value={value || ''}
-                    onChange={(e) => onChange(e.target.value)}
-                    required={field.required}
-                    disabled={disabled}
-                >
-                    <option value="">-- Select {field.label} --</option>
-                    {(() => {
-                        if (!field.optionsJson || field.optionsJson === 'null' || field.optionsJson === '') {
-                            console.warn(`Dropdown field "${field.label}" has no options configured`);
-                            return <option value="" disabled>No options configured</option>;
-                        }
-                        try {
-                            const opts = JSON.parse(field.optionsJson);
-                            if (Array.isArray(opts) && opts.length > 0) {
-                                return opts.map((opt, i) => (
-                                    <option key={i} value={opt}>{opt}</option>
-                                ));
-                            }
-                            console.warn('Dropdown options empty or invalid:', field.optionsJson);
-                            return <option value="" disabled>No options configured</option>;
-                        } catch (e) {
-                            console.error('Failed to parse dropdown options:', field.optionsJson, e);
-                            return <option value="" disabled>Invalid options</option>;
-                        }
-                    })()}
-                </select>
-            )}
+      {/* ── dropdown ───────────────────────────────────────────── */}
+      {field.fieldType === 'dropdown' && (
+        <select
+          id={id}
+          className={inputClass}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e)   => onBlur(e.target.value)}
+          disabled={disabled}
+          aria-describedby={hasError ? `${id}-err` : undefined}
+          aria-invalid={hasError || undefined}
+        >
+          <option value="">— Select {field.label} —</option>
+          {parseOptions(field.optionsJson, field.options).map((opt, i) => (
+            <option key={i} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      )}
 
-            {field.fieldType === 'radio' && (
-                <div className="radio-group">
-                    {(() => {
-                        if (!field.optionsJson || field.optionsJson === 'null' || field.optionsJson === '') {
-                            console.warn(`Radio field "${field.label}" has no options configured`);
-                            return <span className="form-field-error">No options configured</span>;
-                        }
-                        try {
-                            const opts = JSON.parse(field.optionsJson);
-                            if (Array.isArray(opts) && opts.length > 0) {
-                                return opts.map((opt, i) => (
-                                    <label key={i} className="radio-option">
-                                        <input
-                                            type="radio"
-                                            name={inputId}
-                                            value={opt}
-                                            checked={value === opt}
-                                            onChange={(e) => onChange(e.target.value)}
-                                            disabled={disabled}
-                                            required={field.required}
-                                        />
-                                        <span>{opt}</span>
-                                    </label>
-                                ));
-                            }
-                            console.warn('Radio options empty or invalid:', field.optionsJson);
-                            return <span className="form-field-error">No options configured</span>;
-                        } catch (e) {
-                            console.error('Failed to parse radio options:', field.optionsJson, e);
-                            return <span className="form-field-error">Invalid options configuration</span>;
-                        }
-                    })()}
-                </div>
-            )}
-
-            {field.fieldType === 'file' && (
-                <input
-                    id={inputId}
-                    type="file"
-                    className={`form-input ${error ? 'input-error' : ''}`}
-                    onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                            onChange(file);
-                        }
-                    }}
-                    required={field.required}
-                    disabled={disabled}
-                />
-            )}
-
-            {/* Inline error */}
-            {error && <span className="form-field-error">{error}</span>}
+      {/* ── radio ──────────────────────────────────────────────── */}
+      {field.fieldType === 'radio' && (
+        <div
+          className={`radio-group${hasError ? ' radio-group-error' : ''}`}
+          role="radiogroup"
+          aria-describedby={hasError ? `${id}-err` : undefined}
+        >
+          {parseOptions(field.optionsJson, field.options).map((opt, i) => (
+            <label key={i} className="radio-option">
+              <input
+                type="radio"
+                name={id}
+                value={opt.value}
+                checked={value === opt.value}
+                onChange={(e) => { onChange(e.target.value); onBlur(e.target.value); }}
+                disabled={disabled}
+              />
+              <span>{opt.label}</span>
+            </label>
+          ))}
         </div>
+      )}
+
+      {/* ── file ───────────────────────────────────────────────── */}
+      {field.fieldType === 'file' && (
+        <input
+          id={id}
+          type="file"
+          className={inputClass}
+          multiple={getMultiple(field.validationJson)}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) { onChange(f); onBlur(f); }
+          }}
+          disabled={disabled}
+          aria-describedby={hasError ? `${id}-err` : undefined}
+          aria-invalid={hasError || undefined}
+        />
+      )}
+
+      {/* ── Error (shows after first interaction, highest-priority only) ── */}
+      {hasError && (
+        <span id={`${id}-err`} className="form-field-error" role="alert" aria-live="polite">
+          {shownError}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+function parseOptions(optionsJson, resolvedOptions) {
+  // Priority 1: pre-resolved [{label, value}] objects from /render endpoint
+  if (Array.isArray(resolvedOptions) && resolvedOptions.length > 0) {
+    return resolvedOptions; // already [{label, value}]
+  }
+  // Priority 2: inline optionsJson string ["Opt1","Opt2"]
+  if (!optionsJson || optionsJson === 'null') return [];
+  try {
+    const parsed = JSON.parse(optionsJson);
+    if (!Array.isArray(parsed)) return [];
+    // Could be strings or objects
+    return parsed.map(o =>
+      typeof o === 'string' ? { label: o, value: o } : o
     );
+  } catch { return []; }
+}
+
+function getMultiple(validationJson) {
+  try {
+    return JSON.parse(validationJson || '{}').singleOrMultiple === 'multiple';
+  } catch { return false; }
 }

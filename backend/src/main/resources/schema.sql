@@ -15,6 +15,22 @@
 -- ─────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "pgcrypto"^   -- provides gen_random_uuid()
 
+-- ─────────────────────────────────────────────
+--  TABLE: shared_options
+--  Stores a canonical options_json that can be
+--  referenced by many form_fields rows across
+--  many forms. When this row is updated, ALL
+--  fields pointing to it see the new options.
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS shared_options (
+    id           UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+    options_json TEXT      NOT NULL,
+    created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMP NOT NULL DEFAULT NOW()
+)^
+
+COMMENT ON TABLE  shared_options             IS 'Canonical option lists shared across multiple form fields.'^
+COMMENT ON COLUMN shared_options.options_json IS 'JSON array: [{"label":"A","value":"A"},...]'^
 
 -- ─────────────────────────────────────────────
 --  TABLE: forms
@@ -51,8 +67,9 @@ CREATE TABLE IF NOT EXISTS form_fields (
     required          BOOLEAN      NOT NULL DEFAULT FALSE,
     default_value     TEXT,
     validation_regex  TEXT,                           -- optional client+server-side regex
-    options_json      TEXT,                           -- JSON array for dropdown/radio options
     validation_json   TEXT,                           -- advanced validation rules (JSON object)
+    shared_options_id UUID                            -- FK → shared_options.id (required for dropdown/radio)
+                       REFERENCES shared_options (id) ON DELETE SET NULL,
     field_order       INT          NOT NULL DEFAULT 0, -- render order in builder/preview
     created_at        TIMESTAMP    NOT NULL DEFAULT NOW(),
 
@@ -63,7 +80,7 @@ CREATE TABLE IF NOT EXISTS form_fields (
 COMMENT ON TABLE  form_fields               IS 'Field definitions for each form. Each field becomes a column in the form''s submission table.'^
 COMMENT ON COLUMN form_fields.field_key     IS 'Snake_case identifier used as column name in the dynamic submission table.'^
 COMMENT ON COLUMN form_fields.field_type    IS 'Logical type: text→TEXT, number→INTEGER, date→DATE, boolean→BOOLEAN, dropdown→VARCHAR(255), radio→VARCHAR(255), file→TEXT.'^
-COMMENT ON COLUMN form_fields.options_json  IS 'JSON array of options for dropdown/radio fields (e.g., ["Option 1", "Option 2"]).'^
+COMMENT ON COLUMN form_fields.shared_options_id IS 'FK → shared_options: all dropdown/radio options are stored there, never inline.'^
 COMMENT ON COLUMN form_fields.field_order   IS 'Zero-based render order. Builder preserves this order via drag-and-drop.'^
 
 

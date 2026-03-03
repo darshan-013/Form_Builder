@@ -27,17 +27,14 @@ export default function Canvas({ fields, setFields }) {
             id,
             fieldType,
             label: '',
-            fieldKey: autoKey,  // Auto-generate to prevent empty key issues
+            fieldKey: autoKey,
             required: false,
             defaultValue: '',
             validationRegex: '',
             fieldOrder: fields.length,
+            sharedOptionsId: null,
+            validationJson: null,
         };
-
-        // Add default options for dropdown and radio fields
-        if (fieldType === 'dropdown' || fieldType === 'radio') {
-            newField.optionsJson = JSON.stringify(['Option 1', 'Option 2', 'Option 3']);
-        }
 
         setFields((prev) => {
             const updated = [...prev, newField];

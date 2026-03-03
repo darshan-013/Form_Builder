@@ -41,12 +41,12 @@ export default function NewBuilderPage() {
                 required: f.required,
                 defaultValue: f.defaultValue || null,
                 validationRegex: f.validationRegex || null,
-                optionsJson: f.optionsJson || null,
+                validationJson: f.validationJson || null,
+                sharedOptionsId: f.sharedOptionsId || null,
                 fieldOrder: i,
             })),
         };
 
-        console.log('Creating form with DTO:', JSON.stringify(dto, null, 2));
 
         setSaving(true);
         try {

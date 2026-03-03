@@ -1,31 +1,35 @@
 -- =====================================================
--- Migration: Add validation_json column to form_fields
--- Date: 2026-03-02
--- Description: Extends form_fields table with advanced
---              validation rules storage capability
+-- Migration: cleanup + schema alignment
+-- Safe idempotent — runs on every startup
+-- Separator: ^ (configured in application.yml)
 -- =====================================================
 
--- Add validation_json column (safe - uses IF NOT EXISTS pattern via pg_catalog check)
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'form_fields'
-        AND column_name = 'validation_json'
-    ) THEN
-        ALTER TABLE form_fields ADD COLUMN validation_json TEXT;
-        RAISE NOTICE 'Added validation_json column to form_fields';
-    ELSE
-        RAISE NOTICE 'validation_json column already exists in form_fields';
-    END IF;
-END $$;
+-- ── 1. DROP ABANDONED TABLES ─────────────────────────────────────────────────
+DROP TABLE IF EXISTS field_options    CASCADE^
+DROP TABLE IF EXISTS dropdown_options CASCADE^
+DROP TABLE IF EXISTS dropdown_schemas CASCADE^
 
--- Add comment to document the new column
-COMMENT ON COLUMN form_fields.validation_json IS 'JSON object containing advanced validation rules (e.g., {"minLength": 3, "maxLength": 50, "unique": true})';
+-- ── 2. ADD MISSING COLUMNS ───────────────────────────────────────────────────
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS validation_json TEXT^
 
--- Verify the change
-SELECT column_name, data_type, character_maximum_length
-FROM information_schema.columns
-WHERE table_name = 'form_fields'
-ORDER BY ordinal_position;
+-- ── 3. CREATE shared_options (if not exists) ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS shared_options (
+    id           UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+    options_json TEXT      NOT NULL,
+    created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMP NOT NULL DEFAULT NOW()
+)^
 
+-- ── 4. ADD shared_options_id FK on form_fields (if not exists) ───────────────
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS shared_options_id UUID
+    REFERENCES shared_options(id) ON DELETE SET NULL^
+
+-- ── 5. DROP OBSOLETE COLUMNS ─────────────────────────────────────────────────
+ALTER TABLE form_fields DROP COLUMN IF EXISTS source_field_id^
+ALTER TABLE form_fields DROP COLUMN IF EXISTS dropdown_schema_id^
+ALTER TABLE form_fields DROP COLUMN IF EXISTS options_json^
+
+-- ── COMMENTS ──────────────────────────────────────────────────────────────────
+COMMENT ON TABLE  shared_options                IS 'Canonical option lists — dropdown/radio options live here, never inline on form_fields.'^
+COMMENT ON COLUMN form_fields.shared_options_id IS 'FK → shared_options.id — all dropdown/radio options stored here, never as inline JSON.'^
+COMMENT ON COLUMN form_fields.validation_json   IS 'JSON object containing advanced validation rules for a field.'^

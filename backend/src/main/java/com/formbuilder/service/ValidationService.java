@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.formbuilder.entity.FormFieldEntity;
+import com.formbuilder.repository.SharedOptionsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,10 +20,6 @@ import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.regex.Pattern;
 
-/**
- * Advanced field validation service.
- * Validates form submissions based on validation_json metadata.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -30,6 +27,7 @@ public class ValidationService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final SharedOptionsRepository sharedOptionsRepo;
 
     // ═══════════════════════════════════════════════════════════════════════
     // PUBLIC API
@@ -50,8 +48,12 @@ public class ValidationService {
 
         // Parse validation rules
         JsonNode rules = parseValidationJson(field.getValidationJson());
+
+        log.debug("Validating field '{}' (type={}, required={}, validationJson={})",
+                field.getFieldKey(), field.getFieldType(), field.isRequired(), field.getValidationJson());
+
         if (rules == null) {
-            rules = objectMapper.createObjectNode(); // Empty rules if not configured
+            rules = objectMapper.createObjectNode();
         }
 
         String strValue = (value != null) ? value.toString().trim() : "";
@@ -91,6 +93,10 @@ public class ValidationService {
             case "file":
                 validateFileField(field, files, rules, errors, tableName);
                 break;
+        }
+
+        if (!errors.isEmpty()) {
+            log.debug("Field '{}' failed validation: {}", field.getFieldKey(), errors);
         }
 
         return errors;
@@ -141,13 +147,13 @@ public class ValidationService {
 
         // Format validations
         if (rules.has("alphabetOnly") && rules.get("alphabetOnly").asBoolean()) {
-            if (!value.matches("^[A-Za-z]+$")) {
+            if (!value.matches("^[A-Za-z\\s]+$")) {
                 errors.add(label + " must contain only alphabetic characters");
             }
         }
 
         if (rules.has("alphanumericOnly") && rules.get("alphanumericOnly").asBoolean()) {
-            if (!value.matches("^[A-Za-z0-9]+$")) {
+            if (!value.matches("^[A-Za-z0-9\\s]+$")) {
                 errors.add(label + " must contain only letters and numbers");
             }
         }
@@ -160,9 +166,15 @@ public class ValidationService {
 
         if (rules.has("allowSpecificSpecialCharacters")) {
             String allowed = rules.get("allowSpecificSpecialCharacters").asText();
-            String pattern = "^[A-Za-z0-9\\s" + Pattern.quote(allowed) + "]+$";
-            if (!value.matches(pattern)) {
-                errors.add(label + " contains invalid characters. Allowed: " + allowed);
+            // Escape chars that are special inside a regex character class: ] [ - ^ \
+            String escapedAllowed = allowed.replaceAll("([\\[\\-\\\\])", "\\\\$1");
+            String pattern = "^[A-Za-z0-9\\s" + escapedAllowed + "]+$";
+            try {
+                if (!value.matches(pattern)) {
+                    errors.add(label + " contains invalid characters. Allowed special chars: " + allowed);
+                }
+            } catch (Exception e) {
+                log.warn("Invalid allowSpecificSpecialCharacters pattern for field {}: {}", field.getFieldKey(), pattern);
             }
         }
 
@@ -186,7 +198,7 @@ public class ValidationService {
             }
         }
 
-        // Custom regex
+        // Custom regex (from validationJson)
         if (rules.has("customRegex")) {
             String regex = rules.get("customRegex").asText();
             try {
@@ -195,6 +207,17 @@ public class ValidationService {
                 }
             } catch (Exception e) {
                 log.warn("Invalid regex pattern: {}", regex, e);
+            }
+        }
+
+        // Field-level validationRegex (fallback if customRegex not in validationJson)
+        if (!rules.has("customRegex") && field.getValidationRegex() != null && !field.getValidationRegex().isBlank()) {
+            try {
+                if (!Pattern.compile(field.getValidationRegex()).matcher(value).find()) {
+                    errors.add(label + " format is invalid");
+                }
+            } catch (Exception e) {
+                log.warn("Invalid validationRegex for field {}: {}", field.getFieldKey(), field.getValidationRegex());
             }
         }
 
@@ -321,10 +344,21 @@ public class ValidationService {
 
     private void validateDateField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
         String label = field.getLabel();
-        LocalDate date;
 
+        // Determine the configured display format (default YYYY-MM-DD)
+        String customFormat = rules.has("customFormat") ? rules.get("customFormat").asText("YYYY-MM-DD") : "YYYY-MM-DD";
+
+        // The browser ALWAYS submits YYYY-MM-DD regardless of display format.
+        // Reject anything that doesn't match that pattern strictly.
+        if (!value.matches("^\\d{4}-\\d{2}-\\d{2}$")) {
+            String expected = customFormat.isEmpty() ? "YYYY-MM-DD" : customFormat;
+            errors.add(label + " must be a valid date in " + expected + " format");
+            return;
+        }
+
+        LocalDate date;
         try {
-            date = LocalDate.parse(value);
+            date = LocalDate.parse(value); // ISO YYYY-MM-DD
         } catch (DateTimeParseException e) {
             errors.add(label + " must be a valid date");
             return;
@@ -333,53 +367,70 @@ public class ValidationService {
         LocalDate today = LocalDate.now();
 
         // Range validations
-        if (rules.has("minDate")) {
-            LocalDate min = LocalDate.parse(rules.get("minDate").asText());
-            if (date.isBefore(min)) {
-                errors.add(label + " must be on or after " + min);
-            }
+        if (rules.has("minDate") && !rules.get("minDate").asText("").isEmpty()) {
+            try {
+                LocalDate min = LocalDate.parse(rules.get("minDate").asText());
+                if (date.isBefore(min)) {
+                    errors.add(label + " must be on or after " + formatDate(min, customFormat));
+                }
+            } catch (DateTimeParseException ignored) {}
         }
 
-        if (rules.has("maxDate")) {
-            LocalDate max = LocalDate.parse(rules.get("maxDate").asText());
-            if (date.isAfter(max)) {
-                errors.add(label + " must be on or before " + max);
-            }
+        if (rules.has("maxDate") && !rules.get("maxDate").asText("").isEmpty()) {
+            try {
+                LocalDate max = LocalDate.parse(rules.get("maxDate").asText());
+                if (date.isAfter(max)) {
+                    errors.add(label + " must be on or before " + formatDate(max, customFormat));
+                }
+            } catch (DateTimeParseException ignored) {}
         }
 
         // Logical validations
         if (rules.has("pastOnly") && rules.get("pastOnly").asBoolean()) {
-            if (date.isAfter(today)) {
-                errors.add(label + " must be in the past");
+            if (!date.isBefore(today)) {
+                errors.add(label + " must be a past date");
             }
         }
 
         if (rules.has("futureOnly") && rules.get("futureOnly").asBoolean()) {
-            if (date.isBefore(today)) {
-                errors.add(label + " must be in the future");
-            }
-        }
-
-        if (rules.has("age18Plus") && rules.get("age18Plus").asBoolean()) {
-            int age = Period.between(date, today).getYears();
-            if (age < 18) {
-                errors.add(label + " indicates age must be at least 18 years");
-            }
-        }
-
-        if (rules.has("notOlderThanXYears")) {
-            int maxYears = rules.get("notOlderThanXYears").asInt();
-            int age = Period.between(date, today).getYears();
-            if (age > maxYears) {
-                errors.add(label + " must not be older than " + maxYears + " years");
+            if (!date.isAfter(today)) {
+                errors.add(label + " must be a future date");
             }
         }
 
         if (rules.has("noWeekend") && rules.get("noWeekend").asBoolean()) {
             if (date.getDayOfWeek().getValue() >= 6) {
-                errors.add(label + " cannot be a weekend");
+                errors.add(label + " cannot be a Saturday or Sunday");
             }
         }
+
+        if (rules.has("age18Plus") && !rules.get("age18Plus").asText("").isEmpty()) {
+            int minAge = rules.get("age18Plus").asInt();
+            int age    = Period.between(date, today).getYears();
+            if (age < minAge) {
+                errors.add(label + " indicates age must be at least " + minAge + " years old");
+            }
+        }
+
+        if (rules.has("notOlderThanXYears") && !rules.get("notOlderThanXYears").asText("").isEmpty()) {
+            int maxYears = rules.get("notOlderThanXYears").asInt();
+            int age      = Period.between(date, today).getYears();
+            if (age > maxYears) {
+                errors.add(label + " must not be older than " + maxYears + " years");
+            }
+        }
+    }
+
+    /** Format a LocalDate into the admin-configured display format for error messages. */
+    private String formatDate(LocalDate date, String format) {
+        if ("DD/MM/YYYY".equals(format)) {
+            return String.format("%02d/%02d/%04d", date.getDayOfMonth(), date.getMonthValue(), date.getYear());
+        }
+        if ("MM/DD/YYYY".equals(format)) {
+            return String.format("%02d/%02d/%04d", date.getMonthValue(), date.getDayOfMonth(), date.getYear());
+        }
+        // Default YYYY-MM-DD
+        return date.toString();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -388,9 +439,15 @@ public class ValidationService {
 
     private void validateBooleanField(FormFieldEntity field, Object value, JsonNode rules, List<String> errors) {
         String label = field.getLabel();
+        boolean boolValue = value != null && Boolean.parseBoolean(value.toString());
+
+        // Required boolean field must be true (checked)
+        if (field.isRequired() && !boolValue) {
+            errors.add(label + " must be accepted");
+            return;
+        }
 
         if (rules.has("mustBeTrue") && rules.get("mustBeTrue").asBoolean()) {
-            boolean boolValue = Boolean.parseBoolean(value.toString());
             if (!boolValue) {
                 errors.add(label + " must be accepted");
             }
@@ -403,9 +460,9 @@ public class ValidationService {
 
     private void validateDropdownField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
         String label = field.getLabel();
+        String effectiveOptionsJson = resolveOptionsJson(field);
 
-        // Validate option exists
-        if (!isValidOption(field.getOptionsJson(), value)) {
+        if (!isValidOption(effectiveOptionsJson, value)) {
             errors.add(label + " has an invalid selection");
             return;
         }
@@ -418,17 +475,32 @@ public class ValidationService {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // RADIO FIELD VALIDATION
-    // ═══════════════════════════════════════════════════════════════════════
-
     private void validateRadioField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
         String label = field.getLabel();
+        String effectiveOptionsJson = resolveOptionsJson(field);
 
-        // Validate option exists
-        if (!isValidOption(field.getOptionsJson(), value)) {
+        if (!isValidOption(effectiveOptionsJson, value)) {
             errors.add(label + " has an invalid selection");
         }
+    }
+
+    /**
+     * Resolve options for a dropdown/radio field from the shared_options table.
+     * Options are ALWAYS in shared_options — never inline on form_fields.
+     */
+    private String resolveOptionsJson(FormFieldEntity field) {
+        if (field.getSharedOptionsId() == null) {
+            log.warn("Field '{}' is a choice field but has no shared_options_id — allowing any value",
+                    field.getFieldKey());
+            return null;
+        }
+        return sharedOptionsRepo.findById(field.getSharedOptionsId())
+                .map(s -> s.getOptionsJson())
+                .orElseGet(() -> {
+                    log.warn("shared_options row {} not found for field '{}' — allowing any value",
+                            field.getSharedOptionsId(), field.getFieldKey());
+                    return null;
+                });
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -578,19 +650,25 @@ public class ValidationService {
 
     private boolean isValidOption(String optionsJson, String value) {
         if (optionsJson == null || optionsJson.isBlank()) {
-            return true; // No options configured
+            return true; // No options configured — allow any value
         }
         try {
             JsonNode options = objectMapper.readTree(optionsJson);
             if (options.isArray()) {
                 for (JsonNode option : options) {
-                    if (option.asText().equals(value)) {
-                        return true;
+                    if (option.isTextual()) {
+                        // Plain string array: ["A","B","C"]
+                        if (option.asText().equals(value)) return true;
+                    } else if (option.isObject()) {
+                        // Object array: [{"label":"A","value":"A"}]
+                        JsonNode valNode = option.get("value");
+                        if (valNode != null && valNode.asText().equals(value)) return true;
                     }
                 }
             }
         } catch (JsonProcessingException e) {
             log.warn("Failed to parse options JSON: {}", optionsJson, e);
+            return true; // On parse error, don't block submission
         }
         return false;
     }
