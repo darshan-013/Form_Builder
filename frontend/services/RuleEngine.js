@@ -39,6 +39,19 @@
  *
  * 8. NESTING — Capped at MAX_NEST_DEPTH = 3:
  *    Deeper groups treated as true. RuleBuilder UI prevents adding more.
+ *
+ * NEW ADDITIONS (v2)
+ * ──────────────────
+ * Operators : 'matches regex', 'not matches regex',
+ *             'length >', 'length <', 'length =',
+ *             'count selected >', 'count selected <', 'count selected =',
+ *             'changed'
+ * Actions   : 'copyValue'      — copy live value from another field
+ *             'filterOptions'  — restrict dropdown/radio/checkbox options
+ *             'setMin'         — dynamic minimum for number/date fields
+ *             'setMax'         — dynamic maximum for number/date fields
+ *             'setLabel'       — override the field's visible label
+ *             'setPlaceholder' — override the field's placeholder text
  * ══════════════════════════════════════════════════════════════════════════
  */
 
@@ -49,7 +62,22 @@ export const MAX_NEST_DEPTH = 3;
 export const NO_VALUE_OPS = new Set([
   'is empty', 'is not empty', 'is true', 'is false',
   'is today', 'is past', 'is future', 'is uploaded', 'is not uploaded',
+  'changed', // NEW (v2) — no comparison value needed
 ]);
+
+// ─── Default values snapshot (for 'changed' operator) ────────────────────────
+
+/**
+ * Module-level snapshot of initial/default field values.
+ * Call setDefaultValues() once when the form loads with its initial values.
+ * Required for the 'changed' operator to correctly detect user modification.
+ *
+ * @param {{ [fieldKey: string]: any }} defaults
+ */
+const _defaultValues = {};
+export function setDefaultValues(defaults) {
+  Object.assign(_defaultValues, defaults);
+}
 
 // ─── Step 1: Pre-parse rulesJson once per field load ─────────────────────────
 
@@ -171,6 +199,36 @@ export function evaluateCondition(condition, formValues) {
     case 'is uploaded':     return actual !== '' && rawActual != null;
     case 'is not uploaded': return actual === '' || rawActual == null;
 
+    // ── NEW (v2): Regex ───────────────────────────────────────────────────
+    // Use case: IF email matches regex "^.+@company\.com$" THEN show employee_section
+    case 'matches regex':
+      try { return new RegExp(expected).test(actual); }
+      catch { console.warn(`[RuleEngine] Invalid regex: "${expected}"`); return false; }
+
+    case 'not matches regex':
+      try { return !new RegExp(expected).test(actual); }
+      catch { console.warn(`[RuleEngine] Invalid regex: "${expected}"`); return false; }
+
+    // ── NEW (v2): String length ───────────────────────────────────────────
+    // Use case: IF description length > 100 THEN show summary_field
+    case 'length >': return actual.length >  Number(expected);
+    case 'length <': return actual.length <  Number(expected);
+    case 'length =': return actual.length === Number(expected);
+
+    // ── NEW (v2): Multi-checkbox / comma-list count ───────────────────────
+    // Use case: IF skills count selected > 3 THEN show experience_level
+    case 'count selected >': return actual.split(',').filter(Boolean).length >  Number(expected);
+    case 'count selected <': return actual.split(',').filter(Boolean).length <  Number(expected);
+    case 'count selected =': return actual.split(',').filter(Boolean).length === Number(expected);
+
+    // ── NEW (v2): Changed from default ────────────────────────────────────
+    // Use case: IF phone changed THEN show verify_phone
+    // Requires setDefaultValues() to be called on form load.
+    case 'changed': {
+      const def = _defaultValues[fieldKey] ?? '';
+      return actual !== '' && actual !== String(def).trim();
+    }
+
     default:
       console.warn(`[RuleEngine] Unknown operator: "${operator}"`);
       return false;
@@ -206,7 +264,20 @@ export function evaluateGroup(group, formValues, depth = 0) {
  * @param {Array}  fields      — fields with _parsedRule attached (use withParsedRules first)
  * @param {object} formValues  — current { fieldKey: value } map
  *
- * @returns {{ [fieldKey]: { visible: bool, required: bool, disabled: bool, setValue: string|null } }}
+ * @returns {{
+ *   [fieldKey]: {
+ *     visible:       boolean,
+ *     required:      boolean,
+ *     disabled:      boolean,
+ *     setValue:      string | null,
+ *     copyValue:     string | null,   // NEW (v2) — value copied from sourceKey field
+ *     filterOptions: string[] | null, // NEW (v2) — allowed options (null = all)
+ *     min:           number | null,   // NEW (v2) — dynamic min bound
+ *     max:           number | null,   // NEW (v2) — dynamic max bound
+ *     label:         string | null,   // NEW (v2) — label override
+ *     placeholder:   string | null,   // NEW (v2) — placeholder override
+ *   }
+ * }}
  *
  * Evaluation order: ascending fieldOrder → deterministic conflict resolution.
  * Cascading setValue: triggers re-evaluation, capped at MAX_PASSES.
@@ -216,20 +287,6 @@ export function applyRules(fields, formValues) {
   // Sort by fieldOrder — deterministic priority (higher order = later eval = wins conflicts)
   const ordered = [...fields].sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
 
-  /**
-   * Determine the default visibility for each field BEFORE rules run.
-   *
-   * Rule: if a field's rule contains ANY 'show' action, it means the admin
-   * intends "only show this field when the condition is true".
-   * Therefore the field must START hidden and become visible only when the
-   * condition passes.
-   *
-   * If the rule contains only 'hide' actions (no 'show'), the field starts
-   * visible and gets hidden when the condition passes — which is the
-   * classic "hide when X" use case.
-   *
-   * Fields with no rule at all always start visible.
-   */
   function hasShowAction(rule) {
     if (!rule || !Array.isArray(rule.actions)) return false;
     return rule.actions.some(a => a.type === 'show');
@@ -237,13 +294,94 @@ export function applyRules(fields, formValues) {
 
   function makeBaseState() {
     return Object.fromEntries(fields.map(f => [f.fieldKey, {
-      // If field has a 'show' action in its rule → start hidden (shown only when condition passes)
-      // Otherwise → start visible (normal default)
-      visible:  f._parsedRule && hasShowAction(f._parsedRule) ? false : true,
-      required: !!f.required,
-      disabled: false,
-      setValue: null,   // null = no override from rules
+      visible:       f._parsedRule && hasShowAction(f._parsedRule) ? false : true,
+      required:      !!f.required,
+      disabled:      false,
+      setValue:      null,
+      // ── NEW (v2) defaults ─────────────────────────────────────────────
+      copyValue:     null,   // null = no copy override
+      filterOptions: null,   // null = show all options
+      min:           null,   // null = use field's own min
+      max:           null,   // null = use field's own max
+      label:         null,   // null = use field's own label
+      placeholder:   null,   // null = use field's own placeholder
     }]));
+  }
+
+  /**
+   * Apply a single action onto state[field.fieldKey].
+   * Extracted to avoid duplicating the switch in both the pass loop and final pass.
+   */
+  function applyAction(action, state, field, workingValues) {
+    const key = field.fieldKey;
+    switch (action.type) {
+      // ── Existing actions ─────────────────────────────────────────────────
+      case 'show':         state[key].visible  = true;  break;
+      case 'hide':         state[key].visible  = false; break;
+      case 'makeRequired': state[key].required = true;  break;
+      case 'makeOptional': state[key].required = false; break;
+      case 'enable':       state[key].disabled = false; break;
+      case 'disable':      state[key].disabled = true;  break;
+      case 'setValue':     state[key].setValue = action.setValue ?? ''; break;
+      case 'clearValue':   state[key].setValue = ''; break;
+
+      // ── NEW (v2): copyValue ───────────────────────────────────────────────
+      // Copies the live value of another field into this field.
+      // action shape: { type: 'copyValue', sourceKey: 'shipping_address' }
+      // Use case: Auto-fill billing address from shipping address.
+      case 'copyValue': {
+        const src = action.sourceKey;
+        if (src && workingValues[src] !== undefined) {
+          state[key].copyValue = String(workingValues[src] ?? '');
+        } else {
+          console.warn(`[RuleEngine] copyValue: sourceKey "${src}" not found in formValues`);
+        }
+        break;
+      }
+
+      // ── NEW (v2): filterOptions ───────────────────────────────────────────
+      // Restricts visible options in a dropdown / radio / checkbox field.
+      // action shape: { type: 'filterOptions', options: ['Option A', 'Option B'] }
+      // Use case: IF country == "India" THEN filter state dropdown to Indian states.
+      // Consumer: render only options whose value is in filterOptions. null = all.
+      case 'filterOptions':
+        state[key].filterOptions = Array.isArray(action.options) ? action.options : [];
+        break;
+
+      // ── NEW (v2): setMin ──────────────────────────────────────────────────
+      // Sets a dynamic minimum bound for number or date fields.
+      // action shape: { type: 'setMin', min: 18 }
+      // Use case: IF employment == "Full-time" THEN setMin of hours to 30.
+      case 'setMin':
+        state[key].min = action.min != null ? Number(action.min) : null;
+        break;
+
+      // ── NEW (v2): setMax ──────────────────────────────────────────────────
+      // Sets a dynamic maximum bound for number or date fields.
+      // action shape: { type: 'setMax', max: 65 }
+      // Use case: IF age < 18 THEN setMax of loan_amount to 0.
+      case 'setMax':
+        state[key].max = action.max != null ? Number(action.max) : null;
+        break;
+
+      // ── NEW (v2): setLabel ────────────────────────────────────────────────
+      // Overrides the visible label text of the field at runtime.
+      // action shape: { type: 'setLabel', label: 'Company Name' }
+      // Use case: IF user_type == "Company" THEN setLabel of name → "Company Name".
+      case 'setLabel':
+        state[key].label = action.label ?? null;
+        break;
+
+      // ── NEW (v2): setPlaceholder ──────────────────────────────────────────
+      // Overrides the placeholder/hint text of the field at runtime.
+      // action shape: { type: 'setPlaceholder', placeholder: 'Enter company name...' }
+      // Use case: Change contextual hint text based on other selections.
+      case 'setPlaceholder':
+        state[key].placeholder = action.placeholder ?? null;
+        break;
+
+      default: break;
+    }
   }
 
   let workingValues = { ...formValues };
@@ -254,30 +392,13 @@ export function applyRules(fields, formValues) {
 
     for (const field of ordered) {
       if (!field._parsedRule) continue;
-
       if (!evaluateGroup(field._parsedRule, workingValues)) continue;
-
-      // Apply actions — last action of each type wins within this field's rule
       for (const action of (field._parsedRule.actions || [])) {
-        switch (action.type) {
-          case 'show':         state[field.fieldKey].visible  = true;  break;
-          case 'hide':         state[field.fieldKey].visible  = false; break;
-          case 'makeRequired': state[field.fieldKey].required = true;  break;
-          case 'makeOptional': state[field.fieldKey].required = false; break;
-          case 'enable':       state[field.fieldKey].disabled = false; break;
-          case 'disable':      state[field.fieldKey].disabled = true;  break;
-          case 'setValue':
-            state[field.fieldKey].setValue = action.setValue ?? '';
-            break;
-          case 'clearValue':
-            state[field.fieldKey].setValue = '';
-            break;
-          default: break;
-        }
+        applyAction(action, state, field, workingValues);
       }
     }
 
-    // Propagate setValue into workingValues for the next pass (cascading)
+    // Propagate setValue AND copyValue into workingValues for cascading next pass
     let anyValueChanged = false;
     for (const [key, st] of Object.entries(state)) {
       if (st.setValue !== null) {
@@ -285,6 +406,15 @@ export function applyRules(fields, formValues) {
         const oldStr = String(workingValues[key] ?? '');
         if (newStr !== oldStr) {
           workingValues = { ...workingValues, [key]: st.setValue };
+          anyValueChanged = true;
+        }
+      }
+      // NEW (v2): copyValue also cascades so downstream rules see the copied value
+      if (st.copyValue !== null) {
+        const newStr = String(st.copyValue);
+        const oldStr = String(workingValues[key] ?? '');
+        if (newStr !== oldStr) {
+          workingValues = { ...workingValues, [key]: st.copyValue };
           anyValueChanged = true;
         }
       }
@@ -304,17 +434,7 @@ export function applyRules(fields, formValues) {
     if (!field._parsedRule) continue;
     if (!evaluateGroup(field._parsedRule, workingValues)) continue;
     for (const action of (field._parsedRule.actions || [])) {
-      switch (action.type) {
-        case 'show':         finalState[field.fieldKey].visible  = true;  break;
-        case 'hide':         finalState[field.fieldKey].visible  = false; break;
-        case 'makeRequired': finalState[field.fieldKey].required = true;  break;
-        case 'makeOptional': finalState[field.fieldKey].required = false; break;
-        case 'enable':       finalState[field.fieldKey].disabled = false; break;
-        case 'disable':      finalState[field.fieldKey].disabled = true;  break;
-        case 'setValue':     finalState[field.fieldKey].setValue = action.setValue ?? ''; break;
-        case 'clearValue':   finalState[field.fieldKey].setValue = ''; break;
-        default: break;
-      }
+      applyAction(action, finalState, field, workingValues);
     }
   }
 
@@ -328,6 +448,7 @@ const RuleEngine = {
   evaluateCondition,
   evaluateGroup,
   applyRules,
+  setDefaultValues,
   MAX_PASSES,
   MAX_NEST_DEPTH,
   NO_VALUE_OPS,

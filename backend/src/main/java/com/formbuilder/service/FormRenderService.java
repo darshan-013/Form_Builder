@@ -48,10 +48,21 @@ public class FormRenderService {
 
     private RenderFieldDTO toRenderField(FormFieldEntity f) {
         List<OptionDTO> options = List.of();
-        boolean isChoice = "dropdown".equals(f.getFieldType()) || "radio".equals(f.getFieldType());
+        String gridJson = null;
+
+        boolean isChoice = "dropdown".equals(f.getFieldType())
+                        || "radio".equals(f.getFieldType())
+                        || "multiple_choice".equals(f.getFieldType());
+        boolean isGrid = "multiple_choice_grid".equals(f.getFieldType());
+
         if (isChoice) {
             options = parseOptionsJson(resolveOptionsJson(f));
         }
+        if (isGrid) {
+            // shared_options.options_json stores {"rows":[...],"columns":[...]} for grid fields
+            gridJson = resolveOptionsJson(f);
+        }
+
         return RenderFieldDTO.builder()
                 .fieldKey(f.getFieldKey())
                 .label(f.getLabel())
@@ -63,6 +74,8 @@ public class FormRenderService {
                 .defaultValue(f.getDefaultValue())
                 .fieldOrder(f.getFieldOrder())
                 .options(options)
+                .gridJson(gridJson)
+                .uiConfigJson(f.getUiConfigJson())
                 .build();
     }
 

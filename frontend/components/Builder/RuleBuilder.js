@@ -24,24 +24,56 @@ import { NO_VALUE_OPS, MAX_NEST_DEPTH } from '../../services/RuleEngine';
 
 // ─── Operator definitions per field type ─────────────────────────────────────
 const OPERATORS = {
-  text:     ['equals', 'not equals', 'contains', 'not contains', 'starts with', 'ends with', 'is empty', 'is not empty'],
-  number:   ['=', '!=', '>', '>=', '<', '<=', 'between'],
-  date:     ['equals', 'before', 'after', 'between', 'is today', 'is past', 'is future'],
+  text:     [
+    'equals', 'not equals', 'contains', 'not contains', 'starts with', 'ends with',
+    'is empty', 'is not empty',
+    // NEW (v2)
+    'matches regex', 'not matches regex', 'length >', 'length <', 'length =', 'changed',
+  ],
+  number:   ['=', '!=', '>', '>=', '<', '<=', 'between',
+    // NEW (v2)
+    'changed',
+  ],
+  date:     ['equals', 'before', 'after', 'between', 'is today', 'is past', 'is future',
+    // NEW (v2)
+    'changed',
+  ],
   boolean:  ['is true', 'is false'],
-  dropdown: ['equals', 'not equals', 'in list', 'not in list'],
-  radio:    ['equals', 'not equals', 'in list', 'not in list'],
+  dropdown: ['equals', 'not equals', 'in list', 'not in list',
+    // NEW (v2)
+    'changed',
+  ],
+  radio:    ['equals', 'not equals', 'in list', 'not in list',
+    // NEW (v2)
+    'changed',
+  ],
+  multiple_choice: ['equals', 'not equals', 'in list', 'not in list',
+    // NEW (v2)
+    'changed',
+  ],
+  linear_scale: ['=', '!=', '>', '>=', '<', '<=', 'between', 'changed'],
   file:     ['is uploaded', 'is not uploaded'],
+  // Grid: conditions apply to row-level values stored as JSON {"Row":"Col"}
+  // Use 'equals'/'not equals' with value = "Row:Col" or just the column value
+  multiple_choice_grid: ['equals', 'not equals', 'is empty', 'is not empty', 'changed'],
 };
 
 const ACTION_TYPES = [
-  { value: 'show',         label: '👁 Show Field' },
-  { value: 'hide',         label: '🙈 Hide Field' },
-  { value: 'makeRequired', label: '* Make Required' },
-  { value: 'makeOptional', label: '○ Make Optional' },
-  { value: 'enable',       label: '✓ Enable Field' },
-  { value: 'disable',      label: '⊘ Disable Field' },
-  { value: 'setValue',     label: '✏ Set Value' },
-  { value: 'clearValue',   label: '✕ Clear Value' },
+  { value: 'show',           label: '👁 Show Field' },
+  { value: 'hide',           label: '🙈 Hide Field' },
+  { value: 'makeRequired',   label: '* Make Required' },
+  { value: 'makeOptional',   label: '○ Make Optional' },
+  { value: 'enable',         label: '✓ Enable Field' },
+  { value: 'disable',        label: '⊘ Disable Field' },
+  { value: 'setValue',       label: '✏ Set Value' },
+  { value: 'clearValue',     label: '✕ Clear Value' },
+  // NEW (v2)
+  { value: 'copyValue',      label: '📋 Copy Value From Field' },
+  { value: 'filterOptions',  label: '🔽 Filter Options' },
+  { value: 'setMin',         label: '⬇ Set Min Value' },
+  { value: 'setMax',         label: '⬆ Set Max Value' },
+  { value: 'setLabel',       label: '🏷 Set Label' },
+  { value: 'setPlaceholder', label: '💬 Set Placeholder' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -81,10 +113,36 @@ function ValueInput({ fieldType, operator, options, value, onChange }) {
 
   const style = { flex: 1, minWidth: 80 };
 
-  // Dropdown/radio — select from options list (unless in/not-in which needs csv text)
-  if ((fieldType === 'dropdown' || fieldType === 'radio') &&
+  // NEW (v2): regex operators — plain text input with pattern hint
+  if (operator === 'matches regex' || operator === 'not matches regex') {
+    return (
+      <input className="form-input" style={style} value={value}
+        placeholder="regex e.g. ^[A-Z].+"
+        onChange={e => onChange(e.target.value)} />
+    );
+  }
+
+  // NEW (v2): length operators — numeric input
+  if (operator === 'length >' || operator === 'length <' || operator === 'length =') {
+    return (
+      <input type="number" className="form-input" style={style} value={value}
+        placeholder="character count" min={0}
+        onChange={e => onChange(e.target.value)} />
+    );
+  }
+
+  // NEW (v2): count selected operators — numeric input
+  if (operator === 'count selected >' || operator === 'count selected <' || operator === 'count selected =') {
+    return (
+      <input type="number" className="form-input" style={style} value={value}
+        placeholder="count e.g. 3" min={0}
+        onChange={e => onChange(e.target.value)} />
+    );
+  }
+
+  // Dropdown/radio/multiple_choice — select from options list (unless in/not-in which needs csv text)
+  if ((fieldType === 'dropdown' || fieldType === 'radio' || fieldType === 'multiple_choice') &&
       operator !== 'in list' && operator !== 'not in list') {
-    // If options haven't loaded yet, show text input as fallback
     if (!options || options.length === 0) {
       return (
         <input className="form-input" style={style} value={value}
@@ -255,10 +313,10 @@ function ConditionGroup({ group, fields, onChange, onRemove, depth }) {
 }
 
 // ─── ActionRow ────────────────────────────────────────────────────────────────
-function ActionRow({ action, onChange, onRemove, canRemove }) {
+function ActionRow({ action, onChange, onRemove, canRemove, allFields }) {
   return (
     <div className="rule-condition-row">
-      <select className="form-input" style={{ flex: '0 0 200px' }}
+      <select className="form-input" style={{ flex: '0 0 210px' }}
         value={action.type}
         onChange={e => onChange({ ...action, type: e.target.value })}>
         {ACTION_TYPES.map(a => (
@@ -266,11 +324,67 @@ function ActionRow({ action, onChange, onRemove, canRemove }) {
         ))}
       </select>
 
+      {/* Existing: setValue */}
       {action.type === 'setValue' && (
         <input className="form-input" style={{ flex: 1 }}
           placeholder="Value to set on this field"
           value={action.setValue || ''}
           onChange={e => onChange({ ...action, setValue: e.target.value })} />
+      )}
+
+      {/* NEW (v2): copyValue — pick source field from dropdown */}
+      {action.type === 'copyValue' && (
+        <select className="form-input" style={{ flex: 1 }}
+          value={action.sourceKey || ''}
+          onChange={e => onChange({ ...action, sourceKey: e.target.value })}>
+          <option value="">— select source field —</option>
+          {allFields.map(f => (
+            <option key={f.fieldKey} value={f.fieldKey}>{f.label}</option>
+          ))}
+        </select>
+      )}
+
+      {/* NEW (v2): filterOptions — comma-separated list of allowed values */}
+      {action.type === 'filterOptions' && (
+        <input className="form-input" style={{ flex: 1 }}
+          placeholder="Allowed options e.g. Option A, Option B"
+          value={Array.isArray(action.options) ? action.options.join(', ') : (action.options || '')}
+          onChange={e => onChange({
+            ...action,
+            options: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+          })} />
+      )}
+
+      {/* NEW (v2): setMin */}
+      {action.type === 'setMin' && (
+        <input type="number" className="form-input" style={{ flex: 1 }}
+          placeholder="Min value e.g. 18"
+          value={action.min ?? ''}
+          onChange={e => onChange({ ...action, min: e.target.value })} />
+      )}
+
+      {/* NEW (v2): setMax */}
+      {action.type === 'setMax' && (
+        <input type="number" className="form-input" style={{ flex: 1 }}
+          placeholder="Max value e.g. 65"
+          value={action.max ?? ''}
+          onChange={e => onChange({ ...action, max: e.target.value })} />
+      )}
+
+      {/* NEW (v2): setLabel */}
+      {action.type === 'setLabel' && (
+        <input className="form-input" style={{ flex: 1 }}
+          placeholder="New label text e.g. Company Name"
+          value={action.label || ''}
+          onChange={e => onChange({ ...action, label: e.target.value })} />
+      )}
+
+      {/* NEW (v2): setPlaceholder */}
+      {action.type === 'setPlaceholder' && (
+        <input className="form-input" style={{ flex: 1 }}
+          placeholder="New placeholder text e.g. Enter company name..."
+          value={action.placeholder || ''}
+          onChange={e => onChange({ ...action, placeholder: e.target.value })} />
       )}
 
       {canRemove && (
@@ -362,6 +476,7 @@ export default function RuleBuilder({ fields, rulesJson, onChange }) {
                 onChange={a => updateAction(i, a)}
                 onRemove={() => removeAction(i)}
                 canRemove={(rule.actions || []).length > 1}
+                allFields={fields}
               />
             ))}
 

@@ -1,8 +1,6 @@
 package com.formbuilder.controller;
 
-import com.formbuilder.dto.SubmissionRequest;
 import com.formbuilder.service.SubmissionService;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -27,95 +25,142 @@ public class SubmissionController {
     private static final String UPLOAD_DIR = "uploads";
 
     /**
-     * POST /api/forms/{id}/submit
-     *
-     * Flow:
-     *  1. Parse multipart or JSON body into data map + files map.
-     *  2. Run full validation (throws 400 with fieldKey→message if fails).
-     *  3. Save uploaded files to disk (only if validation passed).
-     *  4. Replace file field values with saved filenames.
-     *  5. INSERT validated data into the form's dynamic table.
+     * POST /api/forms/{id}/submit — JSON body
+     * Accepts flat { "fieldKey": value } or wrapped { "data": { "fieldKey": value } }.
+     * Spring @RequestBody handles body parsing — no manual stream reading.
+     * ValidationException thrown by validate() propagates to GlobalExceptionHandler → 400.
      */
-    @PostMapping("/{id}/submit")
-    public ResponseEntity<?> submit(
+    @PostMapping(value = "/{id}/submit", consumes = {"application/json", "application/json;charset=UTF-8"})
+    public ResponseEntity<?> submitJson(
             @PathVariable UUID id,
-            HttpServletRequest request) {
+            @RequestBody(required = false) Map<String, Object> rawBody) {
+
+        Map<String, Object> data = new HashMap<>();
+        if (rawBody != null) {
+            Object inner = rawBody.get("data");
+            if (rawBody.size() == 1 && inner instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> wrapped = (Map<String, Object>) inner;
+                data.putAll(wrapped);
+            } else {
+                data.putAll(rawBody);
+            }
+        }
+
+        log.info("JSON submit — form={} keys={}", id, data.keySet());
+        log.debug("JSON submit data: {}", data);
+
+        submissionService.validate(id, data, null);
+        submissionService.insert(id, data);
+        return ResponseEntity.ok(Map.of("message", "Form submitted successfully"));
+    }
+
+    /**
+     * POST /api/forms/{id}/submit — multipart/form-data (file uploads)
+     */
+    @PostMapping(value = "/{id}/submit", consumes = "multipart/form-data")
+    public ResponseEntity<?> submitMultipart(
+            @PathVariable UUID id,
+            MultipartHttpServletRequest multipart) {
 
         Map<String, Object> data  = new HashMap<>();
         Map<String, MultipartFile> files = new HashMap<>();
 
         try {
-            // ── 1. Parse request body ──────────────────────────────────────
-            String contentType = request.getContentType();
-            if (contentType != null && contentType.contains("multipart/form-data")) {
-                if (request instanceof MultipartHttpServletRequest multipart) {
-                    multipart.getParameterMap().forEach((key, values) -> {
-                        if (values != null && values.length > 0) data.put(key, values[0]);
-                    });
-                    multipart.getFileMap().forEach((key, file) -> {
-                        if (file != null && !file.isEmpty()) files.put(key, file);
-                    });
+            multipart.getParameterMap().forEach((key, values) -> {
+                if (values != null && values.length > 0) data.put(key, values[0]);
+            });
+            multipart.getMultiFileMap().forEach((key, fileList) -> {
+                if (fileList != null && !fileList.isEmpty()) {
+                    MultipartFile first = fileList.get(0);
+                    if (first != null && !first.isEmpty()) files.put(key, first);
+                    data.put("__files__" + key, fileList);
                 }
-            } else {
-                // JSON body: { "data": { fieldKey: value, ... } }
-                StringBuilder sb = new StringBuilder();
-                String line;
-                try (var reader = request.getReader()) {
-                    while ((line = reader.readLine()) != null) sb.append(line);
-                }
-                if (!sb.isEmpty()) {
-                    com.fasterxml.jackson.databind.ObjectMapper mapper =
-                            new com.fasterxml.jackson.databind.ObjectMapper();
-                    SubmissionRequest req = mapper.readValue(sb.toString(), SubmissionRequest.class);
-                    if (req != null && req.getData() != null) data.putAll(req.getData());
-                }
-            }
+            });
 
-            log.info("Submitting form {} — {} data fields, {} files", id, data.size(), files.size());
+            log.info("Multipart submit — form={} fields={} files={}", id, data.size(), files.size());
 
-            // ── 2. Validate (throws ValidationException on failure) ────────
-            // Files are passed as MultipartFile so ValidationService can check
-            // extension, mime, size, and dimensions BEFORE writing to disk.
             submissionService.validate(id, data, files);
 
-            // ── 3. Save files to disk (validation passed) ──────────────────
-            for (Map.Entry<String, MultipartFile> entry : files.entrySet()) {
-                String savedName = saveFile(entry.getValue());
-                data.put(entry.getKey(), savedName);   // replace value with filename
+            Set<String> savedKeys = new HashSet<>();
+            for (Map.Entry<String, Object> entry : new HashMap<>(data).entrySet()) {
+                String key = entry.getKey();
+                if (!key.startsWith("__files__")) continue;
+                String fieldKey = key.substring("__files__".length());
+                savedKeys.add(fieldKey);
+                @SuppressWarnings("unchecked")
+                List<MultipartFile> fileList = (List<MultipartFile>) entry.getValue();
+                List<String> savedNames = new ArrayList<>();
+                for (MultipartFile f : fileList) {
+                    if (f != null && !f.isEmpty()) savedNames.add(saveFile(f));
+                }
+                if (!savedNames.isEmpty()) data.put(fieldKey, String.join(",", savedNames));
+                data.remove(key);
+            }
+            for (Map.Entry<String, MultipartFile> e : files.entrySet()) {
+                if (!savedKeys.contains(e.getKey())) data.put(e.getKey(), saveFile(e.getValue()));
             }
 
-            // ── 4. INSERT into dynamic table ───────────────────────────────
             submissionService.insert(id, data);
-
             return ResponseEntity.ok(Map.of("message", "Form submitted successfully"));
 
         } catch (IOException e) {
-            log.error("Error processing submission request", e);
+            log.error("File save error for form {}", id, e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to process request: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to save file: " + e.getMessage()));
         }
-        // ValidationException (RuntimeException) propagates naturally to GlobalExceptionHandler
     }
 
     private String saveFile(MultipartFile file) throws IOException {
         Path uploadPath = Paths.get(UPLOAD_DIR);
         if (!Files.exists(uploadPath)) Files.createDirectories(uploadPath);
-
         String original  = file.getOriginalFilename();
         String extension = (original != null && original.contains("."))
                 ? original.substring(original.lastIndexOf('.')) : "";
-        String unique    = UUID.randomUUID() + extension;
-
+        String unique = UUID.randomUUID() + extension;
         Files.copy(file.getInputStream(), uploadPath.resolve(unique));
         log.info("Saved file: {} (original: {})", unique, original);
         return unique;
     }
 
-    /**
-     * GET /api/forms/{id}/submissions  — admin only
-     */
     @GetMapping("/{id}/submissions")
     public ResponseEntity<List<Map<String, Object>>> getSubmissions(@PathVariable UUID id) {
         return ResponseEntity.ok(submissionService.getSubmissions(id));
+    }
+
+    @GetMapping("/{id}/submissions/{submissionId}")
+    public ResponseEntity<?> getSubmission(@PathVariable UUID id, @PathVariable UUID submissionId) {
+        try {
+            return ResponseEntity.ok(submissionService.getSubmission(id, submissionId));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @DeleteMapping("/{id}/submissions/{submissionId}")
+    public ResponseEntity<?> deleteSubmission(@PathVariable UUID id, @PathVariable UUID submissionId) {
+        try {
+            submissionService.deleteSubmission(id, submissionId);
+            return ResponseEntity.ok(Map.of("message", "Submission deleted successfully"));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PutMapping("/{id}/submissions/{submissionId}")
+    public ResponseEntity<?> updateSubmission(
+            @PathVariable UUID id,
+            @PathVariable UUID submissionId,
+            @RequestBody Map<String, Object> data) {
+        // ValidationException propagates to GlobalExceptionHandler → 400 with errors[]
+        submissionService.validateUpdate(id, data);
+        try {
+            Map<String, Object> updated = submissionService.updateSubmission(id, submissionId, data);
+            return ResponseEntity.ok(updated);
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 }

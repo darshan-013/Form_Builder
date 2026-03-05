@@ -11,6 +11,9 @@ const FIELD_TYPES = [
     { type: 'boolean', label: 'Boolean', icon: '✓', iconClass: 'icon-boolean', desc: 'True / False toggle' },
     { type: 'dropdown', label: 'Dropdown', icon: '▼', iconClass: 'icon-dropdown', desc: 'Select from dropdown list' },
     { type: 'radio', label: 'Radio', icon: '◉', iconClass: 'icon-radio', desc: 'Single choice radio buttons' },
+    { type: 'multiple_choice', label: 'Multiple Choice', icon: '☑', iconClass: 'icon-multiple-choice', desc: 'Multi-select checkboxes' },
+    { type: 'linear_scale', label: 'Linear Scale', icon: '⭐', iconClass: 'icon-linear-scale', desc: 'Rate on a numeric scale (1–5, 1–10…)' },
+    { type: 'multiple_choice_grid', label: 'Choice Grid', icon: '⊞', iconClass: 'icon-multiple-choice-grid', desc: 'Grid: one selection per row' },
     { type: 'file', label: 'File', icon: '📎', iconClass: 'icon-file', desc: 'File upload' },
 ];
 

@@ -28,8 +28,16 @@ public class FormRenderDTO {
         private String rulesJson;
         private String defaultValue;
         private int fieldOrder;
-        /** Populated for dropdown/radio — from shared_options table */
+        /** Populated for dropdown/radio/multiple_choice — flat options from shared_options table */
         private List<OptionDTO> options;
+        /**
+         * Populated for multiple_choice_grid — raw JSON string from shared_options:
+         * {"rows":["Service","Cleanliness"],"columns":["Poor","Average","Good","Excellent"]}
+         * Frontend parses this to render the grid table.
+         */
+        private String gridJson;
+        /** UI config for field-type-specific settings (e.g. linear_scale min/max/labels) */
+        private String uiConfigJson;
     }
 
     @Data

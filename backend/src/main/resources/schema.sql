@@ -62,12 +62,13 @@ CREATE TABLE IF NOT EXISTS form_fields (
                                    REFERENCES forms (id) ON DELETE CASCADE,
     field_key         VARCHAR(100) NOT NULL,          -- column name in submission table
     label             VARCHAR(150) NOT NULL,          -- human-readable label shown on form
-    field_type        VARCHAR(50)  NOT NULL            -- text | number | date | boolean | dropdown | radio | file
-                                   CHECK (field_type IN ('text', 'number', 'date', 'boolean', 'dropdown', 'radio', 'file')),
+    field_type        VARCHAR(50)  NOT NULL            -- text | number | date | boolean | dropdown | radio | file | multiple_choice | linear_scale
+                                   CHECK (field_type IN ('text', 'number', 'date', 'boolean', 'dropdown', 'radio', 'file', 'multiple_choice', 'linear_scale')),
     required          BOOLEAN      NOT NULL DEFAULT FALSE,
     default_value     TEXT,
     validation_regex  TEXT,                           -- optional client+server-side regex
     validation_json   TEXT,                           -- advanced validation rules (JSON object)
+    ui_config_json    TEXT,                           -- UI configuration JSON (e.g. scale min/max, labels)
     shared_options_id UUID                            -- FK → shared_options.id (required for dropdown/radio)
                        REFERENCES shared_options (id) ON DELETE SET NULL,
     field_order       INT          NOT NULL DEFAULT 0, -- render order in builder/preview
@@ -79,7 +80,7 @@ CREATE TABLE IF NOT EXISTS form_fields (
 
 COMMENT ON TABLE  form_fields               IS 'Field definitions for each form. Each field becomes a column in the form''s submission table.'^
 COMMENT ON COLUMN form_fields.field_key     IS 'Snake_case identifier used as column name in the dynamic submission table.'^
-COMMENT ON COLUMN form_fields.field_type    IS 'Logical type: text→TEXT, number→INTEGER, date→DATE, boolean→BOOLEAN, dropdown→VARCHAR(255), radio→VARCHAR(255), file→TEXT.'^
+COMMENT ON COLUMN form_fields.field_type    IS 'Logical type: text→TEXT, number→INTEGER, date→DATE, boolean→BOOLEAN, dropdown→VARCHAR(255), radio→VARCHAR(255), multiple_choice→VARCHAR(255), file→TEXT.'^
 COMMENT ON COLUMN form_fields.shared_options_id IS 'FK → shared_options: all dropdown/radio options are stored there, never inline.'^
 COMMENT ON COLUMN form_fields.field_order   IS 'Zero-based render order. Builder preserves this order via drag-and-drop.'^
 

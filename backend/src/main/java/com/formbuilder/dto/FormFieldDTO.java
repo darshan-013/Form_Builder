@@ -16,9 +16,14 @@ public class FormFieldDTO {
     /** Conditional Rule Engine config JSON — stored and returned, never evaluated by backend. */
     private String rulesJson;
     /**
+     * UI configuration JSON — field-type-specific settings.
+     * linear_scale: {"scaleMin":1,"scaleMax":5,"labelLeft":"Poor","labelRight":"Excellent"}
+     */
+    private String uiConfigJson;
+    /**
      * FK → shared_options.id
-     * Must be set for dropdown/radio fields.
-     * Options are stored only in shared_options table, never inline.
+     * dropdown/radio/multiple_choice → flat array: [{"label":"A","value":"A"},...]
+     * multiple_choice_grid           → grid object: {"rows":[...],"columns":[...]}
      */
     private UUID sharedOptionsId;
     private int fieldOrder;

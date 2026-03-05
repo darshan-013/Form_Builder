@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import ValidationEngine from '../services/validation';
-import RuleEngine from '../services/RuleEngine';
+import RuleEngine, { setDefaultValues } from '../services/RuleEngine';
 
 /**
  * FormRenderer — enterprise dynamic form renderer with Conditional Rule Engine.
@@ -58,6 +58,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   // Re-initialise when fields change (async load or form switch)
   useEffect(() => {
     const initial = makeInitialValues();
+    setDefaultValues(initial); // snapshot for 'changed' operator (v2)
     setValues(initial);
     valuesRef.current = initial;
     filesRef.current  = {};
@@ -72,20 +73,28 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     // 1. Update raw value
     const newValues = { ...valuesRef.current, [field.fieldKey]: value };
 
-    // 2. Update file ref
-    if (field.fieldType === 'file' && value instanceof File) {
-      filesRef.current = { ...filesRef.current, [field.fieldKey]: value };
+    // 2. Update file ref — store FileList or single File
+    if (field.fieldType === 'file') {
+      if (value instanceof FileList) {
+        filesRef.current = { ...filesRef.current, [field.fieldKey]: value };
+      } else if (value instanceof File) {
+        filesRef.current = { ...filesRef.current, [field.fieldKey]: value };
+      }
     }
 
     // 3. Re-evaluate all rules — cascading setValue handled internally (MAX_PASSES = 5)
     const newStates = RuleEngine.applyRules(fields, newValues);
     setFieldStates(newStates);
 
-    // 4. Apply any setValue overrides from rules back into values (cascade result)
+    // 4. Apply any setValue / copyValue overrides from rules back into values (cascade result)
     let finalValues = { ...newValues };
     for (const [key, st] of Object.entries(newStates)) {
       if (st.setValue !== null && String(finalValues[key] ?? '') !== String(st.setValue)) {
         finalValues[key] = st.setValue;
+      }
+      // NEW (v2): copyValue override
+      if (st.copyValue !== null && String(finalValues[key] ?? '') !== String(st.copyValue)) {
+        finalValues[key] = st.copyValue;
       }
     }
     setValues(finalValues);
@@ -156,14 +165,22 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     try {
       const currentValues = valuesRef.current;
       const hasFile = fields.some(
-        (f) => f.fieldType === 'file' && filesRef.current[f.fieldKey] instanceof File
+        (f) => f.fieldType === 'file' &&
+          (filesRef.current[f.fieldKey] instanceof File ||
+           filesRef.current[f.fieldKey] instanceof FileList)
       );
 
       if (hasFile) {
         const fd = new FormData();
         for (const [key, val] of Object.entries(currentValues)) {
-          if (filesRef.current[key] instanceof File) {
-            fd.append(key, filesRef.current[key]);
+          const fileVal = filesRef.current[key];
+          if (fileVal instanceof FileList) {
+            // Append every file with the same key so backend receives all
+            for (let i = 0; i < fileVal.length; i++) {
+              fd.append(key, fileVal[i]);
+            }
+          } else if (fileVal instanceof File) {
+            fd.append(key, fileVal);
           } else if (val != null) {
             fd.append(key, val);
           }
@@ -289,10 +306,13 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                 // (enterprise standard: keep value, skip validation, include in payload)
                 if (st.visible === false) return null;
 
-                // Effective value: rule setValue override takes precedence over user input
-                const effectiveValue = (st.setValue !== null && st.setValue !== undefined)
-                  ? st.setValue
-                  : values[field.fieldKey];
+                // Effective value: copyValue > setValue > user input (priority order)
+                const effectiveValue =
+                  st.copyValue !== null && st.copyValue !== undefined
+                    ? st.copyValue
+                    : st.setValue !== null && st.setValue !== undefined
+                      ? st.setValue
+                      : values[field.fieldKey];
 
                 return (
                   <FieldInput
@@ -304,6 +324,11 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                     onChange={(val) => handleChange(field, val)}
                     onBlur={(val)   => handleBlur(field, val)}
                     disabled={isPreview || !!st.disabled}
+                    filterOptions={st.filterOptions ?? null}
+                    min={st.min ?? null}
+                    max={st.max ?? null}
+                    labelOverride={st.label ?? null}
+                    placeholderOverride={st.placeholder ?? null}
                   />
                 );
               })}
@@ -335,18 +360,35 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
 /**
  * Renders a single form field.
  *
- * errors   = string[]  (all validation messages for this field)
- * touched  = boolean   (true once user has interacted — controls whether to show errors)
+ * errors            = string[]      (all validation messages for this field)
+ * touched           = boolean       (true once user has interacted)
+ * filterOptions     = string[]|null (NEW v2) allowed option values; null = show all
+ * min/max           = number|null   (NEW v2) dynamic bounds for number/date fields
+ * labelOverride     = string|null   (NEW v2) runtime label override
+ * placeholderOverride = string|null (NEW v2) runtime placeholder override
  *
  * Shows the FIRST (highest-priority) error only for clean UX.
  */
-function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled }) {
+function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
+                      filterOptions, min, max, labelOverride, placeholderOverride }) {
   const id         = `field-${field.fieldKey}`;
   const errorList  = Array.isArray(errors) ? errors : [];
-  // Show error only after the user has touched the field (typed or left it)
   const shownError = touched && errorList.length > 0 ? errorList[0] : null;
   const hasError   = !!shownError;
   const inputClass = `form-input${hasError ? ' input-error' : ''}`;
+
+  // ── NEW (v2): resolve effective label and placeholder ──────────────────────
+  const effectiveLabel       = labelOverride       ?? field.label;
+  const effectivePlaceholder = placeholderOverride
+    ?? (field.defaultValue ? `e.g. ${field.defaultValue}` : `Enter ${field.label.toLowerCase()}…`);
+
+  // ── NEW (v2): filter helper for dropdown / radio ───────────────────────────
+  function filterOpts(rawOpts) {
+    if (!filterOptions || filterOptions.length === 0) return rawOpts;
+    return rawOpts.filter(o =>
+      filterOptions.includes(o.value) || filterOptions.includes(o.label)
+    );
+  }
 
   return (
     <div className="form-field-group" style={{ animationDelay: `${(field.fieldOrder || 0) * 40}ms` }}>
@@ -354,7 +396,7 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled 
       {/* Label */}
       {field.fieldType !== 'boolean' && (
         <label className="form-field-label" htmlFor={id}>
-          {field.label}
+          {effectiveLabel}
           {field.required && <span className="form-field-required-star" title="Required"> *</span>}
         </label>
       )}
@@ -368,7 +410,7 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled 
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           onBlur={(e)   => onBlur(e.target.value)}
-          placeholder={field.defaultValue ? `e.g. ${field.defaultValue}` : `Enter ${field.label.toLowerCase()}…`}
+          placeholder={effectivePlaceholder}
           disabled={disabled}
           autoComplete="off"
           aria-describedby={hasError ? `${id}-err` : undefined}
@@ -385,7 +427,9 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled 
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           onBlur={(e)   => onBlur(e.target.value)}
-          placeholder={field.defaultValue || ''}
+          placeholder={placeholderOverride ?? (field.defaultValue || '')}
+          min={min ?? undefined}
+          max={max ?? undefined}
           disabled={disabled}
           aria-describedby={hasError ? `${id}-err` : undefined}
           aria-invalid={hasError || undefined}
@@ -393,19 +437,37 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled 
       )}
 
       {/* ── date ───────────────────────────────────────────────── */}
-      {field.fieldType === 'date' && (
-        <input
-          id={id}
-          type="date"
-          className={inputClass}
-          value={value || ''}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={(e)   => onBlur(e.target.value)}
-          disabled={disabled}
-          aria-describedby={hasError ? `${id}-err` : undefined}
-          aria-invalid={hasError || undefined}
-        />
-      )}
+      {field.fieldType === 'date' && (() => {
+        // Parse the configured display format from validationJson
+        let customFormat = 'YYYY-MM-DD';
+        try {
+          const rules = JSON.parse(field.validationJson || '{}');
+          if (rules.customFormat) customFormat = rules.customFormat;
+        } catch {}
+
+        return (
+          <>
+            <input
+              id={id}
+              type="date"
+              className={inputClass}
+              value={value || ''}
+              onChange={(e) => onChange(e.target.value)}
+              onBlur={(e)   => onBlur(e.target.value)}
+              min={min ?? undefined}
+              max={max ?? undefined}
+              disabled={disabled}
+              aria-describedby={hasError ? `${id}-err` : undefined}
+              aria-invalid={hasError || undefined}
+            />
+            {customFormat && customFormat !== 'YYYY-MM-DD' && (
+              <span className="form-field-hint">
+                📅 Display format: {customFormat}
+              </span>
+            )}
+          </>
+        );
+      })()}
 
       {/* ── boolean ────────────────────────────────────────────── */}
       {field.fieldType === 'boolean' && (
@@ -422,17 +484,17 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled 
             aria-invalid={hasError || undefined}
           />
           <span className="bool-toggle-label">
-            {field.label}
+            {effectiveLabel}
             {field.required && <span className="form-field-required-star"> *</span>}
           </span>
         </label>
       )}
 
-      {/* ── dropdown ───────────────────────────────────────────── */}
+      {/* ── dropdown (single <select>) ─────────────────────────── */}
       {field.fieldType === 'dropdown' && (
         <select
           id={id}
-          className={inputClass}
+          className={`form-select${hasError ? ' input-error' : ''}`}
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           onBlur={(e)   => onBlur(e.target.value)}
@@ -440,21 +502,21 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled 
           aria-describedby={hasError ? `${id}-err` : undefined}
           aria-invalid={hasError || undefined}
         >
-          <option value="">— Select {field.label} —</option>
-          {parseOptions(field.optionsJson, field.options).map((opt, i) => (
+          <option value="">— Select {effectiveLabel} —</option>
+          {filterOpts(parseOptions(field.optionsJson, field.options)).map((opt, i) => (
             <option key={i} value={opt.value}>{opt.label}</option>
           ))}
         </select>
       )}
 
-      {/* ── radio ──────────────────────────────────────────────── */}
+      {/* ── radio (single-select radio buttons) ────────────────── */}
       {field.fieldType === 'radio' && (
         <div
           className={`radio-group${hasError ? ' radio-group-error' : ''}`}
           role="radiogroup"
           aria-describedby={hasError ? `${id}-err` : undefined}
         >
-          {parseOptions(field.optionsJson, field.options).map((opt, i) => (
+          {filterOpts(parseOptions(field.optionsJson, field.options)).map((opt, i) => (
             <label key={i} className="radio-option">
               <input
                 type="radio"
@@ -470,6 +532,170 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled 
         </div>
       )}
 
+      {/* ── multiple_choice (multi-select checkboxes) ─────────── */}
+      {field.fieldType === 'multiple_choice' && (
+        <div
+          className={`radio-group${hasError ? ' multiple-choice-error' : ''}`}
+          role="group"
+          aria-describedby={hasError ? `${id}-err` : undefined}
+        >
+          {filterOpts(parseOptions(field.optionsJson, field.options)).map((opt, i) => {
+            // value stored as JSON array string e.g. '["Red","Blue"]'
+            let selected = [];
+            if (value) {
+              const str = String(value).trim();
+              if (str.startsWith('[')) {
+                try { selected = JSON.parse(str); } catch { selected = []; }
+              } else {
+                selected = str.split(',').map(v => v.trim()).filter(Boolean);
+              }
+            }
+            const isChecked = selected.includes(opt.value);
+            const handleCheckChange = (e) => {
+              e.stopPropagation();
+              // Always re-parse current value fresh to avoid stale closure
+              let currentSelected = [];
+              if (value) {
+                const str = String(value).trim();
+                if (str.startsWith('[')) {
+                  try { currentSelected = JSON.parse(str); } catch { currentSelected = []; }
+                } else {
+                  currentSelected = str.split(',').map(v => v.trim()).filter(Boolean);
+                }
+              }
+              const checked = e.target.checked;
+              const next = checked
+                ? [...currentSelected, opt.value]
+                : currentSelected.filter(v => v !== opt.value);
+              const unique = [...new Set(next)];
+              // Store as JSON array string
+              onChange(JSON.stringify(unique));
+            };
+            return (
+              <label key={i} className="radio-option checkbox-style">
+                <input
+                  type="checkbox"
+                  name={id}
+                  value={opt.value}
+                  checked={isChecked}
+                  onChange={handleCheckChange}
+                  disabled={disabled}
+                />
+                <span>{opt.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── multiple_choice_grid ────────────────────────────────── */}
+      {field.fieldType === 'multiple_choice_grid' && (() => {
+        // gridJson comes from /render endpoint: {"rows":[...],"columns":[...]}
+        let rows = [], cols = [];
+        if (field.gridJson) {
+          try {
+            const g = JSON.parse(field.gridJson);
+            rows = g.rows    || [];
+            cols = g.columns || [];
+          } catch {}
+        }
+        // Current value is a JSON object {"Row":"Col"}
+        let selected = {};
+        if (value && typeof value === 'string') {
+          try { selected = JSON.parse(value); } catch {}
+        } else if (value && typeof value === 'object') {
+          selected = value;
+        }
+        const handleGridChange = (row, col) => {
+          if (disabled) return;
+          const next = { ...selected, [row]: col };
+          onChange(JSON.stringify(next));
+          onBlur(JSON.stringify(next));
+        };
+        return (
+          <div className={`mcg-wrapper${hasError ? ' input-error-group' : ''}`}>
+            <table className="mcg-table">
+              <thead>
+                <tr className="mcg-header-row">
+                  <th></th>
+                  {cols.map((col, ci) => <th key={ci}>{col}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, ri) => (
+                  <tr key={ri} className="mcg-row">
+                    <td className="mcg-row-label">{row}</td>
+                    {cols.map((col, ci) => (
+                      <td key={ci} className="mcg-cell">
+                        <label className={`mcg-radio-wrap${disabled ? ' disabled' : ''}`}>
+                          <input
+                            type="radio"
+                            name={`${id}-row-${ri}`}
+                            value={col}
+                            checked={selected[row] === col}
+                            onChange={() => handleGridChange(row, col)}
+                            disabled={disabled}
+                          />
+                          <span className="mcg-radio-circle">
+                            <span className="mcg-radio-dot" />
+                          </span>
+                        </label>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {/* ── linear_scale ───────────────────────────────────────── */}
+      {field.fieldType === 'linear_scale' && (() => {
+        // Parse ui_config_json for scale bounds and labels
+        let uiCfg = {};
+        if (field.uiConfigJson) {
+          try { uiCfg = JSON.parse(field.uiConfigJson); } catch {}
+        }
+        const scaleMin   = uiCfg.scaleMin   ?? 1;
+        const scaleMax   = uiCfg.scaleMax   ?? 5;
+        const labelLeft  = uiCfg.labelLeft  || '';
+        const labelRight = uiCfg.labelRight || '';
+        const steps = [];
+        for (let i = scaleMin; i <= scaleMax; i++) steps.push(i);
+        const selected = value !== '' && value !== null && value !== undefined ? Number(value) : null;
+        return (
+          <div className={`linear-scale-wrapper${hasError ? ' input-error-group' : ''}`}>
+            <div className="linear-scale-inner">
+              <div className="linear-scale-track" role="group" aria-label={effectiveLabel}>
+                {steps.map((step) => {
+                  const isActive = selected === step;
+                  return (
+                    <button
+                      key={step}
+                      type="button"
+                      className={`linear-scale-btn${isActive ? ' active' : ''}`}
+                      onClick={() => { if (!disabled) { onChange(step); onBlur(step); } }}
+                      disabled={disabled}
+                      aria-pressed={isActive}
+                      aria-label={`${step}`}
+                    >
+                      {step}
+                    </button>
+                  );
+                })}
+              </div>
+              {(labelLeft || labelRight) && (
+                <div className="linear-scale-labels">
+                  <span className="linear-scale-label-left">{labelLeft}</span>
+                  <span className="linear-scale-label-right">{labelRight}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── file ───────────────────────────────────────────────── */}
       {field.fieldType === 'file' && (
         <input
@@ -477,9 +703,14 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled 
           type="file"
           className={inputClass}
           multiple={getMultiple(field.validationJson)}
+          accept={getAllowedAccept(field.validationJson)}
           onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) { onChange(f); onBlur(f); }
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            // Pass full FileList so multi-file validation works
+            const payload = files.length === 1 ? files[0] : files;
+            onChange(payload);
+            onBlur(payload);
           }}
           disabled={disabled}
           aria-describedby={hasError ? `${id}-err` : undefined}
@@ -521,3 +752,29 @@ function getMultiple(validationJson) {
     return JSON.parse(validationJson || '{}').singleOrMultiple === 'multiple';
   } catch { return false; }
 }
+
+/**
+ * Build the `accept` attribute from validationJson.
+ * Uses allowedExtensions (e.g. ".pdf,.png") and/or mimeTypeValidation.
+ * Returns empty string if no restriction (browser shows all files).
+ */
+function getAllowedAccept(validationJson) {
+  try {
+    const rules = JSON.parse(validationJson || '{}');
+    const parts = [];
+    if (rules.allowedExtensions) {
+      rules.allowedExtensions.split(',')
+        .map(e => e.trim().toLowerCase())
+        .filter(Boolean)
+        .forEach(ext => parts.push(ext.startsWith('.') ? ext : `.${ext}`));
+    }
+    if (rules.mimeTypeValidation) {
+      rules.mimeTypeValidation.split(',')
+        .map(m => m.trim())
+        .filter(Boolean)
+        .forEach(m => { if (!parts.includes(m)) parts.push(m); });
+    }
+    return parts.join(',');
+  } catch { return ''; }
+}
+
