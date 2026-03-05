@@ -13,9 +13,12 @@ spring:
       mode: always                          # runs schema files on every startup
       separator: "^"                        # custom separator for PostgreSQL functions with $$
       schema-locations:
-        - classpath:users_schema.sql                  # users + authorities (Spring Security)
-        - classpath:schema.sql                        # forms + form_fields
-        - classpath:migration_add_validation_json.sql # ensures validation_json column exists
+        - classpath:users_schema.sql
+        - classpath:schema.sql
+        - classpath:migration_add_validation_json.sql
+        - classpath:migration_add_multiple_choice.sql
+        - classpath:migration_add_linear_scale.sql
+        - classpath:migration_add_grid.sql
 
   jpa:
     hibernate:
@@ -31,12 +34,13 @@ server:
   port: 8080
   servlet:
     session:
-      timeout: 30m                          # session lifetime
+      timeout: 30m
       cookie:
-        http-only: true                     # JS cannot read the cookie
-        same-site: lax                      # allows cookie on same-site navigations (not strict cross-site)
-        secure: false                       # set true in production (HTTPS)
+        http-only: true
+        same-site: strict   # strict prevents Edge tracking-prevention from blocking it
+        secure: false        # set true in production (HTTPS only)
         name: JSESSIONID
+        path: /              # cookie valid for all paths
 
 logging:
   level:

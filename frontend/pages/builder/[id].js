@@ -64,6 +64,7 @@ export default function EditBuilderPage() {
                 validationRegex: f.validationRegex || null,
                 validationJson: f.validationJson || null,
                 rulesJson: f.rulesJson || null,
+                uiConfigJson: f.uiConfigJson || null,
                 sharedOptionsId: f.sharedOptionsId || null,
                 fieldOrder: i,
             })),

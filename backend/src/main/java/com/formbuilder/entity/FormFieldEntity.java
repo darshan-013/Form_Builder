@@ -65,19 +65,24 @@ public class FormFieldEntity {
     private String validationJson;
 
     /**
+     * UI configuration JSON — used for field-type-specific settings.
+     * linear_scale: {"scaleMin":1,"scaleMax":5,"labelLeft":"Poor","labelRight":"Excellent"}
+     */
+    @Column(name = "ui_config_json", columnDefinition = "TEXT")
+    private String uiConfigJson;
+
+    /**
      * Conditional Rule Engine config — stored as TEXT, evaluated ONLY on the frontend.
      * Structure: { combinator:"AND"|"OR", conditions:[...], actions:[{type, setValue?}] }
-     * Backend stores this and passes it through in the render API — never evaluates it.
-     * Security: backend validates all required fields independently of rule state.
      */
     @Column(name = "rules_json", columnDefinition = "TEXT")
     private String rulesJson;
 
     /**
      * FK → shared_options.id
-     * ALL dropdown/radio fields must have this set.
-     * Options are ALWAYS stored in the shared_options table — never inline in form_fields.
-     * ON DELETE SET NULL — if the shared_options row is deleted the field loses its options gracefully.
+     * Used by: dropdown, radio, multiple_choice → flat array: [{"label":"A","value":"A"},...]
+     * Used by: multiple_choice_grid            → grid object: {"rows":[...],"columns":[...]}
+     * ON DELETE SET NULL — field loses its options gracefully if shared_options row is deleted.
      */
     @Column(name = "shared_options_id", columnDefinition = "UUID")
     private UUID sharedOptionsId;
@@ -88,6 +93,15 @@ public class FormFieldEntity {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * Transient — NOT persisted to DB.
+     * Populated at runtime by SubmissionService via JDBC JOIN with shared_options.
+     * Carries resolved options_json into ValidationService so dropdown/radio
+     * validation works without any extra JPA/repo calls inside the validation path.
+     */
+    @Transient
+    private String optionsJson;
 
     @PrePersist
     protected void onCreate() {

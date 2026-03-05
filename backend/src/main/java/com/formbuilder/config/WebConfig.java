@@ -26,9 +26,10 @@ public class WebConfig implements WebMvcConfigurer {
         return (ServletContext ctx) -> {
             SessionCookieConfig config = ctx.getSessionCookieConfig();
             config.setHttpOnly(true);
-            config.setSecure(false);       // flip to true in production
-            // Do NOT set domain — let browser use the origin host automatically
-            // This prevents the cross-port cookie blocking in Edge
+            config.setSecure(false);   // flip to true in production (HTTPS)
+            config.setPath("/");       // cookie valid for all paths on the origin
+            // Do NOT set domain — browser scopes it to the responding host (localhost:3000 via proxy)
+            // SameSite=Strict is set via application.yml — prevents Edge tracking-prevention blocking
         };
     }
 

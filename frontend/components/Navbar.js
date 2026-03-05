@@ -2,10 +2,12 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { logout } from '../services/api';
 import { toastSuccess, toastError } from '../services/toast';
+import { useTheme } from '../context/ThemeContext';
 
 
 export default function Navbar() {
     const router = useRouter();
+    const { theme, toggleTheme } = useTheme();
 
     const handleLogout = async () => {
         try {
@@ -29,6 +31,16 @@ export default function Navbar() {
                 <Link href="/builder/new" className="btn btn-primary btn-sm">
                     + New Form
                 </Link>
+                <button
+                    className="theme-toggle-btn"
+                    onClick={(e) => toggleTheme(e)}
+                    title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
+                    aria-label="Toggle theme"
+                >
+                    <span className={`theme-toggle-icon ${theme === 'dark' ? 'icon-sun' : 'icon-moon'}`}>
+                        {theme === 'dark' ? '☀️' : '🌙'}
+                    </span>
+                </button>
                 <button className="btn btn-secondary btn-sm" onClick={handleLogout}>
                     Logout
                 </button>

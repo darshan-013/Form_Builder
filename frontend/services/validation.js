@@ -305,23 +305,33 @@ function validateDate(value, rules, label) {
     return errors;
   }
 
-  // Browser always submits YYYY-MM-DD — reject anything else
-  const d = parseYMD(raw);
-  if (!d) {
-    errors.push(`${label} must be a valid date (YYYY-MM-DD)`);
-    return errors;
+  // ── Step 1: Parse the submitted value ────────────────────────────────────
+  // The browser <input type="date"> ALWAYS submits YYYY-MM-DD regardless of
+  // any display/locale format. We also accept DD/MM/YYYY and MM/DD/YYYY in
+  // case the value was typed or comes from a non-native picker.
+  const fmt = rules.customFormat || 'YYYY-MM-DD';
+  let d = null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    // Standard browser format: YYYY-MM-DD
+    d = parseYMD(raw);
+  } else if (fmt === 'DD/MM/YYYY' && /^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    // User typed DD/MM/YYYY manually
+    const [dd, mm, yyyy] = raw.split('/').map(Number);
+    const dt = new Date(yyyy, mm - 1, dd);
+    if (dt.getFullYear() === yyyy && dt.getMonth() === mm - 1 && dt.getDate() === dd) d = dt;
+  } else if (fmt === 'MM/DD/YYYY' && /^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    // User typed MM/DD/YYYY manually
+    const [mm, dd, yyyy] = raw.split('/').map(Number);
+    const dt = new Date(yyyy, mm - 1, dd);
+    if (dt.getFullYear() === yyyy && dt.getMonth() === mm - 1 && dt.getDate() === dd) d = dt;
   }
 
-  // customFormat — when set, inform user of expected display format.
-  // Validation still uses the raw YYYY-MM-DD value (browser standard).
-  // If the user somehow submitted a non-YYYY-MM-DD string in that format, reject it.
-  const fmt = rules.customFormat || 'YYYY-MM-DD';
-  if (fmt === 'DD/MM/YYYY' && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    errors.push(`${label} must be entered as DD/MM/YYYY`);
-    return errors;
-  }
-  if (fmt === 'MM/DD/YYYY' && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    errors.push(`${label} must be entered as MM/DD/YYYY`);
+  if (!d) {
+    // Give a friendly error that matches the configured format
+    if (fmt === 'DD/MM/YYYY') errors.push(`${label} must be a valid date (e.g. 31/01/2025)`);
+    else if (fmt === 'MM/DD/YYYY') errors.push(`${label} must be a valid date (e.g. 01/31/2025)`);
+    else errors.push(`${label} must be a valid date`);
     return errors;
   }
 
@@ -446,72 +456,162 @@ function validateRadio(value, rules, label, parsedOptions) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FILE  (async — image dimensions use FileReader)
+// LINEAR SCALE
 // ═══════════════════════════════════════════════════════════════════════════════
-async function validateFile(file, rules, label, allFiles) {
+function validateLinearScale(value, rules, label, field) {
+  const errors = [];
+  if (value === null || value === undefined || String(value).trim() === '') {
+    if (rules.required) errors.push(EMPTY_MSG());
+    return errors;
+  }
+  const num = Number(value);
+  if (isNaN(num)) { errors.push(`${label} must be a valid number`); return errors; }
+
+  // Read bounds from validationRules first, fallback to uiConfigJson
+  let uiCfg = {};
+  if (field && field.uiConfigJson) {
+    try { uiCfg = JSON.parse(field.uiConfigJson); } catch {}
+  }
+  const minScale = rules.minScale ?? uiCfg.scaleMin ?? 1;
+  const maxScale = rules.maxScale ?? uiCfg.scaleMax ?? 5;
+
+  if (num < minScale) errors.push(`${label} must be at least ${minScale}`);
+  if (num > maxScale) errors.push(`${label} must be at most ${maxScale}`);
+  return errors;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MULTIPLE CHOICE (multi-select checkboxes — value is JSON array or comma string)
+// ═══════════════════════════════════════════════════════════════════════════════
+function validateMultipleChoice(value, rules, label, parsedOptions) {
   const errors = [];
 
-  if (!file || !(file instanceof File)) {
+  // Parse selected values — support both JSON array and comma-separated string
+  let selected = [];
+  if (Array.isArray(value)) {
+    selected = value.map(v => String(v).trim()).filter(Boolean);
+  } else if (value && String(value).trim()) {
+    const str = String(value).trim();
+    if (str.startsWith('[')) {
+      try { selected = JSON.parse(str).map(v => String(v).trim()).filter(Boolean); }
+      catch { selected = str.split(',').map(v => v.trim()).filter(Boolean); }
+    } else {
+      selected = str.split(',').map(v => v.trim()).filter(Boolean);
+    }
+  }
+
+  if (selected.length === 0) {
+    if (rules.required || rules.requireSelection) errors.push(EMPTY_MSG());
+    return errors;
+  }
+
+  // Validate each selected value exists in options
+  if (rules.validateSelectedOption !== false && parsedOptions && parsedOptions.length > 0) {
+    for (const sel of selected) {
+      if (!parsedOptions.includes(sel)) {
+        errors.push(`${label} contains an invalid selection: "${sel}"`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FILE  (async — image dimensions use FileReader)
+// ═══════════════════════════════════════════════════════════════════════════════
+async function validateFile(fileOrList, rules, label, allFiles) {
+  const errors = [];
+
+  // Normalise to array — handles File, FileList, or null/undefined
+  let files = [];
+  if (fileOrList instanceof FileList) {
+    files = Array.from(fileOrList);
+  } else if (fileOrList instanceof File) {
+    files = [fileOrList];
+  }
+
+  if (files.length === 0) {
     if (rules.required) errors.push(EMPTY_MSG());
     return errors;
   }
 
-  const name = file.name   || '';
-  const size = file.size   || 0;
-  const mime = file.type   || '';
+  // ── Per-file checks ──────────────────────────────────────────────────────
+  for (const file of files) {
+    const name = file.name   || '';
+    const size = file.size   || 0;
+    const mime = file.type   || '';
+    const fileLabel = files.length > 1 ? `"${name}"` : label;
 
-  // Extension
-  if (rules.allowedExtensions) {
-    const allowed = rules.allowedExtensions.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-    const ext     = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
-    if (allowed.length && !allowed.includes(ext)) {
-      errors.push(`${label} must be one of: ${allowed.join(', ')}`);
+    // Extension
+    if (rules.allowedExtensions) {
+      const allowed = rules.allowedExtensions.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+      const ext     = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
+      if (allowed.length && !allowed.includes(ext)) {
+        errors.push(`${fileLabel} must be one of: ${allowed.join(', ')}`);
+      }
+    }
+
+    // MIME type
+    if (rules.mimeTypeValidation) {
+      const allowed = rules.mimeTypeValidation.split(',').map(m => m.trim().toLowerCase()).filter(Boolean);
+      if (allowed.length && !allowed.includes(mime.toLowerCase())) {
+        errors.push(`${fileLabel} has an unsupported file type (${mime || 'unknown'})`);
+      }
+    }
+
+    // Size limits
+    if (rules.maxFileSize != null && rules.maxFileSize !== '') {
+      const maxB = Number(rules.maxFileSize) * 1024 * 1024;
+      if (size > maxB) errors.push(`${fileLabel} must not exceed ${rules.maxFileSize} MB (current: ${(size / 1024 / 1024).toFixed(2)} MB)`);
+    }
+    if (rules.minFileSize != null && rules.minFileSize !== '') {
+      const minB = Number(rules.minFileSize) * 1024;
+      if (size < minB) errors.push(`${fileLabel} must be at least ${rules.minFileSize} KB`);
+    }
+
+    // File name characters
+    if (rules.fileNameValidation && !/^[A-Za-z0-9._\-\s]+$/.test(name)) {
+      errors.push(`${fileLabel} filename contains invalid characters`);
+    }
+
+    // Image dimensions (async)
+    if (rules.imageDimensionCheck && mime.startsWith('image/')) {
+      const dim = rules.imageDimensionCheck;
+      if (dim && (dim.minWidth || dim.maxWidth || dim.minHeight || dim.maxHeight)) {
+        const dims = await readImageDimensions(file);
+        if (!dims) {
+          errors.push(`${fileLabel} could not be read as an image`);
+        } else {
+          if (dim.minWidth  && dims.width  < Number(dim.minWidth))  errors.push(`${fileLabel} image width must be at least ${dim.minWidth}px (actual: ${dims.width}px)`);
+          if (dim.maxWidth  && dims.width  > Number(dim.maxWidth))  errors.push(`${fileLabel} image width must not exceed ${dim.maxWidth}px (actual: ${dims.width}px)`);
+          if (dim.minHeight && dims.height < Number(dim.minHeight)) errors.push(`${fileLabel} image height must be at least ${dim.minHeight}px (actual: ${dims.height}px)`);
+          if (dim.maxHeight && dims.height > Number(dim.maxHeight)) errors.push(`${fileLabel} image height must not exceed ${dim.maxHeight}px (actual: ${dims.height}px)`);
+        }
+      }
     }
   }
 
-  // MIME type
-  if (rules.mimeTypeValidation) {
-    const allowed = rules.mimeTypeValidation.split(',').map(m => m.trim().toLowerCase()).filter(Boolean);
-    if (allowed.length && !allowed.includes(mime.toLowerCase())) {
-      errors.push(`${label} has an unsupported file type (${mime || 'unknown'})`);
-    }
-  }
-
-  // Size limits
-  if (rules.maxFileSize != null && rules.maxFileSize !== '') {
-    const maxB = Number(rules.maxFileSize) * 1024 * 1024;
-    if (size > maxB) errors.push(`${label} must not exceed ${rules.maxFileSize} MB (current: ${(size / 1024 / 1024).toFixed(2)} MB)`);
-  }
-  if (rules.minFileSize != null && rules.minFileSize !== '') {
-    const minB = Number(rules.minFileSize) * 1024;
-    if (size < minB) errors.push(`${label} must be at least ${rules.minFileSize} KB`);
-  }
+  // ── Aggregate checks ─────────────────────────────────────────────────────
 
   // Total size limit (all file fields combined)
   if (rules.totalSizeLimit != null && rules.totalSizeLimit !== '' && allFiles) {
-    const total    = Object.values(allFiles).filter(f => f instanceof File).reduce((s, f) => s + (f.size || 0), 0);
+    let total = 0;
+    for (const v of Object.values(allFiles)) {
+      if (v instanceof FileList) { for (let i = 0; i < v.length; i++) total += v[i].size || 0; }
+      else if (v instanceof File) total += v.size || 0;
+    }
     const maxTotal = Number(rules.totalSizeLimit) * 1024 * 1024;
     if (total > maxTotal) errors.push(`Total upload size must not exceed ${rules.totalSizeLimit} MB`);
   }
 
-  // File name characters
-  if (rules.fileNameValidation && !/^[A-Za-z0-9._\-\s]+$/.test(name)) {
-    errors.push(`${label} filename contains invalid characters`);
-  }
-
-  // Image dimensions (async)
-  if (rules.imageDimensionCheck && mime.startsWith('image/')) {
-    const dim = rules.imageDimensionCheck;
-    if (dim && (dim.minWidth || dim.maxWidth || dim.minHeight || dim.maxHeight)) {
-      const dims = await readImageDimensions(file);
-      if (!dims) {
-        errors.push(`${label} could not be read as an image`);
-      } else {
-        if (dim.minWidth  && dims.width  < Number(dim.minWidth))  errors.push(`${label} image width must be at least ${dim.minWidth}px (actual: ${dims.width}px)`);
-        if (dim.maxWidth  && dims.width  > Number(dim.maxWidth))  errors.push(`${label} image width must not exceed ${dim.maxWidth}px (actual: ${dims.width}px)`);
-        if (dim.minHeight && dims.height < Number(dim.minHeight)) errors.push(`${label} image height must be at least ${dim.minHeight}px (actual: ${dims.height}px)`);
-        if (dim.maxHeight && dims.height > Number(dim.maxHeight)) errors.push(`${label} image height must not exceed ${dim.maxHeight}px (actual: ${dims.height}px)`);
-      }
+  // Duplicate file name prevention
+  if (rules.duplicateFilePrevention && files.length > 1) {
+    const names = files.map(f => f.name.toLowerCase());
+    const seen  = new Set();
+    for (const n of names) {
+      if (seen.has(n)) { errors.push(`${label} contains duplicate files (${n})`); break; }
+      seen.add(n);
     }
   }
 
@@ -521,34 +621,58 @@ async function validateFile(file, rules, label, allFiles) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // SYNC FILE (onChange/onBlur — skips async image check)
 // ═══════════════════════════════════════════════════════════════════════════════
-function validateFileSync(file, rules, label, allFiles) {
+function validateFileSync(fileOrList, rules, label, allFiles) {
   const errors = [];
-  if (!file || !(file instanceof File)) {
+
+  // Normalise to array
+  let files = [];
+  if (fileOrList instanceof FileList) {
+    files = Array.from(fileOrList);
+  } else if (fileOrList instanceof File) {
+    files = [fileOrList];
+  }
+
+  if (files.length === 0) {
     if (rules.required) errors.push(EMPTY_MSG());
     return errors;
   }
-  const name = file.name || '';
-  const size = file.size || 0;
-  const mime = file.type || '';
 
-  if (rules.allowedExtensions) {
-    const allowed = rules.allowedExtensions.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-    const ext     = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
-    if (allowed.length && !allowed.includes(ext)) errors.push(`${label} must be one of: ${allowed.join(', ')}`);
+  for (const file of files) {
+    const name = file.name || '';
+    const size = file.size || 0;
+    const mime = file.type || '';
+    const fileLabel = files.length > 1 ? `"${name}"` : label;
+
+    if (rules.allowedExtensions) {
+      const allowed = rules.allowedExtensions.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+      const ext     = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
+      if (allowed.length && !allowed.includes(ext)) errors.push(`${fileLabel} must be one of: ${allowed.join(', ')}`);
+    }
+    if (rules.mimeTypeValidation) {
+      const allowed = rules.mimeTypeValidation.split(',').map(m => m.trim().toLowerCase()).filter(Boolean);
+      if (allowed.length && !allowed.includes(mime.toLowerCase())) errors.push(`${fileLabel} has an unsupported file type (${mime || 'unknown'})`);
+    }
+    if (rules.maxFileSize != null && rules.maxFileSize !== '') {
+      if (size > Number(rules.maxFileSize) * 1024 * 1024) errors.push(`${fileLabel} must not exceed ${rules.maxFileSize} MB (current: ${(size / 1024 / 1024).toFixed(2)} MB)`);
+    }
+    if (rules.minFileSize != null && rules.minFileSize !== '') {
+      if (size < Number(rules.minFileSize) * 1024) errors.push(`${fileLabel} must be at least ${rules.minFileSize} KB`);
+    }
+    if (rules.fileNameValidation && !/^[A-Za-z0-9._\-\s]+$/.test(name)) {
+      errors.push(`${fileLabel} filename contains invalid characters`);
+    }
   }
-  if (rules.mimeTypeValidation) {
-    const allowed = rules.mimeTypeValidation.split(',').map(m => m.trim().toLowerCase()).filter(Boolean);
-    if (allowed.length && !allowed.includes(mime.toLowerCase())) errors.push(`${label} has an unsupported file type`);
+
+  // Duplicate prevention (sync)
+  if (rules.duplicateFilePrevention && files.length > 1) {
+    const names = files.map(f => f.name.toLowerCase());
+    const seen  = new Set();
+    for (const n of names) {
+      if (seen.has(n)) { errors.push(`${label} contains duplicate files (${n})`); break; }
+      seen.add(n);
+    }
   }
-  if (rules.maxFileSize != null && rules.maxFileSize !== '') {
-    if (size > Number(rules.maxFileSize) * 1024 * 1024) errors.push(`${label} must not exceed ${rules.maxFileSize} MB`);
-  }
-  if (rules.minFileSize != null && rules.minFileSize !== '') {
-    if (size < Number(rules.minFileSize) * 1024) errors.push(`${label} must be at least ${rules.minFileSize} KB`);
-  }
-  if (rules.fileNameValidation && !/^[A-Za-z0-9._\-\s]+$/.test(name)) {
-    errors.push(`${label} filename contains invalid characters`);
-  }
+
   return errors;
 }
 
@@ -577,6 +701,64 @@ function resolveOptionValues(field) {
   return [];
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// MULTIPLE CHOICE GRID
+// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Validates a multiple_choice_grid field.
+ * value  = JSON string {"Service":"Good","Cleanliness":"Average"}
+ * field.gridJson = {"rows":[...],"columns":[...]}  (from /render endpoint)
+ */
+function validateMultipleChoiceGrid(value, rules, label, field) {
+  const errors = [];
+
+  // Parse grid config from field.gridJson (passed from FormRenderDTO)
+  let rows = [], columns = [];
+  const gridJson = field.gridJson || field._gridJson;
+  if (gridJson) {
+    try {
+      const g = JSON.parse(gridJson);
+      rows    = g.rows    || [];
+      columns = g.columns || [];
+    } catch {}
+  }
+
+  // Parse selected values
+  let selected = {};
+  if (value && typeof value === 'string') {
+    try { selected = JSON.parse(value); } catch {}
+  } else if (value && typeof value === 'object') {
+    selected = value;
+  }
+
+  const isEmpty = Object.keys(selected).length === 0;
+
+  if (isEmpty) {
+    if (rules.required) errors.push(EMPTY_MSG());
+    return errors;
+  }
+
+  // eachRowRequired — every row must have a selection
+  if (rules.eachRowRequired) {
+    for (const row of rows) {
+      if (!selected[row] || !selected[row].toString().trim()) {
+        errors.push(`Please select an option for "${row}"`);
+      }
+    }
+  }
+
+  // Validate each selected value is in columns list
+  if (columns.length > 0) {
+    for (const [row, col] of Object.entries(selected)) {
+      if (col && !columns.includes(col)) {
+        errors.push(`"${col}" is not a valid option for "${row}"`);
+      }
+    }
+  }
+
+  return errors;
+}
+
 /**
  * Async single-field validation.
  * Use at onSubmit time (runs image dimension checks etc.).
@@ -585,18 +767,24 @@ async function validateField(field, value, formData = {}, files = {}) {
   const rules = buildRules(field);
   const label = field.label || field.fieldKey;
   const type  = (field.fieldType || '').toLowerCase();
-  const opts  = (type === 'dropdown' || type === 'radio') ? resolveOptionValues(field) : null;
+  const opts  = (type === 'dropdown' || type === 'radio' || type === 'multiple_choice') ? resolveOptionValues(field) : null;
 
   switch (type) {
-    case 'text':     return validateText(value, rules, label);
-    case 'number':   return validateNumber(value, rules, label);
-    case 'date':     return validateDate(value, rules, label);
-    case 'boolean':  return validateBoolean(value, rules, label);
-    case 'dropdown': return validateDropdown(value, rules, label, opts);
-    case 'radio':    return validateRadio(value, rules, label, opts);
+    case 'text':                  return validateText(value, rules, label);
+    case 'number':                return validateNumber(value, rules, label);
+    case 'date':                  return validateDate(value, rules, label);
+    case 'boolean':               return validateBoolean(value, rules, label);
+    case 'dropdown':              return validateDropdown(value, rules, label, opts);
+    case 'radio':                 return validateRadio(value, rules, label, opts);
+    case 'multiple_choice':       return validateMultipleChoice(value, rules, label, opts);
+    case 'linear_scale':          return validateLinearScale(value, rules, label, field);
+    case 'multiple_choice_grid':  return validateMultipleChoiceGrid(value, rules, label, field);
     case 'file': {
-      const file = files[field.fieldKey] || (value instanceof File ? value : null);
-      return validateFile(file, rules, label, files);
+      const fileVal = files[field.fieldKey];
+      const resolved = fileVal instanceof FileList || fileVal instanceof File
+        ? fileVal
+        : (value instanceof FileList || value instanceof File ? value : null);
+      return validateFile(resolved, rules, label, files);
     }
     default: return [];
   }
@@ -610,18 +798,24 @@ function validateFieldSync(field, value, formData = {}, files = {}) {
   const rules = buildRules(field);
   const label = field.label || field.fieldKey;
   const type  = (field.fieldType || '').toLowerCase();
-  const opts  = (type === 'dropdown' || type === 'radio') ? resolveOptionValues(field) : null;
+  const opts  = (type === 'dropdown' || type === 'radio' || type === 'multiple_choice') ? resolveOptionValues(field) : null;
 
   switch (type) {
-    case 'text':     return validateText(value, rules, label);
-    case 'number':   return validateNumber(value, rules, label);
-    case 'date':     return validateDate(value, rules, label);
-    case 'boolean':  return validateBoolean(value, rules, label);
-    case 'dropdown': return validateDropdown(value, rules, label, opts);
-    case 'radio':    return validateRadio(value, rules, label, opts);
+    case 'text':                  return validateText(value, rules, label);
+    case 'number':                return validateNumber(value, rules, label);
+    case 'date':                  return validateDate(value, rules, label);
+    case 'boolean':               return validateBoolean(value, rules, label);
+    case 'dropdown':              return validateDropdown(value, rules, label, opts);
+    case 'radio':                 return validateRadio(value, rules, label, opts);
+    case 'multiple_choice':       return validateMultipleChoice(value, rules, label, opts);
+    case 'linear_scale':          return validateLinearScale(value, rules, label, field);
+    case 'multiple_choice_grid':  return validateMultipleChoiceGrid(value, rules, label, field);
     case 'file': {
-      const file = files[field.fieldKey] || (value instanceof File ? value : null);
-      return validateFileSync(file, rules, label, files);
+      const fileVal = files[field.fieldKey];
+      const resolved = fileVal instanceof FileList || fileVal instanceof File
+        ? fileVal
+        : (value instanceof FileList || value instanceof File ? value : null);
+      return validateFileSync(resolved, rules, label, files);
     }
     default: return [];
   }

@@ -15,8 +15,10 @@ import java.util.List;
 /**
  * Rewrites the Set-Cookie header on every response so that:
  *  - No Domain attribute is set (browser uses the responding host = localhost:3000 via proxy)
- *  - SameSite=Lax is present (prevents Edge/Chrome tracking prevention from blocking it)
+ *  - SameSite=Strict is present (Edge Tracking Prevention does NOT block Strict cookies
+ *    on same-origin requests; it only targets Lax/None cookies from embedded contexts)
  *  - HttpOnly is present
+ *  - Path=/ is present
  *
  * This is needed because Next.js rewrites /api/* → localhost:8080 at the network level,
  * but the browser still sees the response as coming from localhost:3000.
@@ -99,15 +101,15 @@ public class CookieRewriteFilter implements Filter {
                 String trimmed = part.trim();
                 String lower   = trimmed.toLowerCase();
 
-                if (lower.startsWith("domain=")) continue;          // strip domain
-                if (lower.startsWith("samesite=")) { hasSameSite = true; kept.add("SameSite=Lax"); continue; }
+                if (lower.startsWith("domain=")) continue;               // strip domain
+                if (lower.startsWith("samesite=")) { hasSameSite = true; kept.add("SameSite=Strict"); continue; }
                 if (lower.equals("httponly"))       { hasHttpOnly  = true; }
                 if (lower.startsWith("path="))      { hasPath      = true; }
 
                 kept.add(trimmed);
             }
 
-            if (!hasSameSite) kept.add("SameSite=Lax");
+            if (!hasSameSite) kept.add("SameSite=Strict");
             if (!hasHttpOnly)  kept.add("HttpOnly");
             if (!hasPath)      kept.add("Path=/");
 

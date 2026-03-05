@@ -19,6 +19,35 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
         return {};
     });
 
+    // ui_config_json state — used for linear_scale min/max/labels
+    const [uiConfig, setUiConfig] = useState(() => {
+        if (field.uiConfigJson) {
+            try { return JSON.parse(field.uiConfigJson); } catch { return {}; }
+        }
+        return {};
+    });
+    const setUiCfg = (key, value) => setUiConfig(prev => {
+        const updated = { ...prev };
+        if (value === '' || value === null || value === undefined) delete updated[key];
+        else updated[key] = value;
+        return updated;
+    });
+
+    // Grid state — for multiple_choice_grid
+    // gridConfig is stored in shared_options as {"rows":[...],"columns":[...]}
+    const [gridRows, setGridRows] = useState(() => {
+        if (field.gridJson) {
+            try { const p = JSON.parse(field.gridJson); return p.rows || ['Row 1', 'Row 2']; } catch {}
+        }
+        return ['Row 1', 'Row 2'];
+    });
+    const [gridColumns, setGridColumns] = useState(() => {
+        if (field.gridJson) {
+            try { const p = JSON.parse(field.gridJson); return p.columns || ['Option 1', 'Option 2', 'Option 3']; } catch {}
+        }
+        return ['Option 1', 'Option 2', 'Option 3'];
+    });
+
     const [validationExpanded, setValidationExpanded] = useState(false);
     const [rulesExpanded,      setRulesExpanded]      = useState(false);
     const [pickerOpen, setPickerOpen] = useState(false);
@@ -39,7 +68,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
         async function enrichSiblings() {
             const result = await Promise.all(
                 siblingFields.map(async (f) => {
-                    const isChoice = f.fieldType === 'dropdown' || f.fieldType === 'radio';
+                    const isChoice = f.fieldType === 'dropdown' || f.fieldType === 'radio' || f.fieldType === 'multiple_choice';
                     if (!isChoice) return f;
 
                     // Priority 1: in-memory options already stored on the field from last save
@@ -141,40 +170,56 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
         try {
             let finalSharedOptionsId = sharedOptionsId || null;
 
-            if (local.fieldType === 'dropdown' || local.fieldType === 'radio') {
+            // Flat options (dropdown / radio / multiple_choice)
+            if (local.fieldType === 'dropdown' || local.fieldType === 'radio' || local.fieldType === 'multiple_choice') {
                 const filtered = options.filter(o => o.trim());
                 const optionsJson = JSON.stringify(filtered.map(o => ({ label: o, value: o })));
-
                 if (finalSharedOptionsId) {
-                    // Already linked — update the existing shared_options row
                     await updateSharedOptions(finalSharedOptionsId, optionsJson);
                 } else {
-                    // New standalone field — create a shared_options row now
                     const created = await createSharedOptions(optionsJson);
                     finalSharedOptionsId = created.id;
                 }
             }
 
-            const isChoice = local.fieldType === 'dropdown' || local.fieldType === 'radio';
+            // Grid config (multiple_choice_grid) — stored as {"rows":[...],"columns":[...]} in shared_options
+            if (local.fieldType === 'multiple_choice_grid') {
+                const filteredRows = gridRows.filter(r => r.trim());
+                const filteredCols = gridColumns.filter(c => c.trim());
+                const gridJson = JSON.stringify({ rows: filteredRows, columns: filteredCols });
+                if (finalSharedOptionsId) {
+                    await updateSharedOptions(finalSharedOptionsId, gridJson);
+                } else {
+                    const created = await createSharedOptions(gridJson);
+                    finalSharedOptionsId = created.id;
+                }
+            }
+
+            const isChoice = local.fieldType === 'dropdown' || local.fieldType === 'radio' || local.fieldType === 'multiple_choice';
+            const isGrid   = local.fieldType === 'multiple_choice_grid';
+
             const updatedField = {
                 ...local,
                 fieldKey: local.fieldKey || toKey(local.label),
                 sharedOptionsId: finalSharedOptionsId,
-                // Never send optionsJson in the field payload — it lives in shared_options only
                 optionsJson: undefined,
-                // _resolvedOptions: in-memory options array for RuleBuilder condition value picker
-                // Not sent to backend — used only in Canvas local state for sibling field enrichment
+                gridJson: undefined, // not sent to backend — lives in shared_options
                 _resolvedOptions: isChoice
                     ? options.filter(o => o.trim()).map(o => ({ label: o, value: o }))
-                    : undefined,
+                    : isGrid
+                        ? { rows: gridRows.filter(r => r.trim()), columns: gridColumns.filter(c => c.trim()) }
+                        : undefined,
             };
 
             updatedField.validationJson = Object.keys(validationRules).length > 0
                 ? JSON.stringify(validationRules) : null;
 
+            updatedField.uiConfigJson = Object.keys(uiConfig).length > 0
+                ? JSON.stringify(uiConfig) : null;
+
             onSave(updatedField);
         } catch (err) {
-            setSaveError('Failed to save options: ' + (err.message || 'Unknown error'));
+            setSaveError('Failed to save: ' + (err.message || 'Unknown error'));
         } finally {
             setSaving(false);
         }
@@ -278,8 +323,8 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                         </div>
                     )}
 
-                    {/* ── Options Editor (dropdown / radio only) ── */}
-                    {(local.fieldType === 'dropdown' || local.fieldType === 'radio') && (
+                    {/* ── Options Editor (dropdown / radio / multiple_choice only) ── */}
+                    {(local.fieldType === 'dropdown' || local.fieldType === 'radio' || local.fieldType === 'multiple_choice') && (
                         <div className="form-group">
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                 <label className="form-label" style={{ margin: 0 }}>Options</label>
@@ -345,6 +390,120 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                 onClick={() => setOptions([...options, `Option ${options.length + 1}`])}
                             >+ Add Option</button>
                             <p className="form-help">Define choices, or link to an existing field — linked options update automatically.</p>
+                        </div>
+                    )}
+
+                    {/* ── Grid Config Editor (multiple_choice_grid only) ── */}
+                    {local.fieldType === 'multiple_choice_grid' && (
+                        <div className="form-group">
+                            <label className="form-label" style={{ marginBottom: 12, display: 'block' }}>⊞ Grid Configuration</label>
+
+                            {/* Shared options link banner */}
+                            {sharedOptionsId && (
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    padding: '8px 12px', marginBottom: 10, borderRadius: 8,
+                                    background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)',
+                                    fontSize: 12, color: 'var(--accent, #6366f1)',
+                                }}>
+                                    <span>🔗 Shared grid config — edits update all forms using this grid</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSharedOptionsId(null); setUnlinkNotice(true); setTimeout(() => setUnlinkNotice(false), 3000); }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'inherit', padding: '0 0 0 8px', fontWeight: 700 }}
+                                    >× Unlink</button>
+                                </div>
+                            )}
+
+                            {/* ROWS */}
+                            <div style={{ marginBottom: 16 }}>
+                                <p className="form-label" style={{ marginBottom: 8 }}>Rows (questions)</p>
+                                {gridRows.map((row, idx) => (
+                                    <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                        <input
+                                            className="form-input"
+                                            value={row}
+                                            onChange={(e) => {
+                                                const updated = [...gridRows];
+                                                updated[idx] = e.target.value;
+                                                setGridRows(updated);
+                                            }}
+                                            placeholder={`Row ${idx + 1} (e.g. Service Quality)`}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="btn btn-secondary btn-sm"
+                                            onClick={() => setGridRows(gridRows.filter((_, i) => i !== idx))}
+                                            disabled={gridRows.length <= 1}
+                                            title="Remove row"
+                                        >×</button>
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => setGridRows([...gridRows, `Row ${gridRows.length + 1}`])}
+                                >+ Add Row</button>
+                            </div>
+
+                            {/* COLUMNS */}
+                            <div>
+                                <p className="form-label" style={{ marginBottom: 8 }}>Columns (options per row)</p>
+                                {gridColumns.map((col, idx) => (
+                                    <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                        <input
+                                            className="form-input"
+                                            value={col}
+                                            onChange={(e) => {
+                                                const updated = [...gridColumns];
+                                                updated[idx] = e.target.value;
+                                                setGridColumns(updated);
+                                            }}
+                                            placeholder={`Column ${idx + 1} (e.g. Poor / Good)`}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="btn btn-secondary btn-sm"
+                                            onClick={() => setGridColumns(gridColumns.filter((_, i) => i !== idx))}
+                                            disabled={gridColumns.length <= 2}
+                                            title="Remove column"
+                                        >×</button>
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => setGridColumns([...gridColumns, `Option ${gridColumns.length + 1}`])}
+                                >+ Add Column</button>
+                            </div>
+
+                            <p className="form-help">Each row shows as a question; each column is a selectable option. Users pick one per row.</p>
+
+                            {/* Live preview */}
+                            <div style={{ marginTop: 14, overflowX: 'auto' }}>
+                                <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}></th>
+                                            {gridColumns.filter(c => c.trim()).map((col, ci) => (
+                                                <th key={ci} style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: 600 }}>{col}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {gridRows.filter(r => r.trim()).map((row, ri) => (
+                                            <tr key={ri} style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+                                                <td style={{ padding: '6px 10px', color: 'var(--text-primary)', fontWeight: 500 }}>{row}</td>
+                                                {gridColumns.filter(c => c.trim()).map((_, ci) => (
+                                                    <td key={ci} style={{ padding: '6px 10px', textAlign: 'center' }}>
+                                                        <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', border: '2px solid rgba(139,92,246,0.4)' }} />
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     )}
 
@@ -845,57 +1004,188 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
 
                                 {/* ========== DROPDOWN FIELD VALIDATIONS ========== */}
                                 {local.fieldType === 'dropdown' && (
-                                    <div className="validation-group">
-                                        <h4 className="validation-group-title">Dropdown Rules</h4>
+                                    <>
+                                        <div className="validation-group">
+                                            <h4 className="validation-group-title">Selection Rules</h4>
 
-                                        <div className="form-group">
-                                            <label className="form-label">Default "Select" Text Not Allowed</label>
-                                            <input
-                                                type="text"
-                                                className="form-input"
-                                                value={validationRules.defaultNotAllowed || ''}
-                                                onChange={(e) => setValidation('defaultNotAllowed', e.target.value)}
-                                                placeholder="e.g. -- Select --"
-                                            />
+                                            {/* Required is handled by the top-level Required toggle,
+                                                but we expose optionExists so the admin explicitly
+                                                enforces that the chosen value is one of the listed options */}
+                                            <label className="form-checkbox-row compact">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={validationRules.optionExists !== false}
+                                                    onChange={(e) => setValidation('optionExists', e.target.checked)}
+                                                />
+                                                <span>Validate Option Exists (reject unknown values)</span>
+                                            </label>
+
+                                            <div className="form-group" style={{ marginTop: 10 }}>
+                                                <label className="form-label">Reject Placeholder / Default Text</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-input"
+                                                    value={validationRules.defaultNotAllowed || ''}
+                                                    onChange={(e) => setValidation('defaultNotAllowed', e.target.value)}
+                                                    placeholder='e.g. -- Select -- or Choose an option'
+                                                />
+                                                <span className="form-hint">If user submits this exact text it will be rejected</span>
+                                            </div>
                                         </div>
-
-                                        <div className="form-group">
-                                            <label className="form-label">Multi-Select Limit</label>
-                                            <input
-                                                type="number"
-                                                className="form-input"
-                                                value={validationRules.multiSelectLimit || ''}
-                                                onChange={(e) => setValidation('multiSelectLimit', e.target.value ? parseInt(e.target.value) : '')}
-                                                placeholder="e.g. 3"
-                                                min="1"
-                                            />
-                                        </div>
-
-                                        <label className="form-checkbox-row compact">
-                                            <input
-                                                type="checkbox"
-                                                checked={validationRules.optionExists || false}
-                                                onChange={(e) => setValidation('optionExists', e.target.checked)}
-                                            />
-                                            <span>Validate Option Exists</span>
-                                        </label>
-                                    </div>
+                                    </>
                                 )}
 
                                 {/* ========== RADIO FIELD VALIDATIONS ========== */}
                                 {local.fieldType === 'radio' && (
-                                    <div className="validation-group">
-                                        <h4 className="validation-group-title">Radio Rules</h4>
+                                    <>
+                                        <div className="validation-group">
+                                            <h4 className="validation-group-title">Selection Rules</h4>
 
-                                        <label className="form-checkbox-row compact">
-                                            <input
-                                                type="checkbox"
-                                                checked={validationRules.validateSelectedOption || false}
-                                                onChange={(e) => setValidation('validateSelectedOption', e.target.checked)}
-                                            />
-                                            <span>Validate Selected Option</span>
-                                        </label>
-                                    </div>
+                                            <label className="form-checkbox-row compact">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={validationRules.validateSelectedOption !== false}
+                                                    onChange={(e) => setValidation('validateSelectedOption', e.target.checked)}
+                                                />
+                                                <span>Validate Selected Option (reject unknown values)</span>
+                                            </label>
+
+                                            <label className="form-checkbox-row compact">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={validationRules.requireSelection || false}
+                                                    onChange={(e) => setValidation('requireSelection', e.target.checked)}
+                                                />
+                                                <span>Require Selection (at least one must be chosen)</span>
+                                            </label>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* ========== MULTIPLE CHOICE FIELD VALIDATIONS ========== */}
+                                {local.fieldType === 'multiple_choice' && (
+                                    <>
+                                        <div className="validation-group">
+                                            <h4 className="validation-group-title">Selection Rules</h4>
+
+                                            <label className="form-checkbox-row compact">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={validationRules.validateSelectedOption !== false}
+                                                    onChange={(e) => setValidation('validateSelectedOption', e.target.checked)}
+                                                />
+                                                <span>Validate Selected Option (reject unknown values)</span>
+                                            </label>
+
+                                            <label className="form-checkbox-row compact">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={validationRules.requireSelection || false}
+                                                    onChange={(e) => setValidation('requireSelection', e.target.checked)}
+                                                />
+                                                <span>Require Selection (at least one must be chosen)</span>
+                                            </label>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* ========== LINEAR SCALE FIELD CONFIG ========== */}
+                                {local.fieldType === 'linear_scale' && (
+                                    <>
+                                        <div className="validation-group">
+                                            <h4 className="validation-group-title" style={{ color: '#FCD34D' }}>⭐ Scale Configuration</h4>
+
+                                            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                                                <div className="form-group" style={{ flex: 1, minWidth: 100 }}>
+                                                    <label className="form-label">Min Value</label>
+                                                    <input
+                                                        type="number"
+                                                        className="form-input"
+                                                        value={uiConfig.scaleMin ?? 1}
+                                                        min={0}
+                                                        onChange={(e) => setUiCfg('scaleMin', e.target.value === '' ? '' : Number(e.target.value))}
+                                                        placeholder="1"
+                                                    />
+                                                </div>
+                                                <div className="form-group" style={{ flex: 1, minWidth: 100 }}>
+                                                    <label className="form-label">Max Value</label>
+                                                    <input
+                                                        type="number"
+                                                        className="form-input"
+                                                        value={uiConfig.scaleMax ?? 5}
+                                                        min={1}
+                                                        onChange={(e) => setUiCfg('scaleMax', e.target.value === '' ? '' : Number(e.target.value))}
+                                                        placeholder="5"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                                                <div className="form-group" style={{ flex: 1 }}>
+                                                    <label className="form-label">Left Label (Min)</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-input"
+                                                        value={uiConfig.labelLeft || ''}
+                                                        onChange={(e) => setUiCfg('labelLeft', e.target.value)}
+                                                        placeholder="e.g. Poor"
+                                                    />
+                                                </div>
+                                                <div className="form-group" style={{ flex: 1 }}>
+                                                    <label className="form-label">Right Label (Max)</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-input"
+                                                        value={uiConfig.labelRight || ''}
+                                                        onChange={(e) => setUiCfg('labelRight', e.target.value)}
+                                                        placeholder="e.g. Excellent"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <h4 className="validation-group-title" style={{ marginTop: 16 }}>Scale Validation</h4>
+                                            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                                                <div className="form-group" style={{ flex: 1, minWidth: 100 }}>
+                                                    <label className="form-label">Min Allowed</label>
+                                                    <input
+                                                        type="number"
+                                                        className="form-input"
+                                                        value={validationRules.minScale ?? ''}
+                                                        onChange={(e) => setValidation('minScale', e.target.value === '' ? '' : Number(e.target.value))}
+                                                        placeholder={`e.g. ${uiConfig.scaleMin ?? 1}`}
+                                                    />
+                                                </div>
+                                                <div className="form-group" style={{ flex: 1, minWidth: 100 }}>
+                                                    <label className="form-label">Max Allowed</label>
+                                                    <input
+                                                        type="number"
+                                                        className="form-input"
+                                                        value={validationRules.maxScale ?? ''}
+                                                        onChange={(e) => setValidation('maxScale', e.target.value === '' ? '' : Number(e.target.value))}
+                                                        placeholder={`e.g. ${uiConfig.scaleMax ?? 5}`}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* ========== MULTIPLE CHOICE GRID VALIDATIONS ========== */}
+                                {local.fieldType === 'multiple_choice_grid' && (
+                                    <>
+                                        <div className="validation-group">
+                                            <h4 className="validation-group-title">Grid Rules</h4>
+
+                                            <label className="form-checkbox-label">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={!!validationRules.eachRowRequired}
+                                                    onChange={(e) => setValidation('eachRowRequired', e.target.checked || '')}
+                                                />
+                                                <span>Each Row Required (every row must have a selection)</span>
+                                            </label>
+                                        </div>
+                                    </>
                                 )}
 
                                 {/* ========== FILE FIELD VALIDATIONS ========== */}
@@ -1223,7 +1513,7 @@ function ExistingDropdownPicker({ onPick, onClose }) {
                 results.forEach(r => {
                     if (r.status !== 'fulfilled') return;
                     r.value
-                        .filter(fld => (fld.fieldType === 'dropdown' || fld.fieldType === 'radio') && fld.sharedOptionsId)
+                        .filter(fld => (fld.fieldType === 'dropdown' || fld.fieldType === 'radio' || fld.fieldType === 'multiple_choice') && fld.sharedOptionsId)
                         .forEach(fld => {
                             if (!seenIds.has(fld.sharedOptionsId)) {
                                 seenIds.add(fld.sharedOptionsId);

@@ -13,6 +13,9 @@ const TYPE_META = {
     boolean: { label: 'Boolean', cls: 'badge-boolean' },
     dropdown: { label: 'Dropdown', cls: 'badge-dropdown' },
     radio: { label: 'Radio', cls: 'badge-radio' },
+    multiple_choice: { label: 'Multiple Choice', cls: 'badge-multiple-choice' },
+    linear_scale: { label: 'Linear Scale', cls: 'badge-linear-scale' },
+    multiple_choice_grid: { label: 'Choice Grid', cls: 'badge-multiple-choice-grid' },
     file: { label: 'File', cls: 'badge-file' },
 };
 

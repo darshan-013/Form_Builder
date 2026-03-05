@@ -36,7 +36,10 @@ public class DynamicTableService {
             "boolean", "BOOLEAN",
             "dropdown", "VARCHAR(255)",
             "radio", "VARCHAR(255)",
-            "file", "TEXT");
+            "multiple_choice", "TEXT",
+            "linear_scale", "INTEGER",
+            "file", "TEXT",
+            "multiple_choice_grid", "TEXT");
 
     private final JdbcTemplate jdbc;
 

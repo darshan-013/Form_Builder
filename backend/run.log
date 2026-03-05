@@ -1,0 +1,156 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.4.2)
+
+2026-03-05T15:10:54.456+05:30  INFO 20628 --- [           main] com.formbuilder.FormBuilderApplication   : Starting FormBuilderApplication v1.0.0 using Java 21.0.10 with PID 20628 (C:\Users\darsh\Music\myproject\ForBuilderApp\backend\target\form-builder-backend-1.0.0.jar started by darsh in C:\Users\darsh\Music\myproject\ForBuilderApp\backend)
+2026-03-05T15:10:54.461+05:30 DEBUG 20628 --- [           main] com.formbuilder.FormBuilderApplication   : Running with Spring Boot v3.4.2, Spring v6.2.2
+2026-03-05T15:10:54.463+05:30  INFO 20628 --- [           main] com.formbuilder.FormBuilderApplication   : No active profile set, falling back to 1 default profile: "default"
+2026-03-05T15:10:55.427+05:30  INFO 20628 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-03-05T15:10:55.521+05:30  INFO 20628 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 75 ms. Found 3 JPA repository interfaces.
+2026-03-05T15:10:56.280+05:30  INFO 20628 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
+2026-03-05T15:10:56.301+05:30  INFO 20628 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-03-05T15:10:56.302+05:30  INFO 20628 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.34]
+2026-03-05T15:10:56.358+05:30  INFO 20628 --- [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-03-05T15:10:56.360+05:30  INFO 20628 --- [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1815 ms
+2026-03-05T15:10:56.484+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:10:56.487+05:30  INFO 20628 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-03-05T15:10:56.909+05:30  INFO 20628 --- [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@4017fe2c
+2026-03-05T15:10:56.913+05:30  INFO 20628 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-03-05T15:10:56.916+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : Executing SQL script from class path resource [users_schema.sql]
+2026-03-05T15:10:56.928+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE TABLE IF NOT EXISTS users ( username VARCHAR(100) NOT NULL PRIMARY KEY, password VARCHAR(255) NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE )
+2026-03-05T15:10:56.930+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42P07', error code '0', message [relation "users" already exists, skipping]
+2026-03-05T15:10:56.931+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE TABLE IF NOT EXISTS authorities ( username VARCHAR(100) NOT NULL REFERENCES users (username) ON DELETE CASCADE, authority VARCHAR(50) NOT NULL, CONSTRAINT uq_user_authority UNIQUE (username, authority) )
+2026-03-05T15:10:56.932+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42P07', error code '0', message [relation "authorities" already exists, skipping]
+2026-03-05T15:10:56.934+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON TABLE users IS 'Admin accounts managed by Spring Security JdbcUserDetailsManager.'
+2026-03-05T15:10:56.935+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON TABLE authorities IS 'Roles/permissions per user. Spring Security reads this via UserDetailsService.'
+2026-03-05T15:10:56.937+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : Executed SQL script from class path resource [users_schema.sql] in 19 ms.
+2026-03-05T15:10:56.937+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : Executing SQL script from class path resource [schema.sql]
+2026-03-05T15:10:56.940+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE EXTENSION IF NOT EXISTS "pgcrypto"
+2026-03-05T15:10:56.941+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42710', error code '0', message [extension "pgcrypto" already exists, skipping]
+2026-03-05T15:10:56.941+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE TABLE IF NOT EXISTS shared_options ( id UUID PRIMARY KEY DEFAULT gen_random_uuid(), options_json TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW() )
+2026-03-05T15:10:56.941+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42P07', error code '0', message [relation "shared_options" already exists, skipping]
+2026-03-05T15:10:56.942+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON TABLE shared_options IS 'Canonical option lists shared across multiple form fields.'
+2026-03-05T15:10:56.943+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON COLUMN shared_options.options_json IS 'JSON array: [{"label":"A","value":"A"},...]'
+2026-03-05T15:10:56.943+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE TABLE IF NOT EXISTS forms ( id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(150) NOT NULL, description TEXT, table_name VARCHAR(150) NOT NULL UNIQUE, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW() )
+2026-03-05T15:10:56.943+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42P07', error code '0', message [relation "forms" already exists, skipping]
+2026-03-05T15:10:56.944+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON TABLE forms IS 'Master registry of every form created by admins.'
+2026-03-05T15:10:56.945+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON COLUMN forms.table_name IS 'Name of the dedicated PostgreSQL table that stores submissions for this form.'
+2026-03-05T15:10:56.945+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE TABLE IF NOT EXISTS form_fields ( id UUID PRIMARY KEY DEFAULT gen_random_uuid(), form_id UUID NOT NULL REFERENCES forms (id) ON DELETE CASCADE, field_key VARCHAR(100) NOT NULL, label VARCHAR(150) NOT NULL, field_type VARCHAR(50) NOT NULL CHECK (field_type IN ('text', 'number', 'date', 'boolean', 'dropdown', 'radio', 'file')), required BOOLEAN NOT NULL DEFAULT FALSE, default_value TEXT, validation_regex TEXT, validation_json TEXT, shared_options_id UUID REFERENCES shared_options (id) ON DELETE SET NULL, field_order INT NOT NULL DEFAULT 0, created_at TIMESTAMP NOT NULL DEFAULT NOW(), CONSTRAINT uq_form_field_key UNIQUE (form_id, field_key) )
+2026-03-05T15:10:56.946+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42P07', error code '0', message [relation "form_fields" already exists, skipping]
+2026-03-05T15:10:56.946+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON TABLE form_fields IS 'Field definitions for each form. Each field becomes a column in the form''s submission table.'
+2026-03-05T15:10:56.947+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON COLUMN form_fields.field_key IS 'Snake_case identifier used as column name in the dynamic submission table.'
+2026-03-05T15:10:56.948+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON COLUMN form_fields.field_type IS 'Logical type: text→TEXT, number→INTEGER, date→DATE, boolean→BOOLEAN, dropdown→VARCHAR(255), radio→VARCHAR(255), file→TEXT.'
+2026-03-05T15:10:56.949+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON COLUMN form_fields.shared_options_id IS 'FK → shared_options: all dropdown/radio options are stored there, never inline.'
+2026-03-05T15:10:56.949+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON COLUMN form_fields.field_order IS 'Zero-based render order. Builder preserves this order via drag-and-drop.'
+2026-03-05T15:10:56.950+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE INDEX IF NOT EXISTS idx_form_fields_form_id ON form_fields (form_id)
+2026-03-05T15:10:56.950+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42P07', error code '0', message [relation "idx_form_fields_form_id" already exists, skipping]
+2026-03-05T15:10:56.951+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE INDEX IF NOT EXISTS idx_form_fields_field_order ON form_fields (form_id, field_order)
+2026-03-05T15:10:56.951+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42P07', error code '0', message [relation "idx_form_fields_field_order" already exists, skipping]
+2026-03-05T15:10:56.961+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE OR REPLACE FUNCTION fn_set_updated_at() RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END; $$ LANGUAGE plpgsql
+2026-03-05T15:10:56.963+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE OR REPLACE TRIGGER trg_forms_updated_at BEFORE UPDATE ON forms FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at()
+2026-03-05T15:10:56.963+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : Executed SQL script from class path resource [schema.sql] in 26 ms.
+2026-03-05T15:10:56.963+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : Executing SQL script from class path resource [migration_add_validation_json.sql]
+2026-03-05T15:10:56.964+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: DROP TABLE IF EXISTS field_options CASCADE
+2026-03-05T15:10:56.964+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '00000', error code '0', message [table "field_options" does not exist, skipping]
+2026-03-05T15:10:56.964+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: DROP TABLE IF EXISTS dropdown_options CASCADE
+2026-03-05T15:10:56.965+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '00000', error code '0', message [table "dropdown_options" does not exist, skipping]
+2026-03-05T15:10:56.965+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: DROP TABLE IF EXISTS dropdown_schemas CASCADE
+2026-03-05T15:10:56.965+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '00000', error code '0', message [table "dropdown_schemas" does not exist, skipping]
+2026-03-05T15:10:56.966+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS validation_json TEXT
+2026-03-05T15:10:56.966+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42701', error code '0', message [column "validation_json" of relation "form_fields" already exists, skipping]
+2026-03-05T15:10:56.966+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: CREATE TABLE IF NOT EXISTS shared_options ( id UUID PRIMARY KEY DEFAULT gen_random_uuid(), options_json TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW() )
+2026-03-05T15:10:56.967+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42P07', error code '0', message [relation "shared_options" already exists, skipping]
+2026-03-05T15:10:56.967+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS shared_options_id UUID REFERENCES shared_options(id) ON DELETE SET NULL
+2026-03-05T15:10:56.967+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '42701', error code '0', message [column "shared_options_id" of relation "form_fields" already exists, skipping]
+2026-03-05T15:10:56.968+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: ALTER TABLE form_fields DROP COLUMN IF EXISTS source_field_id
+2026-03-05T15:10:56.968+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '00000', error code '0', message [column "source_field_id" of relation "form_fields" does not exist, skipping]
+2026-03-05T15:10:56.969+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: ALTER TABLE form_fields DROP COLUMN IF EXISTS dropdown_schema_id
+2026-03-05T15:10:56.969+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '00000', error code '0', message [column "dropdown_schema_id" of relation "form_fields" does not exist, skipping]
+2026-03-05T15:10:56.970+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: ALTER TABLE form_fields DROP COLUMN IF EXISTS options_json
+2026-03-05T15:10:56.970+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : SQLWarning ignored: SQL state '00000', error code '0', message [column "options_json" of relation "form_fields" does not exist, skipping]
+2026-03-05T15:10:56.971+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON TABLE shared_options IS 'Canonical option lists — dropdown/radio options live here, never inline on form_fields.'
+2026-03-05T15:10:56.971+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON COLUMN form_fields.shared_options_id IS 'FK → shared_options.id — all dropdown/radio options stored here, never as inline JSON.'
+2026-03-05T15:10:56.972+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : 0 returned as update count for SQL: COMMENT ON COLUMN form_fields.validation_json IS 'JSON object containing advanced validation rules for a field.'
+2026-03-05T15:10:56.972+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.init.ScriptUtils     : Executed SQL script from class path resource [migration_add_validation_json.sql] in 9 ms.
+2026-03-05T15:10:57.096+05:30  INFO 20628 --- [           main] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-03-05T15:10:57.192+05:30  INFO 20628 --- [           main] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 6.6.5.Final
+2026-03-05T15:10:57.246+05:30  INFO 20628 --- [           main] o.h.c.internal.RegionFactoryInitiator    : HHH000026: Second-level cache disabled
+2026-03-05T15:10:57.736+05:30  INFO 20628 --- [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-03-05T15:10:57.834+05:30  WARN 20628 --- [           main] org.hibernate.orm.deprecation            : HHH90000025: PostgreSQLDialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2026-03-05T15:10:57.866+05:30  INFO 20628 --- [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 18.1
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-03-05T15:10:59.196+05:30  INFO 20628 --- [           main] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-03-05T15:10:59.201+05:30  INFO 20628 --- [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-03-05T15:10:59.233+05:30  INFO 20628 --- [           main] o.s.s.p.JdbcUserDetailsManager           : No authentication manager set. Reauthentication of users when changing passwords will not be performed.
+2026-03-05T15:10:59.650+05:30  INFO 20628 --- [           main] o.s.d.j.r.query.QueryEnhancerFactory     : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-03-05T15:11:00.606+05:30  INFO 20628 --- [           main] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name userDetailsManager
+2026-03-05T15:11:01.070+05:30 DEBUG 20628 --- [           main] o.s.s.web.DefaultSecurityFilterChain     : Will secure any request with filters: DisableEncodeUrlFilter, WebAsyncManagerIntegrationFilter, SecurityContextHolderFilter, HeaderWriterFilter, LogoutFilter, UsernamePasswordAuthenticationFilter, ConcurrentSessionFilter, RequestCacheAwareFilter, SecurityContextHolderAwareRequestFilter, AnonymousAuthenticationFilter, SessionManagementFilter, ExceptionTranslationFilter, AuthorizationFilter
+2026-03-05T15:11:01.474+05:30  INFO 20628 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path '/'
+2026-03-05T15:11:01.486+05:30  INFO 20628 --- [           main] com.formbuilder.FormBuilderApplication   : Started FormBuilderApplication in 7.734 seconds (process running for 8.409)
+2026-03-05T15:11:01.491+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : === Running DB migration ===
+2026-03-05T15:11:01.492+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [DROP TABLE IF EXISTS field_options    CASCADE]
+2026-03-05T15:11:01.494+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.496+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '00000', error code '0', message [table "field_options" does not exist, skipping]
+2026-03-05T15:11:01.499+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: DROP TABLE IF EXISTS field_options    CASCADE
+2026-03-05T15:11:01.500+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [DROP TABLE IF EXISTS dropdown_options CASCADE]
+2026-03-05T15:11:01.500+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.501+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '00000', error code '0', message [table "dropdown_options" does not exist, skipping]
+2026-03-05T15:11:01.501+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: DROP TABLE IF EXISTS dropdown_options CASCADE
+2026-03-05T15:11:01.501+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [DROP TABLE IF EXISTS dropdown_schemas CASCADE]
+2026-03-05T15:11:01.501+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.502+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '00000', error code '0', message [table "dropdown_schemas" does not exist, skipping]
+2026-03-05T15:11:01.503+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: DROP TABLE IF EXISTS dropdown_schemas CASCADE
+2026-03-05T15:11:01.503+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS validation_json TEXT]
+2026-03-05T15:11:01.503+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.504+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '42701', error code '0', message [column "validation_json" of relation "form_fields" already exists, skipping]
+2026-03-05T15:11:01.504+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS validation_json TEXT
+2026-03-05T15:11:01.504+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [CREATE TABLE IF NOT EXISTS shared_options (
+    id           UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+    options_json TEXT      NOT NULL,
+    created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMP NOT NULL DEFAULT NOW()
+)]
+2026-03-05T15:11:01.504+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.506+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '42P07', error code '0', message [relation "shared_options" already exists, skipping]
+2026-03-05T15:11:01.507+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: CREATE TABLE IF NOT EXISTS shared_options (
+2026-03-05T15:11:01.507+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [ALTER TABLE form_fields
+ADD COLUMN IF NOT EXISTS shared_options_id UUID
+REFERENCES shared_options(id) ON DELETE SET NULL]
+2026-03-05T15:11:01.508+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.509+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '42701', error code '0', message [column "shared_options_id" of relation "form_fields" already exists, skipping]
+2026-03-05T15:11:01.509+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: ALTER TABLE form_fields
+2026-03-05T15:11:01.510+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [ALTER TABLE form_fields DROP COLUMN IF EXISTS source_field_id]
+2026-03-05T15:11:01.510+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.511+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '00000', error code '0', message [column "source_field_id" of relation "form_fields" does not exist, skipping]
+2026-03-05T15:11:01.512+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: ALTER TABLE form_fields DROP COLUMN IF EXISTS source_field_id
+2026-03-05T15:11:01.512+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [ALTER TABLE form_fields DROP COLUMN IF EXISTS dropdown_schema_id]
+2026-03-05T15:11:01.512+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.515+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '00000', error code '0', message [column "dropdown_schema_id" of relation "form_fields" does not exist, skipping]
+2026-03-05T15:11:01.515+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: ALTER TABLE form_fields DROP COLUMN IF EXISTS dropdown_schema_id
+2026-03-05T15:11:01.515+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [ALTER TABLE form_fields DROP COLUMN IF EXISTS options_json]
+2026-03-05T15:11:01.515+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.517+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '00000', error code '0', message [column "options_json" of relation "form_fields" does not exist, skipping]
+2026-03-05T15:11:01.518+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: ALTER TABLE form_fields DROP COLUMN IF EXISTS options_json
+2026-03-05T15:11:01.518+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL statement [ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS rules_json TEXT]
+2026-03-05T15:11:01.518+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.519+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : SQLWarning ignored: SQL state '42701', error code '0', message [column "rules_json" of relation "form_fields" already exists, skipping]
+2026-03-05T15:11:01.520+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : OK: ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS rules_json TEXT
+2026-03-05T15:11:01.521+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL query [SELECT column_name FROM information_schema.columns WHERE table_name = 'form_fields' ORDER BY ordinal_position]
+2026-03-05T15:11:01.522+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.580+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : form_fields columns after migration: [id, form_id, field_key, label, field_type, required, default_value, validation_regex, validation_json, field_order, created_at, shared_options_id, rules_json]
+2026-03-05T15:11:01.581+05:30 DEBUG 20628 --- [           main] o.s.jdbc.core.JdbcTemplate               : Executing SQL query [SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename]
+2026-03-05T15:11:01.581+05:30 DEBUG 20628 --- [           main] o.s.jdbc.datasource.DataSourceUtils      : Fetching JDBC Connection from DataSource
+2026-03-05T15:11:01.587+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : Public tables after migration: [authorities, form_aabbccdd_02b12b, form_dfg_dcf019, form_dfgdf_3b6d38, form_dfsd_35f138, form_dfsd_8e2207, form_dfsdf_458562, form_dgdf_b411cd, form_dgdfgdf_42794a, form_dhg_8e9f46, form_dsd_ebbf6b, form_fdfd_978cfc, form_fgdf_6b28c7, form_fgdfg_69dd07, form_fgdfgf_ab363c, form_fhdhd_aa0d16, form_fields, form_gbggg_7db470, form_get_a_job_5f4313, form_ghjg_2fe376, form_hjhtg_557990, form_new_14b36e, form_new_4de5a6, form_sdfs_2f559d, form_sfdf_47a1cf, form_test_94303a, form_tyjtyjtyjty_6a0a48, form_vbvxv_2ad992, form_vxv_45f457, forms, shared_options, users]
+2026-03-05T15:11:01.587+05:30  INFO 20628 --- [           main] c.f.config.DatabaseMigrationRunner       : === DB migration complete ===

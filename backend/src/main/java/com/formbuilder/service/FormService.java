@@ -114,6 +114,7 @@ public class FormService {
                     existingField.setValidationRegex(dtoField.getValidationRegex());
                     existingField.setValidationJson(dtoField.getValidationJson());
                     existingField.setRulesJson(dtoField.getRulesJson());
+                    existingField.setUiConfigJson(dtoField.getUiConfigJson());
                     existingField.setSharedOptionsId(dtoField.getSharedOptionsId());
                     existingField.setFieldOrder(dtoField.getFieldOrder());
                 } else {
@@ -182,6 +183,7 @@ public class FormService {
                 .validationRegex(dto.getValidationRegex())
                 .validationJson(dto.getValidationJson())
                 .rulesJson(dto.getRulesJson())
+                .uiConfigJson(dto.getUiConfigJson())
                 .sharedOptionsId(dto.getSharedOptionsId())
                 .fieldOrder(dto.getFieldOrder())
                 .build();

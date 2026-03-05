@@ -77,6 +77,10 @@ export const getForms = () =>
 export const getForm = (id) =>
     request('GET', `/forms/${id}`);
 
+/** Fetch form with resolved options (dropdown/radio) from /render endpoint */
+export const getRenderForm = (id) =>
+    request('GET', `/forms/${id}/render`);
+
 export const createForm = (dto) =>
     request('POST', '/forms', dto);
 
@@ -119,6 +123,15 @@ export async function submitForm(formId, data) {
 
 export const getSubmissions = (formId) =>
     request('GET', `/forms/${formId}/submissions`);
+
+export const getSubmission = (formId, submissionId) =>
+    request('GET', `/forms/${formId}/submissions/${submissionId}`);
+
+export const deleteSubmission = (formId, submissionId) =>
+    request('DELETE', `/forms/${formId}/submissions/${submissionId}`);
+
+export const updateSubmission = (formId, submissionId, data) =>
+    request('PUT', `/forms/${formId}/submissions/${submissionId}`, data);
 
 // ── Form Render (public) ──────────────────────────────────────
 

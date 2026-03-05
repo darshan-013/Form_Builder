@@ -2,9 +2,8 @@
 const nextConfig = {
   /**
    * Proxy all /api/* calls to the Spring Boot backend on port 8080.
-   * This makes session cookies work seamlessly — the browser only ever
-   * talks to localhost:3000, so the JSESSIONID cookie is set on :3000
-   * and Edge/Chrome tracking prevention does NOT block it.
+   * The browser only ever talks to localhost:3000, so JSESSIONID is a
+   * first-party cookie — Edge/Chrome Tracking Prevention does NOT block it.
    */
   async rewrites() {
     return [
@@ -16,16 +15,18 @@ const nextConfig = {
   },
 
   /**
-   * Forward all headers including Set-Cookie from the backend through the proxy.
-   * This ensures the session cookie set by Spring Security reaches the browser
-   * as if it came from localhost:3000 (the Next.js origin).
+   * Response headers for proxied API routes.
+   * credentials: 'include' on the fetch side + these headers = cookies always flow.
    */
   async headers() {
     return [
       {
         source: '/api/:path*',
         headers: [
+          { key: 'Access-Control-Allow-Origin',      value: 'http://localhost:3000' },
           { key: 'Access-Control-Allow-Credentials', value: 'true' },
+          { key: 'Access-Control-Allow-Methods',     value: 'GET,POST,PUT,DELETE,OPTIONS,PATCH' },
+          { key: 'Access-Control-Allow-Headers',     value: 'Content-Type, Authorization, X-Requested-With' },
         ],
       },
     ];
