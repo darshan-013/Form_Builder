@@ -222,12 +222,13 @@ public class SubmissionService {
                     try { yield Integer.parseInt(s); }
                     catch (NumberFormatException e) { yield Double.parseDouble(s); }
                 }
-                case "linear_scale" -> {
+                case "linear_scale", "star_rating" -> {
                     // Always stored as INTEGER — parse the numeric string sent from frontend
                     try { yield Integer.parseInt(s); }
                     catch (NumberFormatException e) { yield (int) Math.round(Double.parseDouble(s)); }
                 }
                 case "multiple_choice_grid" -> s; // stored as JSON TEXT {"Row":"Col"}
+                case "checkbox_grid" -> s;        // stored as JSON TEXT {"Row":["ColA","ColB"]}
                 case "date"    -> java.sql.Date.valueOf(s);
                 case "boolean" -> switch (s.toLowerCase()) {
                     case "true",  "1", "yes", "on"  -> true;

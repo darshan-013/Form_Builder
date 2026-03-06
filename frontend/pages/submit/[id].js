@@ -24,6 +24,7 @@ export default function SubmitPage() {
     const [form, setForm] = useState(null);
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
+    const [isDraft, setIsDraft] = useState(false);
 
     useEffect(() => {
         if (!id) return;
@@ -42,7 +43,8 @@ export default function SubmitPage() {
                 });
             })
             .catch((err) => {
-                if (err.status === 404) setNotFound(true);
+                if (err.status === 403) setIsDraft(true);
+                else if (err.status === 404) setNotFound(true);
                 else toastError('Failed to load form.');
             })
             .finally(() => setLoading(false));
@@ -85,6 +87,42 @@ export default function SubmitPage() {
             }}>
                 <span className="spinner" style={{ width: 36, height: 36 }} />
             </div>
+        );
+    }
+
+    // ── DRAFT — form not accepting submissions ─────────────────────────────────
+
+    if (isDraft) {
+        return (
+            <>
+                <Head><title>Form Not Available — FormCraft</title></Head>
+                <div className="form-page">
+                    <div className="form-renderer-card" style={{ padding: '60px 32px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 56, marginBottom: 20 }}>🔒</div>
+                        <h2 style={{ fontFamily: 'Outfit', fontSize: 24, marginBottom: 12, color: 'var(--text-primary)' }}>
+                            Form Not Available
+                        </h2>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: 15, maxWidth: 380, margin: '0 auto' }}>
+                            This form is not currently accepting responses. It may still be a draft or temporarily closed.
+                        </p>
+                        <div style={{ marginTop: 8 }}>
+                            <span style={{
+                                display: 'inline-block', marginTop: 20,
+                                padding: '6px 18px', borderRadius: 20,
+                                background: 'rgba(245,158,11,0.15)',
+                                color: '#FCD34D',
+                                border: '1px solid rgba(245,158,11,0.3)',
+                                fontSize: 13, fontWeight: 600,
+                            }}>
+                                📝 DRAFT
+                            </span>
+                        </div>
+                    </div>
+                    <p style={{ marginTop: 20, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
+                        Powered by FormCraft
+                    </p>
+                </div>
+            </>
         );
     }
 

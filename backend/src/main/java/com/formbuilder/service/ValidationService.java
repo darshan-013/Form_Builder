@@ -57,16 +57,19 @@ public class ValidationService {
         String strValue = (value != null) ? value.toString().trim() : "";
         boolean isEmpty = strValue.isEmpty();
 
-        // Required check (universal — except boolean and multiple_choice_grid which have their own logic)
+        // Required check (universal — except boolean, multiple_choice_grid, checkbox_grid which have their own logic)
         if (field.isRequired() && isEmpty
                 && !"boolean".equals(field.getFieldType())
-                && !"multiple_choice_grid".equals(field.getFieldType())) {
+                && !"multiple_choice_grid".equals(field.getFieldType())
+                && !"checkbox_grid".equals(field.getFieldType())) {
             errors.add(field.getLabel() + " is required");
             return errors;
         }
 
-        // Skip further validation on empty optional fields (not grid — grid handles empty internally)
-        if (isEmpty && !field.isRequired() && !"multiple_choice_grid".equals(field.getFieldType())) {
+        // Skip further validation on empty optional fields (not grids — they handle empty internally)
+        if (isEmpty && !field.isRequired()
+                && !"multiple_choice_grid".equals(field.getFieldType())
+                && !"checkbox_grid".equals(field.getFieldType())) {
             return errors;
         }
 
@@ -78,9 +81,11 @@ public class ValidationService {
             case "boolean"  -> validateBooleanField(field, value, rules, errors);
             case "dropdown" -> validateDropdownField(field, strValue, rules, errors);
             case "radio"    -> validateRadioField(field, strValue, rules, errors);
-            case "multiple_choice" -> validateMultipleChoiceField(field, strValue, rules, errors);
-            case "linear_scale"    -> validateLinearScaleField(field, strValue, rules, errors);
+            case "multiple_choice"      -> validateMultipleChoiceField(field, strValue, rules, errors);
+            case "linear_scale"         -> validateLinearScaleField(field, strValue, rules, errors);
             case "multiple_choice_grid" -> validateMultipleChoiceGridField(field, strValue, rules, errors);
+            case "star_rating"          -> validateStarRatingField(field, strValue, rules, errors);
+            case "checkbox_grid"        -> validateCheckboxGridField(field, strValue, rules, errors);
             case "file"     -> validateFileField(field, files, rules, errors, tableName);
         }
 
@@ -635,6 +640,113 @@ public class ValidationService {
                 if (eachRowRequired) errors.add(label + ": please select an option for \"" + row + "\"");
             } else if (!columns.isEmpty() && !columns.contains(selected)) {
                 errors.add(label + ": \"" + selected + "\" is not a valid option for \"" + row + "\"");
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STAR RATING FIELD VALIDATION
+    // Fixed 5-star rating. Value stored as INTEGER (1-5).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private void validateStarRatingField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
+        String label = field.getLabel();
+        log.debug("validateStarRating '{}' value='{}'", field.getFieldKey(), value);
+
+        int intValue;
+        try {
+            intValue = Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            errors.add(label + " must be a valid star rating number");
+            return;
+        }
+
+        if (intValue < 1 || intValue > 5) {
+            errors.add(label + " must be between 1 and 5 stars");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CHECKBOX GRID FIELD VALIDATION
+    // Multi-select per row. Value stored as JSON: {"Row":["ColA","ColB"]}
+    // Rules:
+    //   required        → at least one row must have at least one selection
+    //   eachRowRequired → every row must have at least one selection
+    //   minPerRow       → minimum selections per row
+    //   maxPerRow       → maximum selections per row
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private void validateCheckboxGridField(FormFieldEntity field, String strValue,
+            JsonNode rules, List<String> errors) {
+        String label = field.getLabel();
+
+        // Parse submitted JSON: {"Row1":["ColA","ColB"],"Row2":["ColC"]}
+        Map<String, List<String>> selections = new LinkedHashMap<>();
+        if (strValue != null && !strValue.isBlank()) {
+            try {
+                JsonNode node = objectMapper.readTree(strValue);
+                if (node.isObject()) {
+                    node.fields().forEachRemaining(e -> {
+                        List<String> rowSelections = new ArrayList<>();
+                        JsonNode vals = e.getValue();
+                        if (vals.isArray()) {
+                            vals.forEach(v -> rowSelections.add(v.asText()));
+                        } else if (vals.isTextual()) {
+                            rowSelections.add(vals.asText());
+                        }
+                        selections.put(e.getKey(), rowSelections);
+                    });
+                }
+            } catch (Exception e) {
+                errors.add(label + " has an invalid format (expected JSON object with arrays)");
+                return;
+            }
+        }
+
+        // Parse rows and columns from optionsJson
+        List<String> rows    = List.of();
+        List<String> columns = List.of();
+        String optionsJson   = field.getOptionsJson();
+        if (optionsJson != null && !optionsJson.isBlank()) {
+            try {
+                JsonNode grid = objectMapper.readTree(optionsJson);
+                if (grid.has("rows"))    rows    = parseJsonNodeArray(grid.get("rows"));
+                if (grid.has("columns")) columns = parseJsonNodeArray(grid.get("columns"));
+            } catch (Exception e) {
+                log.warn("Failed to parse checkbox_grid options_json for '{}': {}", field.getFieldKey(), optionsJson);
+            }
+        }
+
+        boolean required        = field.isRequired() || (rules.has("required") && rules.get("required").asBoolean());
+        boolean eachRowRequired = rules.has("eachRowRequired") && rules.get("eachRowRequired").asBoolean();
+        int minPerRow = rules.has("minPerRow") ? rules.get("minPerRow").asInt(0) : 0;
+        int maxPerRow = rules.has("maxPerRow") ? rules.get("maxPerRow").asInt(Integer.MAX_VALUE) : Integer.MAX_VALUE;
+
+        boolean anySelected = selections.values().stream().anyMatch(list -> !list.isEmpty());
+
+        if (!anySelected) {
+            if (required) errors.add(label + " is required — please select at least one option");
+            return;
+        }
+
+        // Per-row validation
+        for (String row : rows) {
+            List<String> rowSel = selections.getOrDefault(row, List.of());
+            if (rowSel.isEmpty()) {
+                if (eachRowRequired) errors.add(label + ": please select at least one option for \"" + row + "\"");
+                continue;
+            }
+            if (minPerRow > 0 && rowSel.size() < minPerRow)
+                errors.add(label + ": select at least " + minPerRow + " option(s) for \"" + row + "\"");
+            if (maxPerRow < Integer.MAX_VALUE && rowSel.size() > maxPerRow)
+                errors.add(label + ": select at most " + maxPerRow + " option(s) for \"" + row + "\"");
+
+            // Validate each selected value is a valid column
+            if (!columns.isEmpty()) {
+                for (String sel : rowSel) {
+                    if (!columns.contains(sel))
+                        errors.add(label + ": \"" + sel + "\" is not a valid option for \"" + row + "\"");
+                }
             }
         }
     }

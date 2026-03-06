@@ -137,6 +137,30 @@ public class FormService {
         log.info("Form '{}' and table '{}' deleted", form.getName(), form.getTableName());
     }
 
+    // ── Status (Publish / Unpublish) ──────────────────────────────────────────
+
+    @Transactional
+    public FormEntity publishForm(UUID id) {
+        // Use findByIdWithFields (JOIN FETCH) so the fields collection is
+        // eagerly loaded — prevents LazyInitializationException on serialization.
+        FormEntity form = formRepo.findByIdWithFields(id)
+                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+        form.setStatus(FormEntity.FormStatus.PUBLISHED);
+        FormEntity saved = formRepo.save(form);
+        log.info("Form '{}' published", form.getName());
+        return saved;
+    }
+
+    @Transactional
+    public FormEntity unpublishForm(UUID id) {
+        FormEntity form = formRepo.findByIdWithFields(id)
+                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+        form.setStatus(FormEntity.FormStatus.DRAFT);
+        FormEntity saved = formRepo.save(form);
+        log.info("Form '{}' unpublished (back to DRAFT)", form.getName());
+        return saved;
+    }
+
     // ── Shared Options CRUD ───────────────────────────────────────────────────
 
     /** Create a new shared_options row. Called when admin saves a new dropdown/radio field. */

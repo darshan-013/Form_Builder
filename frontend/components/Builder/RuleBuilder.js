@@ -52,10 +52,14 @@ const OPERATORS = {
     'changed',
   ],
   linear_scale: ['=', '!=', '>', '>=', '<', '<=', 'between', 'changed'],
+  // Star Rating: fixed 1-5, use numeric operators
+  star_rating: ['=', '!=', '>', '>=', '<', '<=', 'changed'],
   file:     ['is uploaded', 'is not uploaded'],
   // Grid: conditions apply to row-level values stored as JSON {"Row":"Col"}
   // Use 'equals'/'not equals' with value = "Row:Col" or just the column value
   multiple_choice_grid: ['equals', 'not equals', 'is empty', 'is not empty', 'changed'],
+  // Checkbox Grid: per-row multi-select values stored as JSON arrays
+  checkbox_grid: ['contains', 'not contains', 'is empty', 'is not empty', 'changed'],
 };
 
 const ACTION_TYPES = [

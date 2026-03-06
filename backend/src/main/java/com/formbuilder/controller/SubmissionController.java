@@ -1,8 +1,11 @@
 package com.formbuilder.controller;
 
+import com.formbuilder.entity.FormEntity;
+import com.formbuilder.service.FormService;
 import com.formbuilder.service.SubmissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,8 +24,19 @@ import java.util.*;
 public class SubmissionController {
 
     private final SubmissionService submissionService;
+    private final FormService formService;
 
     private static final String UPLOAD_DIR = "uploads";
+
+    /** Check form is PUBLISHED before allowing submission */
+    private ResponseEntity<?> checkPublished(UUID id) {
+        FormEntity form = formService.getFormById(id);
+        if (form.getStatus() != FormEntity.FormStatus.PUBLISHED) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "This form is not accepting submissions. It is currently in DRAFT mode."));
+        }
+        return null;
+    }
 
     /**
      * POST /api/forms/{id}/submit — JSON body
@@ -34,6 +48,9 @@ public class SubmissionController {
     public ResponseEntity<?> submitJson(
             @PathVariable UUID id,
             @RequestBody(required = false) Map<String, Object> rawBody) {
+
+        ResponseEntity<?> guard = checkPublished(id);
+        if (guard != null) return guard;
 
         Map<String, Object> data = new HashMap<>();
         if (rawBody != null) {
@@ -62,6 +79,9 @@ public class SubmissionController {
     public ResponseEntity<?> submitMultipart(
             @PathVariable UUID id,
             MultipartHttpServletRequest multipart) {
+
+        ResponseEntity<?> guard = checkPublished(id);
+        if (guard != null) return guard;
 
         Map<String, Object> data  = new HashMap<>();
         Map<String, MultipartFile> files = new HashMap<>();
@@ -152,7 +172,6 @@ public class SubmissionController {
             @PathVariable UUID id,
             @PathVariable UUID submissionId,
             @RequestBody Map<String, Object> data) {
-        // ValidationException propagates to GlobalExceptionHandler → 400 with errors[]
         submissionService.validateUpdate(id, data);
         try {
             Map<String, Object> updated = submissionService.updateSubmission(id, submissionId, data);

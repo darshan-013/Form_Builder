@@ -13,6 +13,7 @@ export function ThemeProvider({ children }) {
       const saved = localStorage.getItem('fc-theme') || 'dark';
       setTheme(saved);
       document.documentElement.setAttribute('data-theme', saved);
+      document.documentElement.style.colorScheme = saved === 'light' ? 'light' : 'dark';
     } catch (e) {}
     setMounted(true);
   }, []);
@@ -44,6 +45,7 @@ export function ThemeProvider({ children }) {
         setTheme(next);
         try { localStorage.setItem('fc-theme', next); } catch (e) {}
         document.documentElement.setAttribute('data-theme', next);
+        document.documentElement.style.colorScheme = next === 'light' ? 'light' : 'dark';
       });
 
       // Inject a dynamic clip-path expanding circle via a <style> tag
@@ -97,6 +99,7 @@ export function ThemeProvider({ children }) {
       setTheme(next);
       try { localStorage.setItem('fc-theme', next); } catch (e) {}
       document.documentElement.setAttribute('data-theme', next);
+      document.documentElement.style.colorScheme = next === 'light' ? 'light' : 'dark';
     }, 280);
 
     // Fade out ripple after full expansion

@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -46,11 +47,25 @@ public class FormController {
 
     /**
      * GET /api/forms/{id}/render
-     * Public endpoint — returns resolved field options ready for rendering.
-     * Options are fetched from dropdown_schema or inline options_json.
+     * Public endpoint — returns resolved field options.
+     * Returns 403 if form is DRAFT so public users cannot access it.
      */
     @GetMapping("/{id}/render")
-    public ResponseEntity<FormRenderDTO> render(@PathVariable UUID id) {
+    public ResponseEntity<?> render(@PathVariable UUID id) {
+        FormEntity form = formService.getFormById(id);
+        if (form.getStatus() == FormEntity.FormStatus.DRAFT) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "This form is not published yet.", "status", "DRAFT"));
+        }
+        return ResponseEntity.ok(formRenderService.render(id));
+    }
+
+    /**
+     * GET /api/forms/{id}/render/admin
+     * Admin-only render — always returns form regardless of status (for preview).
+     */
+    @GetMapping("/{id}/render/admin")
+    public ResponseEntity<FormRenderDTO> renderAdmin(@PathVariable UUID id) {
         return ResponseEntity.ok(formRenderService.render(id));
     }
 
@@ -82,5 +97,17 @@ public class FormController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         formService.deleteForm(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** PATCH /api/forms/{id}/publish — sets status = PUBLISHED */
+    @PatchMapping("/{id}/publish")
+    public ResponseEntity<FormEntity> publish(@PathVariable UUID id) {
+        return ResponseEntity.ok(formService.publishForm(id));
+    }
+
+    /** PATCH /api/forms/{id}/unpublish — sets status = DRAFT */
+    @PatchMapping("/{id}/unpublish")
+    public ResponseEntity<FormEntity> unpublish(@PathVariable UUID id) {
+        return ResponseEntity.ok(formService.unpublishForm(id));
     }
 }

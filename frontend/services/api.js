@@ -77,9 +77,17 @@ export const getForms = () =>
 export const getForm = (id) =>
     request('GET', `/forms/${id}`);
 
-/** Fetch form with resolved options (dropdown/radio) from /render endpoint */
+/** Fetch form with resolved options — public (blocks DRAFT, returns 403) */
 export const getRenderForm = (id) =>
     request('GET', `/forms/${id}/render`);
+
+/** Public form render (alias) */
+export const getFormRender = (id) =>
+    request('GET', `/forms/${id}/render`);
+
+/** Admin render — always works regardless of status (for preview page) */
+export const getFormRenderAdmin = (id) =>
+    request('GET', `/forms/${id}/render/admin`);
 
 export const createForm = (dto) =>
     request('POST', '/forms', dto);
@@ -89,6 +97,14 @@ export const updateForm = (id, dto) =>
 
 export const deleteForm = (id) =>
     request('DELETE', `/forms/${id}`);
+
+/** Publish a form — sets status = PUBLISHED */
+export const publishForm = (id) =>
+    request('PATCH', `/forms/${id}/publish`);
+
+/** Unpublish a form — sets status back to DRAFT */
+export const unpublishForm = (id) =>
+    request('PATCH', `/forms/${id}/unpublish`);
 
 // ── Submissions ───────────────────────────────────────────────
 
@@ -132,13 +148,6 @@ export const deleteSubmission = (formId, submissionId) =>
 
 export const updateSubmission = (formId, submissionId, data) =>
     request('PUT', `/forms/${formId}/submissions/${submissionId}`, data);
-
-// ── Form Render (public) ──────────────────────────────────────
-
-export const getFormRender = (formId) =>
-    request('GET', `/forms/${formId}/render`);
-
-// ── Dropdown Schemas ──────────────────────────────────────────
 
 // ── Shared Options ────────────────────────────────────────────
 // Manages the shared_options table — canonical option lists shared across form fields.
@@ -218,5 +227,3 @@ export function getFileViewUrl(filename) {
 export function getFileDownloadUrl(filename) {
     return `${BASE}/files/download/${encodeURIComponent(filename)}`;
 }
-
-

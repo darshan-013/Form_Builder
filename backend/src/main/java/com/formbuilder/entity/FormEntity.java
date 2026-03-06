@@ -24,6 +24,9 @@ import java.util.UUID;
 @ToString(exclude = "fields")
 public class FormEntity {
 
+    /** Lifecycle status stored as VARCHAR in DB. */
+    public enum FormStatus { DRAFT, PUBLISHED }
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false, nullable = false, columnDefinition = "UUID")
@@ -35,13 +38,17 @@ public class FormEntity {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    /**
-     * Name of the dynamically created PostgreSQL submission table.
-     * Format: form_<sanitizedName>_<shortId>
-     * e.g. form_contact_form_a3b8d1
-     */
     @Column(name = "table_name", nullable = false, unique = true, length = 150)
     private String tableName;
+
+    /**
+     * DRAFT   = form is being built; submissions are blocked.
+     * PUBLISHED = form is live; anyone can submit.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
+    private FormStatus status = FormStatus.DRAFT;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -64,6 +71,7 @@ public class FormEntity {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (status == null) status = FormStatus.DRAFT;
     }
 
     @PreUpdate

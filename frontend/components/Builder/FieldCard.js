@@ -15,7 +15,9 @@ const TYPE_META = {
     radio: { label: 'Radio', cls: 'badge-radio' },
     multiple_choice: { label: 'Multiple Choice', cls: 'badge-multiple-choice' },
     linear_scale: { label: 'Linear Scale', cls: 'badge-linear-scale' },
+    star_rating: { label: 'Star Rating', cls: 'badge-star-rating' },
     multiple_choice_grid: { label: 'Choice Grid', cls: 'badge-multiple-choice-grid' },
+    checkbox_grid: { label: 'Checkbox Grid', cls: 'badge-checkbox-grid' },
     file: { label: 'File', cls: 'badge-file' },
 };
 

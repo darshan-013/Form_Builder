@@ -13,7 +13,9 @@ const FIELD_TYPES = [
     { type: 'radio', label: 'Radio', icon: '◉', iconClass: 'icon-radio', desc: 'Single choice radio buttons' },
     { type: 'multiple_choice', label: 'Multiple Choice', icon: '☑', iconClass: 'icon-multiple-choice', desc: 'Multi-select checkboxes' },
     { type: 'linear_scale', label: 'Linear Scale', icon: '⭐', iconClass: 'icon-linear-scale', desc: 'Rate on a numeric scale (1–5, 1–10…)' },
+    { type: 'star_rating', label: 'Star Rating', icon: '★', iconClass: 'icon-star-rating', desc: 'Fixed 5-star rating (like Google Forms)' },
     { type: 'multiple_choice_grid', label: 'Choice Grid', icon: '⊞', iconClass: 'icon-multiple-choice-grid', desc: 'Grid: one selection per row' },
+    { type: 'checkbox_grid', label: 'Checkbox Grid', icon: '⊡', iconClass: 'icon-checkbox-grid', desc: 'Grid: multiple selections per row' },
     { type: 'file', label: 'File', icon: '📎', iconClass: 'icon-file', desc: 'File upload' },
 ];
 

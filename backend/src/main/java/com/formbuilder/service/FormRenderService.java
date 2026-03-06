@@ -53,7 +53,8 @@ public class FormRenderService {
         boolean isChoice = "dropdown".equals(f.getFieldType())
                         || "radio".equals(f.getFieldType())
                         || "multiple_choice".equals(f.getFieldType());
-        boolean isGrid = "multiple_choice_grid".equals(f.getFieldType());
+        boolean isGrid = "multiple_choice_grid".equals(f.getFieldType())
+                      || "checkbox_grid".equals(f.getFieldType());
 
         if (isChoice) {
             options = parseOptionsJson(resolveOptionsJson(f));
