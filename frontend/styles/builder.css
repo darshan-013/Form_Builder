@@ -749,4 +749,161 @@
   color: #374151;
 }
 
+/* ══════════════════════════════════════════════════
+   Static Field Elements — Builder Canvas & Modal
+   ══════════════════════════════════════════════════ */
 
+/* Palette — static section */
+.palette-field-static {
+  border-color: rgba(99,102,241,0.25);
+  background: rgba(99,102,241,0.06);
+}
+.palette-field-static:hover {
+  border-color: rgba(99,102,241,0.55);
+  background: rgba(99,102,241,0.14);
+}
+
+/* Canvas card — static variant */
+.field-card-static {
+  border-color: rgba(99,102,241,0.3);
+  background: rgba(99,102,241,0.05);
+  border-style: dashed;
+}
+.field-card-static:hover {
+  border-color: rgba(99,102,241,0.55);
+  background: rgba(99,102,241,0.1);
+}
+
+/* Static content preview text inside card */
+.field-card-static-preview {
+  font-style: italic;
+}
+.static-content-preview {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+  display: inline-block;
+}
+
+/* Static type badges */
+.badge-static {
+  background: rgba(99,102,241,0.15);
+  border: 1px solid rgba(99,102,241,0.3);
+  color: #A5B4FC;
+}
+.badge-section-header    { background: rgba(99,102,241,0.18); }
+.badge-label-text        { background: rgba(99,102,241,0.12); }
+.badge-description-block { background: rgba(99,102,241,0.08); }
+
+/* Static field modal */
+.static-field-modal {
+  max-width: 520px;
+}
+.static-modal-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: -4px 0 18px;
+  line-height: 1.6;
+  padding: 10px 14px;
+  background: rgba(99,102,241,0.06);
+  border: 1px solid rgba(99,102,241,0.15);
+  border-radius: 8px;
+}
+.modal-title-badge.static-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(99,102,241,0.2);
+  color: #A5B4FC;
+  border: 1px solid rgba(99,102,241,0.3);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* Static element preview inside modal */
+.static-preview {
+  margin-top: 6px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+}
+.static-preview-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+.static-preview-section-header {
+  font-family: 'Outfit', sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.01em;
+  border-bottom: 2px solid rgba(139,92,246,0.4);
+  padding-bottom: 6px;
+}
+.static-preview-label-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: #C4B5FD;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+.static-preview-description-block {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Light theme overrides */
+[data-theme="light"] .field-card-static {
+  border-color: rgba(99,102,241,0.25);
+  background: rgba(99,102,241,0.03);
+}
+[data-theme="light"] .field-card-static:hover {
+  border-color: rgba(99,102,241,0.45);
+  background: rgba(99,102,241,0.07);
+}
+[data-theme="light"] .static-content-preview { color: #374151; }
+[data-theme="light"] .badge-static {
+  background: rgba(99,102,241,0.1);
+  border-color: rgba(99,102,241,0.2);
+  color: #4338CA;
+}
+[data-theme="light"] .static-modal-hint {
+  background: rgba(99,102,241,0.04);
+  border-color: rgba(99,102,241,0.12);
+  color: #6B7280;
+}
+[data-theme="light"] .modal-title-badge.static-badge {
+  background: rgba(99,102,241,0.1);
+  color: #4338CA;
+}
+[data-theme="light"] .static-preview {
+  background: #F9FAFB;
+  border-color: #E5E7EB;
+}
+[data-theme="light"] .static-preview-section-header { color: #111827; }
+[data-theme="light"] .static-preview-label-text { color: #5B21B6; }
+[data-theme="light"] .static-preview-description-block { color: #6B7280; }
+[data-theme="light"] .palette-field-static {
+  border-color: rgba(99,102,241,0.2);
+  background: rgba(99,102,241,0.04);
+}
+[data-theme="light"] .palette-field-static:hover {
+  border-color: rgba(99,102,241,0.5);
+  background: rgba(99,102,241,0.1);
+}

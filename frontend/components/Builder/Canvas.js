@@ -1,6 +1,9 @@
 import { useState, useRef } from 'react';
 import FieldCard from './FieldCard';
 import FieldConfigModal from './FieldConfigModal';
+import StaticFieldModal from './StaticFieldModal';
+
+const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block']);
 
 /**
  * Canvas — Manages the list of fields on the form.
@@ -16,33 +19,52 @@ export default function Canvas({ fields, setFields }) {
     const [dropIndex, setDropIndex] = useState(null);   // card index hovered
     const [dropPos, setDropPos] = useState(null);   // 'top' | 'bottom'
     const [editField, setEditField] = useState(null);   // field being edited
+    const [editStaticField, setEditStaticField] = useState(null);   // static field being edited
     const canvasRef = useRef(null);
 
     // ── Field operations ─────────────────────────────────────────────────────
 
     const addField = (fieldType) => {
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        const autoKey = `${fieldType}_${Date.now().toString(36).slice(-6)}`;
-        const newField = {
-            id,
-            fieldType,
-            label: '',
-            fieldKey: autoKey,
-            required: false,
-            defaultValue: '',
-            validationRegex: '',
-            fieldOrder: fields.length,
-            sharedOptionsId: null,
-            validationJson: null,
-            rulesJson: null,
-        };
+        const isStatic = STATIC_TYPES.has(fieldType);
 
-        setFields((prev) => {
-            const updated = [...prev, newField];
-            // Auto-open config modal for the new field
-            setTimeout(() => setEditField({ ...newField, fieldOrder: updated.length - 1 }), 80);
-            return updated;
-        });
+        if (isStatic) {
+            const newField = {
+                id,
+                fieldType,
+                isStatic: true,
+                data: '',
+                fieldOrder: fields.length,
+            };
+            setFields((prev) => {
+                const updated = [...prev, newField];
+                // Auto-open config modal for the new static field
+                setTimeout(() => setEditStaticField({ ...newField, fieldOrder: updated.length - 1 }), 80);
+                return updated;
+            });
+        } else {
+            const autoKey = `${fieldType}_${Date.now().toString(36).slice(-6)}`;
+            const newField = {
+                id,
+                fieldType,
+                isStatic: false,
+                label: '',
+                fieldKey: autoKey,
+                required: false,
+                defaultValue: '',
+                validationRegex: '',
+                fieldOrder: fields.length,
+                sharedOptionsId: null,
+                validationJson: null,
+                rulesJson: null,
+            };
+            setFields((prev) => {
+                const updated = [...prev, newField];
+                // Auto-open config modal for the new field
+                setTimeout(() => setEditField({ ...newField, fieldOrder: updated.length - 1 }), 80);
+                return updated;
+            });
+        }
     };
 
     const removeField = (id) => {
@@ -54,6 +76,13 @@ export default function Canvas({ fields, setFields }) {
             prev.map((f) => (f.id === updated.id ? { ...updated } : f))
         );
         setEditField(null);
+    };
+
+    const updateStaticField = (updated) => {
+        setFields((prev) =>
+            prev.map((f) => (f.id === updated.id ? { ...updated } : f))
+        );
+        setEditStaticField(null);
     };
 
     // ── Canvas drop (NEW field from palette) ─────────────────────────────────
@@ -164,7 +193,7 @@ export default function Canvas({ fields, setFields }) {
                             key={field.id}
                             field={field}
                             index={index}
-                            onEdit={(f) => setEditField(f)}
+                            onEdit={(f) => f.isStatic ? setEditStaticField(f) : setEditField(f)}
                             onRemove={removeField}
                             onDragStart={handleCardDragStart}
                             onDragOver={handleCardDragOver}
@@ -184,6 +213,15 @@ export default function Canvas({ fields, setFields }) {
                     onSave={updateField}
                     onClose={() => setEditField(null)}
                     siblingFields={fields.filter(f => f.id !== editField?.id)}
+                />
+            )}
+
+            {/* Static field configuration modal */}
+            {editStaticField && (
+                <StaticFieldModal
+                    field={editStaticField}
+                    onSave={updateStaticField}
+                    onClose={() => setEditStaticField(null)}
                 />
             )}
         </>

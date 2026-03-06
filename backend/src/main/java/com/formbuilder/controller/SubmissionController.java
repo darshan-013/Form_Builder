@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
@@ -144,12 +145,19 @@ public class SubmissionController {
     }
 
     @GetMapping("/{id}/submissions")
-    public ResponseEntity<List<Map<String, Object>>> getSubmissions(@PathVariable UUID id) {
+    public ResponseEntity<List<Map<String, Object>>> getSubmissions(
+            @PathVariable UUID id, Authentication auth) {
+        // Verify the requesting user owns this form
+        formService.getOwnedFormById(id, auth.getName());
         return ResponseEntity.ok(submissionService.getSubmissions(id));
     }
 
     @GetMapping("/{id}/submissions/{submissionId}")
-    public ResponseEntity<?> getSubmission(@PathVariable UUID id, @PathVariable UUID submissionId) {
+    public ResponseEntity<?> getSubmission(
+            @PathVariable UUID id,
+            @PathVariable UUID submissionId,
+            Authentication auth) {
+        formService.getOwnedFormById(id, auth.getName());
         try {
             return ResponseEntity.ok(submissionService.getSubmission(id, submissionId));
         } catch (NoSuchElementException e) {
@@ -158,7 +166,11 @@ public class SubmissionController {
     }
 
     @DeleteMapping("/{id}/submissions/{submissionId}")
-    public ResponseEntity<?> deleteSubmission(@PathVariable UUID id, @PathVariable UUID submissionId) {
+    public ResponseEntity<?> deleteSubmission(
+            @PathVariable UUID id,
+            @PathVariable UUID submissionId,
+            Authentication auth) {
+        formService.getOwnedFormById(id, auth.getName());
         try {
             submissionService.deleteSubmission(id, submissionId);
             return ResponseEntity.ok(Map.of("message", "Submission deleted successfully"));
@@ -171,7 +183,9 @@ public class SubmissionController {
     public ResponseEntity<?> updateSubmission(
             @PathVariable UUID id,
             @PathVariable UUID submissionId,
-            @RequestBody Map<String, Object> data) {
+            @RequestBody Map<String, Object> data,
+            Authentication auth) {
+        formService.getOwnedFormById(id, auth.getName());
         submissionService.validateUpdate(id, data);
         try {
             Map<String, Object> updated = submissionService.updateSubmission(id, submissionId, data);

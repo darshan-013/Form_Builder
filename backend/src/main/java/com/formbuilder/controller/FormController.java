@@ -1,18 +1,17 @@
 package com.formbuilder.controller;
 
 import com.formbuilder.dto.FormDTO;
-import com.formbuilder.dto.FormRenderDTO;
 import com.formbuilder.entity.FormEntity;
+import com.formbuilder.entity.StaticFormFieldEntity;
 import com.formbuilder.service.FormRenderService;
 import com.formbuilder.service.FormService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * REST Controller for Form CRUD operations.
@@ -33,22 +32,48 @@ public class FormController {
     private final FormService formService;
     private final FormRenderService formRenderService;
 
-    /** List all forms — admin dashboard */
+    /** List only the forms that belong to the authenticated user. */
     @GetMapping
-    public ResponseEntity<List<FormEntity>> getAll() {
-        return ResponseEntity.ok(formService.getAllForms());
+    public ResponseEntity<List<FormEntity>> getAll(Authentication auth) {
+        return ResponseEntity.ok(formService.getAllForms(auth.getName()));
     }
 
-    /** Single form with all fields — used by preview and submit pages */
+    /** Single form with static fields bundled — used by builder edit page. */
     @GetMapping("/{id}")
-    public ResponseEntity<FormEntity> getById(@PathVariable UUID id) {
-        return ResponseEntity.ok(formService.getFormById(id));
+    public ResponseEntity<Map<String, Object>> getById(@PathVariable UUID id) {
+        FormEntity form = formService.getFormById(id);
+        List<StaticFormFieldEntity> statics = formService.getStaticFields(id);
+
+        // Convert statics to simple maps for JSON response
+        List<Map<String, Object>> staticList = new ArrayList<>();
+        for (StaticFormFieldEntity sf : statics) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id",         sf.getId());
+            m.put("fieldType",  sf.getFieldType());
+            m.put("data",       sf.getData());
+            m.put("fieldOrder", sf.getFieldOrder());
+            m.put("isStatic",   true);
+            staticList.add(m);
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id",          form.getId());
+        response.put("name",        form.getName());
+        response.put("description", form.getDescription());
+        response.put("tableName",   form.getTableName());
+        response.put("status",      form.getStatus());
+        response.put("createdBy",   form.getCreatedBy());
+        response.put("createdAt",   form.getCreatedAt());
+        response.put("updatedAt",   form.getUpdatedAt());
+        response.put("fields",      form.getFields());
+        response.put("staticFields", staticList);
+
+        return ResponseEntity.ok(response);
     }
 
     /**
-     * GET /api/forms/{id}/render
-     * Public endpoint — returns resolved field options.
-     * Returns 403 if form is DRAFT so public users cannot access it.
+     * Public render — returns 403 if DRAFT.
+     * No ownership check: anyone with the link can submit to a published form.
      */
     @GetMapping("/{id}/render")
     public ResponseEntity<?> render(@PathVariable UUID id) {
@@ -61,53 +86,58 @@ public class FormController {
     }
 
     /**
-     * GET /api/forms/{id}/render/admin
-     * Admin-only render — always returns form regardless of status (for preview).
+     * Admin render — always returns form (for builder preview).
+     * Enforces ownership so users cannot preview other users' forms.
      */
     @GetMapping("/{id}/render/admin")
-    public ResponseEntity<FormRenderDTO> renderAdmin(@PathVariable UUID id) {
+    public ResponseEntity<?> renderAdmin(@PathVariable UUID id, Authentication auth) {
+        // Owner check via getOwnedFormById (throws 404 if not owner)
+        formService.getOwnedFormById(id, auth.getName());
         return ResponseEntity.ok(formRenderService.render(id));
     }
 
-    /**
-     * Create form.
-     * Saves metadata to forms + form_fields tables,
-     * then calls DynamicTableService.createTable() to CREATE the physical table.
-     */
+    /** Create a form — owner is set to the authenticated user. */
     @PostMapping
-    public ResponseEntity<FormEntity> create(@RequestBody FormDTO dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(formService.createForm(dto));
+    public ResponseEntity<FormEntity> create(@RequestBody FormDTO dto, Authentication auth) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(formService.createForm(dto, auth.getName()));
     }
 
-    /**
-     * Update form.
-     * Diffs old vs new fields, calls DynamicTableService to
-     * ADD COLUMN / DROP COLUMN / ALTER COLUMN TYPE as needed.
-     */
+    /** Update — only the owner can edit their form. */
     @PutMapping("/{id}")
-    public ResponseEntity<FormEntity> update(@PathVariable UUID id, @RequestBody FormDTO dto) {
-        return ResponseEntity.ok(formService.updateForm(id, dto));
+    public ResponseEntity<FormEntity> update(
+            @PathVariable UUID id,
+            @RequestBody FormDTO dto,
+            Authentication auth) {
+        return ResponseEntity.ok(formService.updateForm(id, dto, auth.getName()));
     }
 
-    /**
-     * Delete form.
-     * Calls DynamicTableService.dropTable() then removes metadata rows.
-     */
+    /** Delete — only the owner can delete their form. */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        formService.deleteForm(id);
+    public ResponseEntity<Void> delete(@PathVariable UUID id, Authentication auth) {
+        formService.deleteForm(id, auth.getName());
         return ResponseEntity.noContent().build();
     }
 
-    /** PATCH /api/forms/{id}/publish — sets status = PUBLISHED */
+    /** Publish — only the owner can publish their form. */
     @PatchMapping("/{id}/publish")
-    public ResponseEntity<FormEntity> publish(@PathVariable UUID id) {
-        return ResponseEntity.ok(formService.publishForm(id));
+    public ResponseEntity<Map<String, Object>> publish(@PathVariable UUID id, Authentication auth) {
+        formService.publishForm(id, auth.getName());
+        return ResponseEntity.ok(Map.of(
+            "id", id.toString(),
+            "status", "PUBLISHED",
+            "message", "Form published successfully"
+        ));
     }
 
-    /** PATCH /api/forms/{id}/unpublish — sets status = DRAFT */
+    /** Unpublish — only the owner can unpublish their form. */
     @PatchMapping("/{id}/unpublish")
-    public ResponseEntity<FormEntity> unpublish(@PathVariable UUID id) {
-        return ResponseEntity.ok(formService.unpublishForm(id));
+    public ResponseEntity<Map<String, Object>> unpublish(@PathVariable UUID id, Authentication auth) {
+        formService.unpublishForm(id, auth.getName());
+        return ResponseEntity.ok(Map.of(
+            "id", id.toString(),
+            "status", "DRAFT",
+            "message", "Form unpublished successfully"
+        ));
     }
 }

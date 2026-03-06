@@ -18,11 +18,25 @@ import RuleEngine, { setDefaultValues } from '../services/RuleEngine';
  *
  * Priority: ascending fieldOrder. Higher order = evaluated later = wins conflicts.
  */
+const STATIC_FIELD_TYPES = new Set(['section_header', 'label_text', 'description_block']);
+
 export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   const rawFields = form?.fields || [];
 
+  // Static elements — display only, never validated or submitted
+  const staticFields = useMemo(
+    () => rawFields.filter(f => STATIC_FIELD_TYPES.has(f.fieldType) || f.isStatic),
+    [rawFields]
+  );
+
+  // Dynamic fields only — used for rule engine, validation, submission
+  const dynamicRawFields = useMemo(
+    () => rawFields.filter(f => !STATIC_FIELD_TYPES.has(f.fieldType) && !f.isStatic),
+    [rawFields]
+  );
+
   // Pre-parse rulesJson once — avoids repeated JSON.parse inside evaluation loops
-  const fields = useMemo(() => RuleEngine.withParsedRules(rawFields), [rawFields]);
+  const fields = useMemo(() => RuleEngine.withParsedRules(dynamicRawFields), [dynamicRawFields]);
 
   // Dependency map: { sourceKey → Set<targetKey> }
   // eslint-disable-next-line no-unused-vars
@@ -293,17 +307,31 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
       )}
 
       <form onSubmit={handleSubmit} noValidate>
-        {fields.length === 0 ? (
+        {fields.length === 0 && staticFields.length === 0 ? (
           <div className="form-empty-state">This form has no fields yet.</div>
         ) : (
           <div className="form-renderer-body">
-            {[...fields]
+            {/* Merge dynamic + static fields, sort by fieldOrder, render each */}
+            {[
+              ...fields.map(f => ({ ...f, _renderType: 'dynamic' })),
+              ...staticFields.map(f => ({ ...f, _renderType: 'static' })),
+            ]
               .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0))
               .map((field) => {
+                // ── Static elements — display only ───────────────────────
+                if (field._renderType === 'static') {
+                  return (
+                    <StaticElement
+                      key={field.fieldKey || field.id || `static-${field.fieldOrder}`}
+                      field={field}
+                    />
+                  );
+                }
+
+                // ── Dynamic fields ───────────────────────────────────────
                 const st = fieldStates[field.fieldKey] || {};
 
                 // Hidden fields — render nothing, value preserved in state
-                // (enterprise standard: keep value, skip validation, include in payload)
                 if (st.visible === false) return null;
 
                 // Effective value: copyValue > setValue > user input (priority order)
@@ -354,6 +382,43 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
       </form>
     </div>
   );
+}
+
+// ─── StaticElement ────────────────────────────────────────────────────────────
+/**
+ * Renders a static UI element — section_header, label_text, description_block.
+ * Never collects input, never validated, never included in submission payload.
+ */
+function StaticElement({ field }) {
+  // staticData from /render endpoint, or label as fallback (legacy)
+  const content = field.staticData || field.label || field.data || '';
+
+  if (field.fieldType === 'section_header') {
+    return (
+      <div className="static-section-header">
+        <h3 className="static-section-header-text">{content}</h3>
+        <div className="static-section-header-line" />
+      </div>
+    );
+  }
+
+  if (field.fieldType === 'label_text') {
+    return (
+      <div className="static-label-text">
+        <p className="static-label-text-content">{content}</p>
+      </div>
+    );
+  }
+
+  if (field.fieldType === 'description_block') {
+    return (
+      <div className="static-description-block">
+        <p className="static-description-block-content">{content}</p>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // ─── FieldInput ───────────────────────────────────────────────────────────────

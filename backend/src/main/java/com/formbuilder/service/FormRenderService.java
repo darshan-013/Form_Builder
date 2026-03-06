@@ -7,8 +7,10 @@ import com.formbuilder.dto.FormRenderDTO.OptionDTO;
 import com.formbuilder.dto.FormRenderDTO.RenderFieldDTO;
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormFieldEntity;
+import com.formbuilder.entity.StaticFormFieldEntity;
 import com.formbuilder.repository.FormJpaRepository;
 import com.formbuilder.repository.SharedOptionsRepository;
+import com.formbuilder.repository.StaticFormFieldRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,25 +20,48 @@ import java.util.stream.Collectors;
 
 /**
  * Builds the FormRenderDTO used by the public form renderer.
- * Options are ALWAYS read live from the shared_options table via shared_options_id FK.
+ * Merges dynamic fields (form_fields) with static UI elements (static_form_fields)
+ * sorted by field_order so the builder layout is preserved.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class FormRenderService {
 
-    private final FormJpaRepository    formRepo;
-    private final SharedOptionsRepository sharedOptionsRepo;
-    private final ObjectMapper         objectMapper;
+    private final FormJpaRepository        formRepo;
+    private final SharedOptionsRepository  sharedOptionsRepo;
+    private final StaticFormFieldRepository staticRepo;
+    private final ObjectMapper             objectMapper;
 
     public FormRenderDTO render(UUID formId) {
         FormEntity form = formRepo.findByIdWithFields(formId)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + formId));
 
-        List<RenderFieldDTO> renderFields = form.getFields().stream()
-                .sorted(Comparator.comparingInt(FormFieldEntity::getFieldOrder))
-                .map(this::toRenderField)
-                .collect(Collectors.toList());
+        // 1. Dynamic fields
+        List<RenderFieldDTO> renderFields = new ArrayList<>(
+                form.getFields().stream()
+                        .sorted(Comparator.comparingInt(FormFieldEntity::getFieldOrder))
+                        .map(this::toRenderField)
+                        .collect(Collectors.toList())
+        );
+
+        // 2. Static fields — merged in by field_order
+        List<StaticFormFieldEntity> staticFields = staticRepo.findByFormIdOrderByFieldOrderAsc(formId);
+        for (StaticFormFieldEntity sf : staticFields) {
+            renderFields.add(RenderFieldDTO.builder()
+                    .fieldKey("__static__" + sf.getId())
+                    .label(sf.getData())          // label carries the display text
+                    .fieldType(sf.getFieldType())
+                    .fieldOrder(sf.getFieldOrder())
+                    .isStatic(true)
+                    .staticData(sf.getData())
+                    .required(false)
+                    .options(List.of())
+                    .build());
+        }
+
+        // 3. Sort merged list by fieldOrder
+        renderFields.sort(Comparator.comparingInt(RenderFieldDTO::getFieldOrder));
 
         return FormRenderDTO.builder()
                 .formId(form.getId())
@@ -53,14 +78,13 @@ public class FormRenderService {
         boolean isChoice = "dropdown".equals(f.getFieldType())
                         || "radio".equals(f.getFieldType())
                         || "multiple_choice".equals(f.getFieldType());
-        boolean isGrid = "multiple_choice_grid".equals(f.getFieldType())
-                      || "checkbox_grid".equals(f.getFieldType());
+        boolean isGrid   = "multiple_choice_grid".equals(f.getFieldType())
+                        || "checkbox_grid".equals(f.getFieldType());
 
         if (isChoice) {
             options = parseOptionsJson(resolveOptionsJson(f));
         }
         if (isGrid) {
-            // shared_options.options_json stores {"rows":[...],"columns":[...]} for grid fields
             gridJson = resolveOptionsJson(f);
         }
 
@@ -77,6 +101,7 @@ public class FormRenderService {
                 .options(options)
                 .gridJson(gridJson)
                 .uiConfigJson(f.getUiConfigJson())
+                .isStatic(false)
                 .build();
     }
 
