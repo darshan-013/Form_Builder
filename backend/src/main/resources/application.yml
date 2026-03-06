@@ -1,3 +1,4 @@
+# Spring Boot application configuration for Form Builder backend
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/formbuilder
@@ -48,6 +49,3 @@ logging:
     org.springframework.security: DEBUG
     com.formbuilder: DEBUG
     org.springframework.jdbc: DEBUG
-
-
-
