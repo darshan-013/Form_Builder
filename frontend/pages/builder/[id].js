@@ -7,6 +7,8 @@ import Canvas from '../../components/Builder/Canvas';
 import { getForm, updateForm } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 
+const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block']);
+
 /**
  * Edit Form Builder Page — /builder/[id]
  * Loads existing form, allows editing fields, then PUTs changes.
@@ -22,28 +24,44 @@ export default function EditBuilderPage() {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // Load existing form
+    // Load existing form (dynamic fields + static fields merged by fieldOrder)
     useEffect(() => {
         if (!id) return;
         getForm(id)
             .then((form) => {
                 setFormName(form.name || '');
                 setFormDescription(form.description || '');
-                setFields(
-                    (form.fields || []).map((f) => ({
-                        id: f.id,
-                        fieldType: f.fieldType,
-                        label: f.label,
-                        fieldKey: f.fieldKey,
-                        required: f.required,
-                        defaultValue: f.defaultValue || '',
-                        validationRegex: f.validationRegex || '',
-                        sharedOptionsId: f.sharedOptionsId || null,
-                        validationJson: f.validationJson || null,
-                        rulesJson: f.rulesJson || null,
-                        fieldOrder: f.fieldOrder,
-                    }))
-                );
+
+                // Dynamic fields
+                const dynFields = (form.fields || []).map((f) => ({
+                    id:              f.id,
+                    fieldType:       f.fieldType,
+                    isStatic:        false,
+                    label:           f.label,
+                    fieldKey:        f.fieldKey,
+                    required:        f.required,
+                    defaultValue:    f.defaultValue || '',
+                    validationRegex: f.validationRegex || '',
+                    sharedOptionsId: f.sharedOptionsId || null,
+                    validationJson:  f.validationJson || null,
+                    rulesJson:       f.rulesJson || null,
+                    uiConfigJson:    f.uiConfigJson || null,
+                    fieldOrder:      f.fieldOrder,
+                }));
+
+                // Static fields from the new staticFields array in response
+                const statFields = (form.staticFields || []).map((sf) => ({
+                    id:         sf.id,
+                    fieldType:  sf.fieldType,
+                    isStatic:   true,
+                    data:       sf.data || '',
+                    fieldOrder: sf.fieldOrder,
+                }));
+
+                // Merge and sort by fieldOrder
+                const merged = [...dynFields, ...statFields]
+                    .sort((a, b) => a.fieldOrder - b.fieldOrder);
+                setFields(merged);
             })
             .catch(() => toastError('Failed to load form.'))
             .finally(() => setLoading(false));
@@ -52,22 +70,38 @@ export default function EditBuilderPage() {
     const handleSave = async () => {
         if (!formName.trim()) { toastError('Form name is required.'); return; }
 
+        const dynamicFields = [];
+        const staticFields  = [];
+
+        fields.forEach((f, i) => {
+            if (STATIC_TYPES.has(f.fieldType)) {
+                staticFields.push({
+                    fieldType:  f.fieldType,
+                    data:       f.data || '',
+                    fieldOrder: i,
+                });
+            } else {
+                dynamicFields.push({
+                    fieldKey:        f.fieldKey || `field_${i}`,
+                    label:           f.label || `Field ${i + 1}`,
+                    fieldType:       f.fieldType,
+                    required:        f.required,
+                    defaultValue:    f.defaultValue || null,
+                    validationRegex: f.validationRegex || null,
+                    validationJson:  f.validationJson || null,
+                    rulesJson:       f.rulesJson || null,
+                    uiConfigJson:    f.uiConfigJson || null,
+                    sharedOptionsId: f.sharedOptionsId || null,
+                    fieldOrder:      i,
+                });
+            }
+        });
+
         const dto = {
-            name: formName.trim(),
-            description: formDescription.trim() || null,
-            fields: fields.map((f, i) => ({
-                fieldKey: f.fieldKey || `field_${i}`,
-                label: f.label || `Field ${i + 1}`,
-                fieldType: f.fieldType,
-                required: f.required,
-                defaultValue: f.defaultValue || null,
-                validationRegex: f.validationRegex || null,
-                validationJson: f.validationJson || null,
-                rulesJson: f.rulesJson || null,
-                uiConfigJson: f.uiConfigJson || null,
-                sharedOptionsId: f.sharedOptionsId || null,
-                fieldOrder: i,
-            })),
+            name:         formName.trim(),
+            description:  formDescription.trim() || null,
+            fields:       dynamicFields,
+            staticFields: staticFields,
         };
 
         setSaving(true);
@@ -89,6 +123,9 @@ export default function EditBuilderPage() {
             </div>
         );
     }
+
+    const dynamicCount = fields.filter(f => !STATIC_TYPES.has(f.fieldType)).length;
+    const staticCount  = fields.filter(f => STATIC_TYPES.has(f.fieldType)).length;
 
     return (
         <>
@@ -114,11 +151,21 @@ export default function EditBuilderPage() {
 
                     <div className="builder-topbar-actions">
                         {fields.length > 0 && (
-                            <span className="badge badge-text">{fields.length} field{fields.length !== 1 ? 's' : ''}</span>
+                            <span className="badge badge-text">
+                                {dynamicCount} field{dynamicCount !== 1 ? 's' : ''}
+                                {staticCount > 0 ? ` + ${staticCount} static` : ''}
+                            </span>
                         )}
                         <Link href={`/preview/${id}`} className="btn btn-secondary btn-sm">👁 Preview</Link>
-                        <button id="update-form-btn" className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-                            {saving ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</> : '💾 Save Changes'}
+                        <button
+                            id="update-form-btn"
+                            className="btn btn-primary btn-sm"
+                            onClick={handleSave}
+                            disabled={saving}
+                        >
+                            {saving
+                                ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</>
+                                : '💾 Save Changes'}
                         </button>
                     </div>
                 </header>

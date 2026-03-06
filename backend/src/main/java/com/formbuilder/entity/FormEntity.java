@@ -50,6 +50,10 @@ public class FormEntity {
     @Builder.Default
     private FormStatus status = FormStatus.DRAFT;
 
+    /** Username of the user who created this form. Used to scope dashboard visibility. */
+    @Column(name = "created_by", length = 150)
+    private String createdBy;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

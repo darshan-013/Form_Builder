@@ -7,6 +7,8 @@ import Canvas from '../../components/Builder/Canvas';
 import { createForm } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 
+const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block']);
+
 /**
  * New Form Builder Page — /builder/new
  *
@@ -31,37 +33,55 @@ export default function NewBuilderPage() {
             return;
         }
 
-        const dto = {
-            name: formName.trim(),
-            description: formDescription.trim() || null,
-            fields: fields.map((f, i) => ({
-                fieldKey: f.fieldKey || `field_${i}`,
-                label: f.label || `Field ${i + 1}`,
-                fieldType: f.fieldType,
-                required: f.required,
-                defaultValue: f.defaultValue || null,
-                validationRegex: f.validationRegex || null,
-                validationJson: f.validationJson || null,
-                rulesJson: f.rulesJson || null,
-                uiConfigJson: f.uiConfigJson || null,
-                sharedOptionsId: f.sharedOptionsId || null,
-                fieldOrder: i,
-            })),
-        };
+        const dynamicFields = [];
+        const staticFields = [];
 
+        fields.forEach((f, i) => {
+            if (STATIC_TYPES.has(f.fieldType)) {
+                staticFields.push({
+                    fieldType:  f.fieldType,
+                    data:       f.data || '',
+                    fieldOrder: i,
+                });
+            } else {
+                dynamicFields.push({
+                    fieldKey:        f.fieldKey || `field_${i}`,
+                    label:           f.label || `Field ${i + 1}`,
+                    fieldType:       f.fieldType,
+                    required:        f.required,
+                    defaultValue:    f.defaultValue || null,
+                    validationRegex: f.validationRegex || null,
+                    validationJson:  f.validationJson || null,
+                    rulesJson:       f.rulesJson || null,
+                    uiConfigJson:    f.uiConfigJson || null,
+                    sharedOptionsId: f.sharedOptionsId || null,
+                    fieldOrder:      i,
+                });
+            }
+        });
+
+        const dto = {
+            name:         formName.trim(),
+            description:  formDescription.trim() || null,
+            fields:       dynamicFields,
+            staticFields: staticFields,
+        };
 
         setSaving(true);
         try {
-            const created = await createForm(dto);
+            await createForm(dto);
             toastSuccess('Form Created Successfully! 🎉');
             router.push('/dashboard');
         } catch (err) {
-            const msg = err.message || 'Failed to create form.';
-            toastError(msg);
+            toastError(err.message || 'Failed to create form.');
         } finally {
             setSaving(false);
         }
     };
+
+    const totalCount = fields.length;
+    const dynamicCount = fields.filter(f => !STATIC_TYPES.has(f.fieldType)).length;
+    const staticCount  = fields.filter(f => STATIC_TYPES.has(f.fieldType)).length;
 
     return (
         <>
@@ -96,8 +116,11 @@ export default function NewBuilderPage() {
 
                     <div className="builder-topbar-actions">
                         {/* Field count badge */}
-                        {fields.length > 0 && (
-                            <span className="badge badge-text">{fields.length} field{fields.length !== 1 ? 's' : ''}</span>
+                        {totalCount > 0 && (
+                            <span className="badge badge-text">
+                                {dynamicCount} field{dynamicCount !== 1 ? 's' : ''}
+                                {staticCount > 0 ? ` + ${staticCount} static` : ''}
+                            </span>
                         )}
 
                         {/* Preview (navigates to /preview/:id — only after save) */}

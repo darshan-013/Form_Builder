@@ -38,6 +38,10 @@ public class FormRenderDTO {
         private String gridJson;
         /** UI config for field-type-specific settings (e.g. linear_scale min/max/labels) */
         private String uiConfigJson;
+        /** true = static UI element — no input collected, skip validation & submission */
+        private boolean isStatic;
+        /** Display content for static elements (section_header, label_text, description_block) */
+        private String staticData;
     }
 
     @Data

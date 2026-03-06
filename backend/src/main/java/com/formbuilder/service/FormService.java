@@ -5,9 +5,11 @@ import com.formbuilder.dto.FormFieldDTO;
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormFieldEntity;
 import com.formbuilder.entity.SharedOptionsEntity;
+import com.formbuilder.entity.StaticFormFieldEntity;
 import com.formbuilder.repository.FormFieldJpaRepository;
 import com.formbuilder.repository.FormJpaRepository;
 import com.formbuilder.repository.SharedOptionsRepository;
+import com.formbuilder.repository.StaticFormFieldRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,26 +23,38 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FormService {
 
-    private final FormJpaRepository       formRepo;
-    private final FormFieldJpaRepository  fieldRepo;
-    private final SharedOptionsRepository sharedOptionsRepo;
-    private final DynamicTableService     dynamicTable;
+    private final FormJpaRepository        formRepo;
+    private final FormFieldJpaRepository   fieldRepo;
+    private final SharedOptionsRepository  sharedOptionsRepo;
+    private final StaticFormFieldRepository staticRepo;
+    private final DynamicTableService      dynamicTable;
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
-    public List<FormEntity> getAllForms() {
-        return formRepo.findAllByOrderByCreatedAtDesc();
+    /** Returns only forms owned by the given user. */
+    public List<FormEntity> getAllForms(String owner) {
+        return formRepo.findAllByCreatedByOrderByCreatedAtDesc(owner);
     }
 
+    /** Returns a form by ID — any owner (used by public endpoints like submit/render). */
     public FormEntity getFormById(UUID id) {
         return formRepo.findByIdWithFields(id)
+                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+    }
+
+    /**
+     * Returns a form by ID scoped to the authenticated owner.
+     * Throws NoSuchElementException (→ 404) if form doesn't exist OR belongs to someone else.
+     */
+    public FormEntity getOwnedFormById(UUID id, String owner) {
+        return formRepo.findByIdAndCreatedBy(id, owner)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
     }
 
     // ── Create ────────────────────────────────────────────────────────────────
 
     @Transactional
-    public FormEntity createForm(FormDTO dto) {
+    public FormEntity createForm(FormDTO dto, String owner) {
         validateUniqueFieldKeys(dto.getFields());
         String tableName = dynamicTable.generateTableName(dto.getName());
 
@@ -48,6 +62,7 @@ public class FormService {
                 .name(dto.getName())
                 .description(dto.getDescription())
                 .tableName(tableName)
+                .createdBy(owner)
                 .fields(new ArrayList<>())
                 .build();
 
@@ -59,17 +74,21 @@ public class FormService {
 
         FormEntity saved = formRepo.save(form);
         dynamicTable.createTable(tableName, saved.getFields());
-        log.info("Form '{}' created with table '{}'", saved.getName(), tableName);
+
+        // Save static fields
+        saveStaticFields(saved.getId(), dto.getStaticFields());
+
+        log.info("Form '{}' created by '{}' with table '{}'", saved.getName(), owner, tableName);
         return saved;
     }
 
     // ── Update ────────────────────────────────────────────────────────────────
 
     @Transactional
-    public FormEntity updateForm(UUID id, FormDTO dto) {
+    public FormEntity updateForm(UUID id, FormDTO dto, String owner) {
         validateUniqueFieldKeys(dto.getFields());
 
-        FormEntity existing = formRepo.findById(id)
+        FormEntity existing = formRepo.findByIdAndCreatedBy(id, owner)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
 
         Map<String, FormFieldEntity> oldByKey = existing.getFields().stream()
@@ -123,41 +142,46 @@ public class FormService {
             }
         }
 
-        return formRepo.save(existing);
+        FormEntity savedForm = formRepo.save(existing);
+
+        // Replace all static fields for this form
+        staticRepo.deleteByFormId(savedForm.getId());
+        saveStaticFields(savedForm.getId(), dto.getStaticFields());
+
+        return savedForm;
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────
 
     @Transactional
-    public void deleteForm(UUID id) {
-        FormEntity form = formRepo.findById(id)
+    public void deleteForm(UUID id, String owner) {
+        FormEntity form = formRepo.findByIdAndCreatedBy(id, owner)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+        // static_form_fields cascade deletes via FK ON DELETE CASCADE
         dynamicTable.dropTable(form.getTableName());
         formRepo.delete(form);
-        log.info("Form '{}' and table '{}' deleted", form.getName(), form.getTableName());
+        log.info("Form '{}' and table '{}' deleted by '{}'", form.getName(), form.getTableName(), owner);
     }
 
     // ── Status (Publish / Unpublish) ──────────────────────────────────────────
 
     @Transactional
-    public FormEntity publishForm(UUID id) {
-        // Use findByIdWithFields (JOIN FETCH) so the fields collection is
-        // eagerly loaded — prevents LazyInitializationException on serialization.
-        FormEntity form = formRepo.findByIdWithFields(id)
+    public FormEntity publishForm(UUID id, String owner) {
+        FormEntity form = formRepo.findByIdAndCreatedBy(id, owner)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
         form.setStatus(FormEntity.FormStatus.PUBLISHED);
         FormEntity saved = formRepo.save(form);
-        log.info("Form '{}' published", form.getName());
+        log.info("Form '{}' published by '{}'", form.getName(), owner);
         return saved;
     }
 
     @Transactional
-    public FormEntity unpublishForm(UUID id) {
-        FormEntity form = formRepo.findByIdWithFields(id)
+    public FormEntity unpublishForm(UUID id, String owner) {
+        FormEntity form = formRepo.findByIdAndCreatedBy(id, owner)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
         form.setStatus(FormEntity.FormStatus.DRAFT);
         FormEntity saved = formRepo.save(form);
-        log.info("Form '{}' unpublished (back to DRAFT)", form.getName());
+        log.info("Form '{}' unpublished by '{}'", form.getName(), owner);
         return saved;
     }
 
@@ -192,6 +216,25 @@ public class FormService {
                     id, fieldRepo.findBySharedOptionsId(id).size());
             return saved;
         });
+    }
+
+    // ── Static Field helpers ──────────────────────────────────────────────────
+
+    /** Returns all static fields for a form, ordered by field_order */
+    public List<StaticFormFieldEntity> getStaticFields(UUID formId) {
+        return staticRepo.findByFormIdOrderByFieldOrderAsc(formId);
+    }
+
+    private void saveStaticFields(UUID formId, List<FormDTO.StaticFieldDTO> staticDTOs) {
+        if (staticDTOs == null || staticDTOs.isEmpty()) return;
+        for (FormDTO.StaticFieldDTO sf : staticDTOs) {
+            staticRepo.save(StaticFormFieldEntity.builder()
+                    .formId(formId)
+                    .fieldType(sf.getFieldType())
+                    .data(sf.getData())
+                    .fieldOrder(sf.getFieldOrder())
+                    .build());
+        }
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────
