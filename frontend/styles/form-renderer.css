@@ -1090,19 +1090,36 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 
 /* ── Description Block ───────────────────────────── */
 .static-description-block {
-  margin: 6px 0 14px;
-  padding: 12px 16px;
-  background: rgba(139,92,246,0.06);
-  border: 1px solid rgba(139,92,246,0.15);
-  border-radius: 10px;
+  margin: 6px 0 18px;
+  padding: 14px 18px 14px 20px;
+  background: transparent;
+  border: none;
+  border-left: 4px solid rgba(99,102,241,0.6);
+  border-radius: 0 8px 8px 0;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* Info icon before text */
+.static-description-block::before {
+  content: 'ℹ';
+  font-size: 16px;
+  color: rgba(99,102,241,0.7);
+  flex-shrink: 0;
+  margin-top: 1px;
+  line-height: 1;
 }
 
 .static-description-block-content {
   font-size: 14px;
-  color: var(--text-muted, #9CA3AF);
-  line-height: 1.65;
+  color: var(--text-secondary, #A5B4FC);
+  line-height: 1.7;
   margin: 0;
   white-space: pre-wrap;
+  font-style: italic;
+  letter-spacing: 0.01em;
 }
 
 /* ── Light theme ─────────────────────────────────── */
@@ -1116,9 +1133,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   color: #6D28D9;
 }
 [data-theme="light"] .static-description-block {
-  background: rgba(139,92,246,0.04);
-  border-color: rgba(139,92,246,0.12);
+  border-left-color: rgba(99,102,241,0.45);
+  background: transparent;
+}
+[data-theme="light"] .static-description-block::before {
+  color: rgba(99,102,241,0.6);
 }
 [data-theme="light"] .static-description-block-content {
-  color: #374151;
+  color: #4B5563;
 }

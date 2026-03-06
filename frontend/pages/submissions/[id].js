@@ -122,6 +122,77 @@ export default function SubmissionsPage() {
         }
     };
 
+    // ── Export helpers ─────────────────────────────────────────────────────────
+
+    /** Format a raw cell value to a plain string for CSV / PDF */
+    const formatCellValue = (field, rawValue) => {
+        if (rawValue === null || rawValue === undefined || rawValue === '') return '';
+        const v = rawValue;
+        if (field.fieldType === 'boolean') return v === true || v === 'true' ? 'Yes' : 'No';
+        if (field.fieldType === 'date') {
+            const d = new Date(v);
+            return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+        if (field.fieldType === 'star_rating') {
+            const n = Number(v);
+            return `${n}/5 ${'★'.repeat(n)}${'☆'.repeat(5 - n)}`;
+        }
+        if (field.fieldType === 'linear_scale') return String(v);
+        if (field.fieldType === 'multiple_choice') {
+            const str = String(v).trim();
+            if (str.startsWith('[')) {
+                try { return JSON.parse(str).join(', '); } catch {}
+            }
+            return str;
+        }
+        if (field.fieldType === 'multiple_choice_grid' || field.fieldType === 'checkbox_grid') {
+            try {
+                const obj = JSON.parse(String(v));
+                return Object.entries(obj)
+                    .map(([row, col]) => `${row}: ${Array.isArray(col) ? col.join(', ') : col}`)
+                    .join(' | ');
+            } catch { return String(v); }
+        }
+        if (field.fieldType === 'file') {
+            return String(v).split(',').map(f => f.trim()).join(', ');
+        }
+        return String(v);
+    };
+
+    /** Export submissions to CSV */
+    const exportCSV = () => {
+        if (!form?.fields || submissions.length === 0) return;
+        const dynamicFields = form.fields;
+
+        // Header row
+        const headers = ['#', 'Submission ID', ...dynamicFields.map(f => f.label), 'Submitted At'];
+
+        // Data rows
+        const rows = submissions.map((sub, i) => {
+            const cells = [
+                i + 1,
+                sub.id || '',
+                ...dynamicFields.map(f => formatCellValue(f, sub[f.fieldKey])),
+                sub.created_at ? new Date(sub.created_at).toLocaleString('en-IN') : '',
+            ];
+            // Escape each cell: wrap in quotes, double any internal quotes
+            return cells.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',');
+        });
+
+        const csvContent = [headers.map(h => `"${h}"`).join(','), ...rows].join('\r\n');
+        const BOM = '\uFEFF'; // UTF-8 BOM for Excel compatibility
+        const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(form.name || 'submissions').replace(/[^a-z0-9]/gi, '_')}_submissions_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toastSuccess('CSV exported successfully! 📊');
+    };
+
+
+
     // Generate columns from form fields
     const columns = () => {
         if (!form || !form.fields) return [];
@@ -640,13 +711,23 @@ export default function SubmissionsPage() {
                                 {form?.description || 'View all submitted responses'}
                             </p>
                         </div>
-                        <div style={{ display: 'flex', gap: '12px' }}>
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                             <Link href={`/submit/${id}`} className="btn btn-secondary" target="_blank">
                                 📝 Submit Form
                             </Link>
                             <Link href={`/preview/${id}`} className="btn btn-secondary">
                                 👁 Preview Form
                             </Link>
+                            {/* Export CSV — only shown when there are submissions */}
+                            {submissions.length > 0 && (
+                                <button
+                                    className="btn btn-export-csv"
+                                    onClick={exportCSV}
+                                    title="Download all submissions as CSV (Excel compatible)"
+                                >
+                                    📊 Export CSV
+                                </button>
+                            )}
                         </div>
                     </div>
 
