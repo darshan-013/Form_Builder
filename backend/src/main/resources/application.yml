@@ -19,6 +19,7 @@ spring:
         - classpath:migration_add_multiple_choice.sql
         - classpath:migration_add_linear_scale.sql
         - classpath:migration_add_grid.sql
+        - classpath:migration_add_status.sql
 
   jpa:
     hibernate:

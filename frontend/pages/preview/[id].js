@@ -4,12 +4,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
 import FormRenderer from '../../components/FormRenderer';
-import { getFormRender } from '../../services/api';
+import { getFormRenderAdmin } from '../../services/api';
 import { toastError } from '../../services/toast';
 
 /**
  * Form Preview Page — /preview/[id]
  * Admin view — shows the form exactly as end-users will see it.
+ * Uses /render/admin so DRAFT forms are also previewable.
  * Submission is DISABLED (isPreview=true) so no data is written.
  */
 export default function PreviewPage() {
@@ -21,7 +22,7 @@ export default function PreviewPage() {
 
     useEffect(() => {
         if (!id) return;
-        getFormRender(id)
+        getFormRenderAdmin(id)
             .then((data) => {
                 setForm({
                     id:          data.formId,

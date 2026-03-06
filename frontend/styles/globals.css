@@ -60,7 +60,7 @@
 *::before,
 *::after { box-sizing: border-box; margin:0; padding:0; }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; color-scheme: dark; }
 
 /* ── Body — animated dark background ───────────────────────── */
 body {
@@ -275,9 +275,21 @@ a:hover { color: #A78BFA; }
   color-scheme: dark;
 }
 
-/* Dropdown panel options — dark background + readable text */
+/* Force dark color-scheme on ALL select elements in dark mode */
+select,
+select.form-input {
+  color-scheme: dark;
+  background-color: rgba(255,255,255,0.055);
+  color: var(--text-primary);
+}
+
+/* Dropdown panel options — dark background + readable text for ALL selects */
+select option,
+select optgroup,
 .form-select option,
-.form-select optgroup {
+.form-select optgroup,
+.form-input option,
+.form-input optgroup {
   background-color: #13112b;
   color: #EDE9FF;
   font-family: 'Inter', system-ui, sans-serif;
@@ -285,13 +297,19 @@ a:hover { color: #A78BFA; }
   padding: 8px 12px;
 }
 
+select option:checked,
+select option:hover,
 .form-select option:checked,
-.form-select option:hover {
+.form-select option:hover,
+.form-input option:checked,
+.form-input option:hover {
   background-color: #2a2060;
   color: #ffffff;
 }
 
-.form-select optgroup {
+select optgroup,
+.form-select optgroup,
+.form-input optgroup {
   color: #7c7a9e;
   font-weight: 700;
   font-size: 12px;
@@ -383,6 +401,8 @@ a:hover { color: #A78BFA; }
 .badge-multiple-choice { background: rgba(20,184,166,0.15); color: #5EEAD4; border: 1px solid rgba(20,184,166,0.22); }
 .badge-linear-scale    { background: rgba(245,158,11,0.15);  color: #FCD34D; border: 1px solid rgba(245,158,11,0.22); }
 .badge-multiple-choice-grid { background: rgba(16,185,129,0.15); color: #6EE7B7; border: 1px solid rgba(16,185,129,0.22); }
+.badge-star-rating  { background: rgba(245,158,11,0.18); color: #FCD34D; border: 1px solid rgba(245,158,11,0.3); }
+.badge-checkbox-grid { background: rgba(20,184,166,0.12); color: #2DD4BF; border: 1px solid rgba(20,184,166,0.25); }
 .badge-file     { background: rgba(249,115,22,0.15);  color: #FDB38A; border: 1px solid rgba(249,115,22,0.22); }
 
 /* ── Navbar ─────────────────────────────────────────────────── */
@@ -702,6 +722,8 @@ body::after,
    ════════════════════════════════════════════════════════════════ */
 
 [data-theme="light"] {
+  color-scheme: light;
+
   /* Backgrounds */
   --bg-base:        #F0F2F8;
   --bg-surface:     #FFFFFF;
@@ -820,12 +842,25 @@ body::after,
 [data-theme="light"] .form-textarea::placeholder { color: #9CA3AF; }
 
 /* Light select dropdown options */
-[data-theme="light"] .form-select option,
-[data-theme="light"] .form-select optgroup {
+[data-theme="light"] select,
+[data-theme="light"] select.form-input {
+  color-scheme: light;
   background-color: #FFFFFF;
   color: #111827;
 }
-[data-theme="light"] .form-select option:checked {
+
+[data-theme="light"] select option,
+[data-theme="light"] select optgroup,
+[data-theme="light"] .form-select option,
+[data-theme="light"] .form-select optgroup,
+[data-theme="light"] .form-input option,
+[data-theme="light"] .form-input optgroup {
+  background-color: #FFFFFF;
+  color: #111827;
+}
+[data-theme="light"] select option:checked,
+[data-theme="light"] .form-select option:checked,
+[data-theme="light"] .form-input option:checked {
   background-color: #EDE9FE;
   color: #5B21B6;
 }
@@ -837,7 +872,8 @@ body::after,
 [data-theme="light"] input[type="month"],
 [data-theme="light"] input[type="week"],
 [data-theme="light"] input[type="file"],
-[data-theme="light"] select { color-scheme: light; }
+[data-theme="light"] select,
+[data-theme="light"] select.form-input { color-scheme: light; }
 
 [data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
 [data-theme="light"] input[type="datetime-local"]::-webkit-calendar-picker-indicator {

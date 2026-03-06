@@ -300,6 +300,37 @@
   border-color: #7C3AED;
 }
 
+/* ── Star Rating ──────────────────────────────────── */
+.star-rating-btn {
+  width: 44px; height: 44px;
+  font-size: 28px;
+  border: none;
+  background: none;
+  color: rgba(245,158,11,0.25);
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+  padding: 0 2px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+}
+.star-rating-btn:hover:not(:disabled) {
+  color: #F59E0B;
+  transform: scale(1.25);
+}
+.star-rating-btn.active {
+  color: #F59E0B;
+  transform: scale(1.2);
+  box-shadow: none;
+  background: none;
+  border: none;
+}
+.star-rating-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+[data-theme="light"] .star-rating-btn { color: rgba(180,120,0,0.25); }
+[data-theme="light"] .star-rating-btn:hover:not(:disabled) { color: #B45309; }
+[data-theme="light"] .star-rating-btn.active { color: #B45309; }
+
 /* ── Multiple Choice Grid ─────────────────────────── */
 .mcg-wrapper { width: 100%; overflow-x: auto; }
 
@@ -395,6 +426,64 @@
 
 /* Error state */
 .mcg-error .mcg-radio-circle { border-color: rgba(239,68,68,0.4); }
+
+/* ── Checkbox Grid dedicated styles (mcg-checkbox-wrap) ── */
+.mcg-checkbox-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.mcg-checkbox-wrap.disabled { cursor: not-allowed; opacity: 0.5; }
+.mcg-checkbox-wrap input[type="checkbox"] { display: none; }
+
+.mcg-checkbox-box {
+  width: 22px; height: 22px;
+  border-radius: 5px;
+  border: 2px solid rgba(139,92,246,0.35);
+  background: rgba(255,255,255,0.03);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.18s ease;
+}
+.mcg-checkbox-wrap:hover .mcg-checkbox-box {
+  border-color: rgba(139,92,246,0.7);
+  background: rgba(139,92,246,0.1);
+  box-shadow: 0 0 10px rgba(139,92,246,0.25);
+}
+.mcg-checkbox-wrap input[type="checkbox"]:checked ~ .mcg-checkbox-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 14px rgba(139,92,246,0.4);
+}
+.mcg-checkbox-tick {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(0);
+  transition: all 0.15s cubic-bezier(0.68,-0.55,0.265,1.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.mcg-checkbox-wrap input[type="checkbox"]:checked ~ .mcg-checkbox-box .mcg-checkbox-tick {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Light theme for checkbox_grid */
+[data-theme="light"] .mcg-checkbox-box {
+  border-color: #D1D5DB;
+  background: #FFFFFF;
+}
+[data-theme="light"] .mcg-checkbox-wrap:hover .mcg-checkbox-box {
+  border-color: #8B5CF6;
+  background: #F5F3FF;
+}
+[data-theme="light"] .mcg-checkbox-wrap input[type="checkbox"]:checked ~ .mcg-checkbox-box {
+  border-color: #7C3AED;
+  background: linear-gradient(135deg,#7C3AED,#EC4899);
+}
+[data-theme="light"] .mcg-checkbox-tick { color: #fff; }
 
 /* Light theme */
 [data-theme="light"] .mcg-header-row th { color: #4B5563; border-bottom-color: #E5E7EB; }
@@ -605,6 +694,21 @@ select {
   color-scheme: dark;
 }
 
+/* Force dark background on all select option lists */
+select option,
+select optgroup {
+  background-color: #13112b;
+  color: #EDE9FF;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+}
+
+select option:checked,
+select option:hover {
+  background-color: #2a2060;
+  color: #ffffff;
+}
+
 /* File input — dark background, accent border on hover */
 input[type="file"].form-input {
   padding: 10px 16px;
@@ -674,6 +778,21 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 [data-theme="light"] .form-field-label { color: #4B5563; }
 [data-theme="light"] .form-field-error { color: #DC2626; }
 [data-theme="light"] .form-field-error::before { content: '⚠'; }
+
+/* Light theme: reset select option colors */
+[data-theme="light"] select,
+[data-theme="light"] select.form-input {
+  color-scheme: light;
+}
+[data-theme="light"] select option,
+[data-theme="light"] select optgroup {
+  background-color: #FFFFFF;
+  color: #111827;
+}
+[data-theme="light"] select option:checked {
+  background-color: #EDE9FE;
+  color: #5B21B6;
+}
 
 /* Renderer body inputs */
 [data-theme="light"] .form-renderer-body .form-input,

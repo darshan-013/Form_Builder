@@ -182,8 +182,8 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                 }
             }
 
-            // Grid config (multiple_choice_grid) — stored as {"rows":[...],"columns":[...]} in shared_options
-            if (local.fieldType === 'multiple_choice_grid') {
+            // Grid config (multiple_choice_grid & checkbox_grid) — stored as {"rows":[...],"columns":[...]} in shared_options
+            if (local.fieldType === 'multiple_choice_grid' || local.fieldType === 'checkbox_grid') {
                 const filteredRows = gridRows.filter(r => r.trim());
                 const filteredCols = gridColumns.filter(c => c.trim());
                 const gridJson = JSON.stringify({ rows: filteredRows, columns: filteredCols });
@@ -196,7 +196,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
             }
 
             const isChoice = local.fieldType === 'dropdown' || local.fieldType === 'radio' || local.fieldType === 'multiple_choice';
-            const isGrid   = local.fieldType === 'multiple_choice_grid';
+            const isGrid   = local.fieldType === 'multiple_choice_grid' || local.fieldType === 'checkbox_grid';
 
             const updatedField = {
                 ...local,
@@ -503,6 +503,107 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Checkbox Grid Config Editor (checkbox_grid) ── */}
+                    {local.fieldType === 'checkbox_grid' && (
+                        <div className="form-group">
+                            <label className="form-label" style={{ marginBottom: 12, display: 'block' }}>⊡ Checkbox Grid Configuration</label>
+
+                            {sharedOptionsId && (
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    padding: '8px 12px', marginBottom: 10, borderRadius: 8,
+                                    background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)',
+                                    fontSize: 12, color: 'var(--accent, #6366f1)',
+                                }}>
+                                    <span>🔗 Shared grid config — edits update all forms using this grid</span>
+                                    <button type="button"
+                                        onClick={() => { setSharedOptionsId(null); setUnlinkNotice(true); setTimeout(() => setUnlinkNotice(false), 3000); }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'inherit', padding: '0 0 0 8px', fontWeight: 700 }}
+                                    >× Unlink</button>
+                                </div>
+                            )}
+
+                            {/* ROWS */}
+                            <div style={{ marginBottom: 16 }}>
+                                <p className="form-label" style={{ marginBottom: 8 }}>Rows (questions)</p>
+                                {gridRows.map((row, idx) => (
+                                    <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                        <input className="form-input" value={row}
+                                            onChange={(e) => { const u = [...gridRows]; u[idx] = e.target.value; setGridRows(u); }}
+                                            placeholder={`Row ${idx + 1} (e.g. Quality)`} />
+                                        <button type="button" className="btn btn-secondary btn-sm"
+                                            onClick={() => setGridRows(gridRows.filter((_, i) => i !== idx))}
+                                            disabled={gridRows.length <= 1}>×</button>
+                                    </div>
+                                ))}
+                                <button type="button" className="btn btn-secondary btn-sm"
+                                    onClick={() => setGridRows([...gridRows, `Row ${gridRows.length + 1}`])}>+ Add Row</button>
+                            </div>
+
+                            {/* COLUMNS */}
+                            <div>
+                                <p className="form-label" style={{ marginBottom: 8 }}>Columns (options per row — multiple selectable)</p>
+                                {gridColumns.map((col, idx) => (
+                                    <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                        <input className="form-input" value={col}
+                                            onChange={(e) => { const u = [...gridColumns]; u[idx] = e.target.value; setGridColumns(u); }}
+                                            placeholder={`Column ${idx + 1} (e.g. Mon / Tue)`} />
+                                        <button type="button" className="btn btn-secondary btn-sm"
+                                            onClick={() => setGridColumns(gridColumns.filter((_, i) => i !== idx))}
+                                            disabled={gridColumns.length <= 2}>×</button>
+                                    </div>
+                                ))}
+                                <button type="button" className="btn btn-secondary btn-sm"
+                                    onClick={() => setGridColumns([...gridColumns, `Option ${gridColumns.length + 1}`])}>+ Add Column</button>
+                            </div>
+
+                            <p className="form-help">Users can tick multiple columns per row (like Google Forms Checkbox Grid).</p>
+
+                            {/* Preview */}
+                            <div style={{ marginTop: 14, overflowX: 'auto' }}>
+                                <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}></th>
+                                            {gridColumns.filter(c => c.trim()).map((col, ci) => (
+                                                <th key={ci} style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--text-secondary)', fontWeight: 600 }}>{col}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {gridRows.filter(r => r.trim()).map((row, ri) => (
+                                            <tr key={ri} style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+                                                <td style={{ padding: '6px 10px', color: 'var(--text-primary)', fontWeight: 500 }}>{row}</td>
+                                                {gridColumns.filter(c => c.trim()).map((_, ci) => (
+                                                    <td key={ci} style={{ padding: '6px 10px', textAlign: 'center' }}>
+                                                        <span style={{ display: 'inline-block', width: 13, height: 13, borderRadius: 3, border: '2px solid rgba(139,92,246,0.4)' }} />
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Star Rating info (no config needed — always 1-5) ── */}
+                    {local.fieldType === 'star_rating' && (
+                        <div className="form-group">
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
+                                background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)',
+                                borderRadius: 10, fontSize: 14,
+                            }}>
+                                <span style={{ fontSize: 24 }}>★★★★★</span>
+                                <div>
+                                    <div style={{ fontWeight: 600, color: '#FCD34D' }}>5-Star Rating</div>
+                                    <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Fixed scale 1–5. Users click a star to rate. Value stored as integer.</div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1184,6 +1285,60 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                                 />
                                                 <span>Each Row Required (every row must have a selection)</span>
                                             </label>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* ========== STAR RATING VALIDATIONS ========== */}
+                                {local.fieldType === 'star_rating' && (
+                                    <div className="validation-group">
+                                        <h4 className="validation-group-title" style={{ color: '#FCD34D' }}>★ Star Rating Rules</h4>
+                                        <p className="form-help" style={{ marginBottom: 0 }}>
+                                            Scale is fixed 1–5. Backend always validates the submitted value is between 1 and 5.
+                                            Use the Required toggle above to make this field mandatory.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* ========== CHECKBOX GRID VALIDATIONS ========== */}
+                                {local.fieldType === 'checkbox_grid' && (
+                                    <>
+                                        <div className="validation-group">
+                                            <h4 className="validation-group-title">Checkbox Grid Rules</h4>
+
+                                            <label className="form-checkbox-row compact">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={!!validationRules.eachRowRequired}
+                                                    onChange={(e) => setValidation('eachRowRequired', e.target.checked || '')}
+                                                />
+                                                <span>Each Row Required (every row must have at least one selection)</span>
+                                            </label>
+
+                                            <div className="form-row" style={{ marginTop: 10 }}>
+                                                <div className="form-group">
+                                                    <label className="form-label">Min Per Row</label>
+                                                    <input
+                                                        type="number"
+                                                        className="form-input"
+                                                        value={validationRules.minPerRow || ''}
+                                                        onChange={(e) => setValidation('minPerRow', e.target.value ? parseInt(e.target.value) : '')}
+                                                        placeholder="e.g. 1"
+                                                        min="1"
+                                                    />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label className="form-label">Max Per Row</label>
+                                                    <input
+                                                        type="number"
+                                                        className="form-input"
+                                                        value={validationRules.maxPerRow || ''}
+                                                        onChange={(e) => setValidation('maxPerRow', e.target.value ? parseInt(e.target.value) : '')}
+                                                        placeholder="e.g. 3"
+                                                        min="1"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     </>
                                 )}

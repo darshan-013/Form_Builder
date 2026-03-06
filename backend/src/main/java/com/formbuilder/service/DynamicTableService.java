@@ -29,17 +29,21 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DynamicTableService {
 
-    private static final Map<String, String> SQL_TYPE = Map.of(
-            "text", "TEXT",
-            "number", "INTEGER",
-            "date", "DATE",
-            "boolean", "BOOLEAN",
-            "dropdown", "VARCHAR(255)",
-            "radio", "VARCHAR(255)",
-            "multiple_choice", "TEXT",
-            "linear_scale", "INTEGER",
-            "file", "TEXT",
-            "multiple_choice_grid", "TEXT");
+    // Map.ofEntries used because Map.of() is limited to 10 entries
+    private static final Map<String, String> SQL_TYPE = Map.ofEntries(
+            Map.entry("text",                 "TEXT"),
+            Map.entry("number",               "INTEGER"),
+            Map.entry("date",                 "DATE"),
+            Map.entry("boolean",              "BOOLEAN"),
+            Map.entry("dropdown",             "VARCHAR(255)"),
+            Map.entry("radio",                "VARCHAR(255)"),
+            Map.entry("multiple_choice",      "TEXT"),
+            Map.entry("linear_scale",         "INTEGER"),
+            Map.entry("file",                 "TEXT"),
+            Map.entry("multiple_choice_grid", "TEXT"),
+            Map.entry("star_rating",          "INTEGER"),   // 1–5 stars, stored as integer
+            Map.entry("checkbox_grid",        "TEXT")       // JSON {"Row":["ColA","ColB"]}
+    );
 
     private final JdbcTemplate jdbc;
 

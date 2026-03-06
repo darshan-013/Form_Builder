@@ -696,6 +696,118 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         );
       })()}
 
+      {/* ── star_rating ────────────────────────────────────────── */}
+      {field.fieldType === 'star_rating' && (() => {
+        // Parse ui_config_json for scale bounds and labels
+        let uiCfg = {};
+        if (field.uiConfigJson) {
+          try { uiCfg = JSON.parse(field.uiConfigJson); } catch {}
+        }
+        const scaleMin   = uiCfg.scaleMin   ?? 1;
+        const scaleMax   = uiCfg.scaleMax   ?? 5;
+        const labelLeft  = uiCfg.labelLeft  || '';
+        const labelRight = uiCfg.labelRight || '';
+        const steps = [];
+        for (let i = scaleMin; i <= scaleMax; i++) steps.push(i);
+        const selected = value !== '' && value !== null && value !== undefined ? Number(value) : null;
+        return (
+          <div className={`linear-scale-wrapper${hasError ? ' input-error-group' : ''}`}>
+            <div className="linear-scale-inner">
+              <div className="linear-scale-track" role="group" aria-label={effectiveLabel}>
+                {steps.map((step) => {
+                  const isActive = selected === step;
+                  return (
+                    <button
+                      key={step}
+                      type="button"
+                      className={`linear-scale-btn star-rating-btn${isActive ? ' active' : ''}`}
+                      onClick={() => { if (!disabled) { onChange(step); onBlur(step); } }}
+                      disabled={disabled}
+                      aria-pressed={isActive}
+                      aria-label={`${step}`}
+                    >
+                      {isActive ? '★' : '☆'}
+                    </button>
+                  );
+                })}
+              </div>
+              {(labelLeft || labelRight) && (
+                <div className="linear-scale-labels">
+                  <span className="linear-scale-label-left">{labelLeft}</span>
+                  <span className="linear-scale-label-right">{labelRight}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── checkbox_grid ──────────────────────────────────────── */}
+      {field.fieldType === 'checkbox_grid' && (() => {
+        // gridJson comes from /render endpoint: {"rows":[...],"columns":[...]}
+        let rows = [], cols = [];
+        if (field.gridJson) {
+          try {
+            const g = JSON.parse(field.gridJson);
+            rows = g.rows    || [];
+            cols = g.columns || [];
+          } catch {}
+        }
+        // Current value: {"Row":["ColA","ColB"]} — arrays per row (multi-select)
+        let selected = {};
+        if (value && typeof value === 'string') {
+          try { selected = JSON.parse(value); } catch {}
+        } else if (value && typeof value === 'object') {
+          selected = value;
+        }
+        const handleCbChange = (row, col, checked) => {
+          if (disabled) return;
+          const cur = Array.isArray(selected[row]) ? selected[row] : (selected[row] ? [selected[row]] : []);
+          const next = checked ? [...new Set([...cur, col])] : cur.filter(v => v !== col);
+          const updated = { ...selected, [row]: next };
+          onChange(JSON.stringify(updated));
+          onBlur(JSON.stringify(updated));
+        };
+        return (
+          <div className={`mcg-wrapper${hasError ? ' input-error-group' : ''}`}>
+            <table className="mcg-table">
+              <thead>
+                <tr className="mcg-header-row">
+                  <th></th>
+                  {cols.map((col, ci) => <th key={ci}>{col}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, ri) => {
+                  const rowSel = Array.isArray(selected[row]) ? selected[row] : (selected[row] ? [selected[row]] : []);
+                  return (
+                    <tr key={ri} className="mcg-row">
+                      <td className="mcg-row-label">{row}</td>
+                      {cols.map((col, ci) => (
+                        <td key={ci} className="mcg-cell">
+                          <label className={`mcg-checkbox-wrap${disabled ? ' disabled' : ''}`}>
+                            <input
+                              type="checkbox"
+                              value={col}
+                              checked={rowSel.includes(col)}
+                              onChange={(e) => handleCbChange(row, col, e.target.checked)}
+                              disabled={disabled}
+                            />
+                            <span className="mcg-checkbox-box">
+                              <span className="mcg-checkbox-tick">✓</span>
+                            </span>
+                          </label>
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
       {/* ── file ───────────────────────────────────────────────── */}
       {field.fieldType === 'file' && (
         <input

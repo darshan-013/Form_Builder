@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
 import DataTable from '../../components/DataTable';
-import { getForm, getSubmissions, downloadFile, deleteSubmission, updateSubmission, getRenderForm } from '../../services/api';
+import { getForm, getSubmissions, downloadFile, deleteSubmission, updateSubmission, getFormRender } from '../../services/api';
 import { toastError, toastSuccess } from '../../services/toast';
 
 /**
@@ -51,7 +51,7 @@ export default function SubmissionsPage() {
     const loadData = () => {
         if (!id) return;
         setLoading(true);
-        Promise.all([getForm(id), getRenderForm(id), getSubmissions(id)])
+        Promise.all([getForm(id), getFormRender(id), getSubmissions(id)])
             .then(([formData, renderFormData, submissionsData]) => {
                 setForm(formData);
                 setRenderData(renderFormData); // Store render data with resolved options
@@ -150,6 +150,16 @@ export default function SubmissionsPage() {
                             }}>⭐ {value}</span>
                         );
                     }
+                    // Star Rating — show as colored stars
+                    if (field.fieldType === 'star_rating' && value !== null && value !== undefined) {
+                        const num = Number(value);
+                        return (
+                            <span style={{ color: '#F59E0B', fontSize: 18, letterSpacing: 2 }}>
+                                {'★'.repeat(num)}{'☆'.repeat(5 - num)}
+                                <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 6 }}>({num}/5)</span>
+                            </span>
+                        );
+                    }
                     // Multiple choice grid — compact row→col summary
                     if (field.fieldType === 'multiple_choice_grid' && value) {
                         let obj = {};
@@ -162,6 +172,24 @@ export default function SubmissionsPage() {
                                     <span key={idx} style={{ fontSize: '12px' }}>
                                         <b style={{ color: 'var(--text-primary)' }}>{row}:</b>{' '}
                                         <span style={{ color: 'var(--text-secondary)' }}>{col}</span>
+                                    </span>
+                                ))}
+                                {entries.length > 2 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{entries.length - 2} more…</span>}
+                            </div>
+                        );
+                    }
+                    // Checkbox grid — compact multi-select summary
+                    if (field.fieldType === 'checkbox_grid' && value) {
+                        let obj = {};
+                        try { obj = JSON.parse(String(value)); } catch {}
+                        const entries = Object.entries(obj).filter(([, v]) => Array.isArray(v) ? v.length > 0 : !!v);
+                        if (entries.length === 0) return '—';
+                        return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                {entries.slice(0, 2).map(([row, cols], idx) => (
+                                    <span key={idx} style={{ fontSize: '12px' }}>
+                                        <b style={{ color: 'var(--text-primary)' }}>{row}:</b>{' '}
+                                        <span style={{ color: 'var(--text-secondary)' }}>{Array.isArray(cols) ? cols.join(', ') : cols}</span>
                                     </span>
                                 ))}
                                 {entries.length > 2 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{entries.length - 2} more…</span>}
@@ -497,6 +525,87 @@ export default function SubmissionsPage() {
                 </div>
             );
         }
+        // Star Rating — 5 star buttons
+        if (field.fieldType === 'star_rating') {
+            const selected = val !== '' && val !== null && val !== undefined ? Number(val) : null;
+            return (
+                <div style={{ display: 'flex', gap: '8px', paddingTop: '4px' }}>
+                    {[1, 2, 3, 4, 5].map((star) => {
+                        const isActive = selected === star;
+                        return (
+                            <button
+                                key={star}
+                                type="button"
+                                onClick={() => handleEditChange(field.fieldKey, star)}
+                                style={{
+                                    fontSize: 28, cursor: 'pointer', background: 'none', border: 'none',
+                                    color: isActive ? '#F59E0B' : 'rgba(245,158,11,0.3)',
+                                    transition: 'color 0.15s ease, transform 0.15s ease',
+                                    transform: isActive ? 'scale(1.2)' : 'scale(1)',
+                                    padding: '0 2px',
+                                }}
+                            >
+                                {isActive ? '★' : '☆'}
+                            </button>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        // Checkbox Grid — checkbox per row (multi-select per row)
+        if (field.fieldType === 'checkbox_grid') {
+            const renderField = renderData?.fields?.find(f => f.fieldKey === field.fieldKey);
+            let rows = [], cols = [];
+            if (renderField?.gridJson) {
+                try { const g = JSON.parse(renderField.gridJson); rows = g.rows || []; cols = g.columns || []; } catch {}
+            }
+            let selected = {};
+            if (val) { try { selected = JSON.parse(val); } catch {} }
+            const handleCbGridChange = (row, col, checked) => {
+                const current = Array.isArray(selected[row]) ? selected[row] : (selected[row] ? [selected[row]] : []);
+                const next = checked ? [...new Set([...current, col])] : current.filter(v => v !== col);
+                handleEditChange(field.fieldKey, JSON.stringify({ ...selected, [row]: next }));
+            };
+            return (
+                <div style={{ overflowX: 'auto' }}>
+                    <table className="mcg-table" style={{ fontSize: 13 }}>
+                        <thead>
+                            <tr className="mcg-header-row">
+                                <th></th>
+                                {cols.map((col, ci) => <th key={ci}>{col}</th>)}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((row, ri) => (
+                                <tr key={ri} className="mcg-row">
+                                    <td className="mcg-row-label">{row}</td>
+                                    {cols.map((col, ci) => {
+                                        const rowSel = Array.isArray(selected[row]) ? selected[row] : (selected[row] ? [selected[row]] : []);
+                                        return (
+                                            <td key={ci} className="mcg-cell">
+                                                <label className="mcg-checkbox-wrap">
+                                                    <input
+                                                        type="checkbox"
+                                                        value={col}
+                                                        checked={rowSel.includes(col)}
+                                                        onChange={(e) => handleCbGridChange(row, col, e.target.checked)}
+                                                    />
+                                                    <span className="mcg-checkbox-box">
+                                                        <span className="mcg-checkbox-tick">✓</span>
+                                                    </span>
+                                                </label>
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+
         return (
             <input
                 type="text"
@@ -637,6 +746,17 @@ export default function SubmissionsPage() {
                                                     }}>⭐ {value}</span>
                                                 );
                                             }
+                                            // Star Rating — show colored stars
+                                            if (field.fieldType === 'star_rating') {
+                                                const num = Number(value);
+                                                return (
+                                                    <span style={{ color: '#F59E0B', fontSize: 24, letterSpacing: 3 }}>
+                                                        {'★'.repeat(Math.max(0, Math.min(5, num)))}
+                                                        {'☆'.repeat(Math.max(0, 5 - Math.min(5, num)))}
+                                                        <span style={{ fontSize: 14, color: 'var(--text-secondary)', marginLeft: 8 }}>({num}/5)</span>
+                                                    </span>
+                                                );
+                                            }
                                             // Multiple choice grid — show row→col table
                                             if (field.fieldType === 'multiple_choice_grid') {
                                                 let obj = {};
@@ -658,6 +778,36 @@ export default function SubmissionsPage() {
                                                                     background: 'rgba(16,185,129,0.15)', color: '#6EE7B7',
                                                                     border: '1px solid rgba(16,185,129,0.25)'
                                                                 }}>{col}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            }
+                                            // Checkbox grid — show row→[cols] table
+                                            if (field.fieldType === 'checkbox_grid') {
+                                                let obj = {};
+                                                try { obj = JSON.parse(String(value)); } catch {}
+                                                const entries = Object.entries(obj).filter(([, v]) => Array.isArray(v) ? v.length > 0 : !!v);
+                                                if (entries.length === 0) return <span className="sub-empty">No value provided</span>;
+                                                return (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                        {entries.map(([row, cols], idx) => (
+                                                            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
+                                                                <span style={{
+                                                                    padding: '2px 10px', borderRadius: '8px', fontSize: '12px',
+                                                                    background: 'rgba(99,102,241,0.12)', color: 'var(--text-secondary)',
+                                                                    minWidth: 80, textAlign: 'right', whiteSpace: 'nowrap', alignSelf: 'center'
+                                                                }}>{row}</span>
+                                                                <span style={{ color: 'var(--text-secondary)', fontSize: 12, alignSelf: 'center' }}>→</span>
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                                    {(Array.isArray(cols) ? cols : [cols]).map((c, ci) => (
+                                                                        <span key={ci} style={{
+                                                                            padding: '2px 10px', borderRadius: '8px', fontSize: '12px',
+                                                                            background: 'rgba(16,185,129,0.15)', color: '#6EE7B7',
+                                                                            border: '1px solid rgba(16,185,129,0.25)'
+                                                                        }}>{c}</span>
+                                                                    ))}
+                                                                </div>
                                                             </div>
                                                         ))}
                                                     </div>

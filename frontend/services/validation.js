@@ -759,6 +759,108 @@ function validateMultipleChoiceGrid(value, rules, label, field) {
   return errors;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// STAR RATING
+// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Validates a star_rating field.
+ * value = integer string "1"–"5"
+ */
+function validateStarRating(value, rules, label) {
+  const errors = [];
+  const str = trimmed(value);
+
+  if (!str) {
+    if (rules.required) errors.push(EMPTY_MSG());
+    return errors;
+  }
+
+  const num = Number(str);
+  if (!Number.isInteger(num) || num < 1 || num > 5) {
+    errors.push(`${label} must be between 1 and 5 stars`);
+  }
+
+  return errors;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHECKBOX GRID
+// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Validates a checkbox_grid field.
+ * value  = JSON string {"Row1":["ColA","ColB"],"Row2":["ColC"]}
+ * field.gridJson = {"rows":[...],"columns":[...]}  (from /render endpoint)
+ */
+function validateCheckboxGrid(value, rules, label, field) {
+  const errors = [];
+
+  // Parse grid config from field.gridJson
+  let rows = [], columns = [];
+  const gridJson = field.gridJson || field._gridJson;
+  if (gridJson) {
+    try {
+      const g = JSON.parse(gridJson);
+      rows    = g.rows    || [];
+      columns = g.columns || [];
+    } catch {}
+  }
+
+  // Parse selected values — {"Row":["ColA","ColB"]}
+  let selected = {};
+  if (value && typeof value === 'string') {
+    try { selected = JSON.parse(value); } catch {}
+  } else if (value && typeof value === 'object') {
+    selected = value;
+  }
+
+  const anySelected = Object.values(selected).some(v => Array.isArray(v) ? v.length > 0 : !!v);
+
+  if (!anySelected) {
+    if (rules.required) errors.push(EMPTY_MSG());
+    return errors;
+  }
+
+  // eachRowRequired — every row must have at least one selection
+  if (rules.eachRowRequired) {
+    for (const row of rows) {
+      const rowSel = selected[row];
+      const hasSelection = Array.isArray(rowSel) ? rowSel.length > 0 : !!rowSel;
+      if (!hasSelection) {
+        errors.push(`Please select at least one option for "${row}"`);
+      }
+    }
+  }
+
+  // minPerRow / maxPerRow
+  if (rules.minPerRow || rules.maxPerRow) {
+    for (const row of rows) {
+      const rowSel = selected[row];
+      const count = Array.isArray(rowSel) ? rowSel.length : (rowSel ? 1 : 0);
+      if (rules.minPerRow && count < rules.minPerRow) {
+        errors.push(`Select at least ${rules.minPerRow} option(s) for "${row}"`);
+      }
+      if (rules.maxPerRow && count > rules.maxPerRow) {
+        errors.push(`Select at most ${rules.maxPerRow} option(s) for "${row}"`);
+      }
+    }
+  }
+
+  // Validate each selected value is a valid column
+  if (columns.length > 0) {
+    for (const [row, rowSel] of Object.entries(selected)) {
+      const vals = Array.isArray(rowSel) ? rowSel : [rowSel];
+      for (const v of vals) {
+        if (v && !columns.includes(v)) {
+          errors.push(`"${v}" is not a valid option for "${row}"`);
+        }
+      }
+    }
+  }
+
+  return errors;
+}
+
+
 /**
  * Async single-field validation.
  * Use at onSubmit time (runs image dimension checks etc.).
@@ -778,7 +880,9 @@ async function validateField(field, value, formData = {}, files = {}) {
     case 'radio':                 return validateRadio(value, rules, label, opts);
     case 'multiple_choice':       return validateMultipleChoice(value, rules, label, opts);
     case 'linear_scale':          return validateLinearScale(value, rules, label, field);
+    case 'star_rating':           return validateStarRating(value, rules, label);
     case 'multiple_choice_grid':  return validateMultipleChoiceGrid(value, rules, label, field);
+    case 'checkbox_grid':         return validateCheckboxGrid(value, rules, label, field);
     case 'file': {
       const fileVal = files[field.fieldKey];
       const resolved = fileVal instanceof FileList || fileVal instanceof File
@@ -809,7 +913,9 @@ function validateFieldSync(field, value, formData = {}, files = {}) {
     case 'radio':                 return validateRadio(value, rules, label, opts);
     case 'multiple_choice':       return validateMultipleChoice(value, rules, label, opts);
     case 'linear_scale':          return validateLinearScale(value, rules, label, field);
+    case 'star_rating':           return validateStarRating(value, rules, label);
     case 'multiple_choice_grid':  return validateMultipleChoiceGrid(value, rules, label, field);
+    case 'checkbox_grid':         return validateCheckboxGrid(value, rules, label, field);
     case 'file': {
       const fileVal = files[field.fieldKey];
       const resolved = fileVal instanceof FileList || fileVal instanceof File
