@@ -63,6 +63,9 @@ public class FormService {
                 .description(dto.getDescription())
                 .tableName(tableName)
                 .createdBy(owner)
+                .allowMultipleSubmissions(dto.getAllowMultipleSubmissions() == null ? true : dto.getAllowMultipleSubmissions())
+                .showTimestamp(true) // always compulsory — timestamp every submission
+                .expiresAt(dto.getExpiresAt())
                 .fields(new ArrayList<>())
                 .build();
 
@@ -120,6 +123,11 @@ public class FormService {
 
         existing.setName(dto.getName());
         existing.setDescription(dto.getDescription());
+        // null → keep whatever was already saved; explicit value → update it
+        if (dto.getAllowMultipleSubmissions() != null) existing.setAllowMultipleSubmissions(dto.getAllowMultipleSubmissions());
+        existing.setShowTimestamp(true); // always compulsory — timestamp every submission
+        // expiresAt: always update — null means "clear the expiry"
+        existing.setExpiresAt(dto.getExpiresAt());
         existing.getFields().removeIf(field -> !newKeys.contains(field.getFieldKey()));
 
         if (dto.getFields() != null) {

@@ -68,6 +68,9 @@ public class FormRenderService {
                 .formName(form.getName())
                 .formDescription(form.getDescription())
                 .fields(renderFields)
+                .allowMultipleSubmissions(form.isAllowMultipleSubmissions())
+                .showTimestamp(form.isShowTimestamp())
+                .expiresAt(form.getExpiresAt())
                 .build();
     }
 

@@ -1,5 +1,9 @@
 # Spring Boot application configuration for Form Builder backend
+
 spring:
+  application:
+    name: formbuilder
+
   datasource:
     url: jdbc:postgresql://localhost:5432/formbuilder
     username: postgres

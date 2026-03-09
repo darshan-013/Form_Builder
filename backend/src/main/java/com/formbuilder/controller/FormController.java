@@ -48,24 +48,27 @@ public class FormController {
         List<Map<String, Object>> staticList = new ArrayList<>();
         for (StaticFormFieldEntity sf : statics) {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id",         sf.getId());
-            m.put("fieldType",  sf.getFieldType());
-            m.put("data",       sf.getData());
+            m.put("id", sf.getId());
+            m.put("fieldType", sf.getFieldType());
+            m.put("data", sf.getData());
             m.put("fieldOrder", sf.getFieldOrder());
-            m.put("isStatic",   true);
+            m.put("isStatic", true);
             staticList.add(m);
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("id",          form.getId());
-        response.put("name",        form.getName());
+        response.put("id", form.getId());
+        response.put("name", form.getName());
         response.put("description", form.getDescription());
-        response.put("tableName",   form.getTableName());
-        response.put("status",      form.getStatus());
-        response.put("createdBy",   form.getCreatedBy());
-        response.put("createdAt",   form.getCreatedAt());
-        response.put("updatedAt",   form.getUpdatedAt());
-        response.put("fields",      form.getFields());
+        response.put("tableName", form.getTableName());
+        response.put("status", form.getStatus());
+        response.put("createdBy", form.getCreatedBy());
+        response.put("createdAt", form.getCreatedAt());
+        response.put("updatedAt", form.getUpdatedAt());
+        response.put("allowMultipleSubmissions", form.isAllowMultipleSubmissions());
+        response.put("showTimestamp", form.isShowTimestamp());
+        response.put("expiresAt", form.getExpiresAt());
+        response.put("fields", form.getFields());
         response.put("staticFields", staticList);
 
         return ResponseEntity.ok(response);
@@ -76,12 +79,21 @@ public class FormController {
      * No ownership check: anyone with the link can submit to a published form.
      */
     @GetMapping("/{id}/render")
-    public ResponseEntity<?> render(@PathVariable UUID id) {
+    public ResponseEntity<?> render(@PathVariable UUID id, jakarta.servlet.http.HttpSession session) {
         FormEntity form = formService.getFormById(id);
         if (form.getStatus() == FormEntity.FormStatus.DRAFT) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("error", "This form is not published yet.", "status", "DRAFT"));
         }
+
+        if (!form.isAllowMultipleSubmissions()) {
+            String sessionKey = "submitted_" + id;
+            if (session.getAttribute(sessionKey) != null) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(Map.of("error", "You have already submitted this form.", "status", "CONFLICT"));
+            }
+        }
+
         return ResponseEntity.ok(formRenderService.render(id));
     }
 
@@ -124,10 +136,9 @@ public class FormController {
     public ResponseEntity<Map<String, Object>> publish(@PathVariable UUID id, Authentication auth) {
         formService.publishForm(id, auth.getName());
         return ResponseEntity.ok(Map.of(
-            "id", id.toString(),
-            "status", "PUBLISHED",
-            "message", "Form published successfully"
-        ));
+                "id", id.toString(),
+                "status", "PUBLISHED",
+                "message", "Form published successfully"));
     }
 
     /** Unpublish — only the owner can unpublish their form. */
@@ -135,9 +146,8 @@ public class FormController {
     public ResponseEntity<Map<String, Object>> unpublish(@PathVariable UUID id, Authentication auth) {
         formService.unpublishForm(id, auth.getName());
         return ResponseEntity.ok(Map.of(
-            "id", id.toString(),
-            "status", "DRAFT",
-            "message", "Form unpublished successfully"
-        ));
+                "id", id.toString(),
+                "status", "DRAFT",
+                "message", "Form unpublished successfully"));
     }
 }

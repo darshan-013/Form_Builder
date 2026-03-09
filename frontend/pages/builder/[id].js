@@ -23,6 +23,8 @@ export default function EditBuilderPage() {
     const [fields, setFields] = useState([]);
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [allowMultipleSubmissions, setAllowMultipleSubmissions] = useState(true);
+    const [expiresAt, setExpiresAt] = useState(''); // ISO string or ''
 
     // Load existing form (dynamic fields + static fields merged by fieldOrder)
     useEffect(() => {
@@ -31,6 +33,13 @@ export default function EditBuilderPage() {
             .then((form) => {
                 setFormName(form.name || '');
                 setFormDescription(form.description || '');
+                setAllowMultipleSubmissions(form.allowMultipleSubmissions ?? true);
+                // Load expiry — convert from ISO to datetime-local format (YYYY-MM-DDTHH:mm)
+                if (form.expiresAt) {
+                    setExpiresAt(new Date(form.expiresAt).toISOString().slice(0, 16));
+                } else {
+                    setExpiresAt('');
+                }
 
                 // Dynamic fields
                 const dynFields = (form.fields || []).map((f) => ({
@@ -98,10 +107,13 @@ export default function EditBuilderPage() {
         });
 
         const dto = {
-            name:         formName.trim(),
-            description:  formDescription.trim() || null,
-            fields:       dynamicFields,
-            staticFields: staticFields,
+            name:                    formName.trim(),
+            description:             formDescription.trim() || null,
+            fields:                  dynamicFields,
+            staticFields:            staticFields,
+            allowMultipleSubmissions: allowMultipleSubmissions,
+            showTimestamp:           true, // always recorded — compulsory
+            expiresAt:               expiresAt ? expiresAt : null,
         };
 
         setSaving(true);
@@ -175,6 +187,57 @@ export default function EditBuilderPage() {
 
                 <FieldPalette />
                 <main className="builder-canvas-wrap">
+                    {/* ── Form Settings Panel ─────────────────────── */}
+                    <div className="form-settings-panel">
+                        <div className="form-settings-title">
+                            ⚙️ Form Settings
+                            <span style={{ fontWeight: 400, fontSize: 11, textTransform: 'none', letterSpacing: 0, marginLeft: 6, color: 'var(--text-muted)' }}>(all optional)</span>
+                        </div>
+
+                        {/* Toggle: Limit to one submission */}
+                        <div className="form-settings-toggle" onClick={() => setAllowMultipleSubmissions(v => !v)}>
+                            <div className="form-settings-toggle-info">
+                                <span className="form-settings-toggle-label">🔒 Limit to one submission</span>
+                                <span className="form-settings-toggle-desc">Each person can only submit this form once per session</span>
+                            </div>
+                            <div className={`toggle-switch${!allowMultipleSubmissions ? ' toggle-on' : ''}`} role="switch" aria-checked={!allowMultipleSubmissions}>
+                                <div className="toggle-knob" />
+                            </div>
+                        </div>
+
+                        {/* Expiry date-time picker */}
+                        <div className="form-settings-expiry">
+                            <div className="form-settings-expiry-info">
+                                <span className="form-settings-toggle-label">📅 Form expiry</span>
+                                <span className="form-settings-toggle-desc">
+                                    {expiresAt
+                                        ? `Closes on ${new Date(expiresAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                                        : 'No expiry — form stays open indefinitely'}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <input
+                                    type="datetime-local"
+                                    className="form-input form-settings-date-input"
+                                    value={expiresAt}
+                                    min={new Date().toISOString().slice(0, 16)}
+                                    onChange={e => setExpiresAt(e.target.value)}
+                                    title="Set form expiry date and time"
+                                />
+                                {expiresAt && (
+                                    <button
+                                        className="btn btn-secondary btn-sm"
+                                        onClick={() => setExpiresAt('')}
+                                        title="Clear expiry"
+                                        style={{ whiteSpace: 'nowrap', padding: '6px 10px' }}
+                                    >
+                                        ✕ Clear
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     <Canvas fields={fields} setFields={setFields} />
                 </main>
             </div>
