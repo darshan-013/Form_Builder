@@ -871,3 +871,64 @@
 }
 .btn-export-csv:active { transform: translateY(0); }
 [data-theme="light"] .btn-export-csv { box-shadow: 0 2px 8px rgba(16,185,129,0.25); }
+
+/* Export button group wrapper */
+.export-btn-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── XLSX export button (dark Excel green) ── */
+.btn-export-xlsx {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  background: linear-gradient(135deg, #1D6F42 0%, #217346 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(29,111,66,0.35);
+}
+.btn-export-xlsx:hover {
+  background: linear-gradient(135deg, #155230 0%, #1D6F42 100%);
+  box-shadow: 0 6px 20px rgba(29,111,66,0.45);
+  transform: translateY(-1px);
+}
+.btn-export-xlsx:active { transform: translateY(0); }
+[data-theme="light"] .btn-export-xlsx { box-shadow: 0 2px 8px rgba(29,111,66,0.25); }
+
+/* ── PDF export button (red) ── */
+.btn-export-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  background: linear-gradient(135deg, #B91C1C 0%, #EF4444 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(185,28,28,0.35);
+}
+.btn-export-pdf:hover {
+  background: linear-gradient(135deg, #991B1B 0%, #B91C1C 100%);
+  box-shadow: 0 6px 20px rgba(185,28,28,0.45);
+  transform: translateY(-1px);
+}
+.btn-export-pdf:active { transform: translateY(0); }
+[data-theme="light"] .btn-export-pdf { box-shadow: 0 2px 8px rgba(185,28,28,0.25); }
+
