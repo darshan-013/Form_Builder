@@ -7,7 +7,7 @@ import Canvas from '../../components/Builder/Canvas';
 import { createForm } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 
-const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block']);
+const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
 
 /**
  * New Form Builder Page — /builder/new
@@ -79,9 +79,11 @@ export default function NewBuilderPage() {
         }
     };
 
-    const totalCount = fields.length;
+    const totalCount   = fields.length;
     const dynamicCount = fields.filter(f => !STATIC_TYPES.has(f.fieldType)).length;
-    const staticCount  = fields.filter(f => STATIC_TYPES.has(f.fieldType)).length;
+    const staticCount  = fields.filter(f => STATIC_TYPES.has(f.fieldType) && f.fieldType !== 'page_break').length;
+    const pageBreakCount = fields.filter(f => f.fieldType === 'page_break').length;
+    const pageCount = pageBreakCount + 1; // pages = breaks + 1
 
     return (
         <>
@@ -120,6 +122,7 @@ export default function NewBuilderPage() {
                             <span className="badge badge-text">
                                 {dynamicCount} field{dynamicCount !== 1 ? 's' : ''}
                                 {staticCount > 0 ? ` + ${staticCount} static` : ''}
+                                {pageBreakCount > 0 ? ` · ${pageCount} pages` : ''}
                             </span>
                         )}
 

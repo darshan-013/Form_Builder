@@ -1,5 +1,6 @@
 package com.formbuilder.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 
@@ -39,6 +40,7 @@ public class FormRenderDTO {
         /** UI config for field-type-specific settings (e.g. linear_scale min/max/labels) */
         private String uiConfigJson;
         /** true = static UI element — no input collected, skip validation & submission */
+        @JsonProperty("isStatic")
         private boolean isStatic;
         /** Display content for static elements (section_header, label_text, description_block) */
         private String staticData;

@@ -23,6 +23,7 @@ const STATIC_TYPES = [
     { type: 'section_header',    label: 'Section Header',    icon: 'H₁', iconClass: 'icon-section-header',    desc: 'Bold section title to divide the form' },
     { type: 'label_text',        label: 'Label Text',        icon: '¶',  iconClass: 'icon-label-text',        desc: 'Plain inline label or note' },
     { type: 'description_block', label: 'Description Block', icon: '≡',  iconClass: 'icon-description-block', desc: 'Multi-line descriptive paragraph' },
+    { type: 'page_break',        label: 'Page Break',        icon: '⊸',  iconClass: 'icon-page-break',        desc: 'Split form into multiple steps (wizard mode)' },
 ];
 
 export default function FieldPalette() {

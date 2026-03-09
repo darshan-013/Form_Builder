@@ -3,7 +3,7 @@ import FieldCard from './FieldCard';
 import FieldConfigModal from './FieldConfigModal';
 import StaticFieldModal from './StaticFieldModal';
 
-const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block']);
+const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
 
 /**
  * Canvas — Manages the list of fields on the form.
@@ -38,8 +38,11 @@ export default function Canvas({ fields, setFields }) {
             };
             setFields((prev) => {
                 const updated = [...prev, newField];
-                // Auto-open config modal for the new static field
-                setTimeout(() => setEditStaticField({ ...newField, fieldOrder: updated.length - 1 }), 80);
+                // page_break has no required content — skip modal, add directly.
+                // Other static types auto-open the config modal.
+                if (fieldType !== 'page_break') {
+                    setTimeout(() => setEditStaticField({ ...newField, fieldOrder: updated.length - 1 }), 80);
+                }
                 return updated;
             });
         } else {
