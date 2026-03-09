@@ -932,3 +932,201 @@
 .btn-export-pdf:active { transform: translateY(0); }
 [data-theme="light"] .btn-export-pdf { box-shadow: 0 2px 8px rgba(185,28,28,0.25); }
 
+/* ══════════════════════════════════════════════════
+   Submissions — View Toggle & Grid View
+   ══════════════════════════════════════════════════ */
+
+/* View mode toggle bar */
+.view-toggle-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.view-toggle-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.view-toggle-group {
+  display: flex;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid rgba(139,92,246,0.25);
+}
+
+.view-toggle-btn {
+  padding: 7px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  transition: all 0.18s ease;
+  letter-spacing: 0.01em;
+}
+.view-toggle-btn:hover {
+  background: rgba(139,92,246,0.12);
+  color: var(--text-primary);
+}
+.view-toggle-btn.active {
+  background: linear-gradient(135deg, #7C3AED, #6366F1);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(124,58,237,0.35);
+}
+
+[data-theme="light"] .view-toggle-group { border-color: rgba(139,92,246,0.2); }
+[data-theme="light"] .view-toggle-btn { background: #F9FAFB; color: #374151; }
+[data-theme="light"] .view-toggle-btn:hover { background: #F3F4F6; color: #111827; }
+[data-theme="light"] .view-toggle-btn.active { background: linear-gradient(135deg, #7C3AED, #6366F1); color: #fff; }
+
+/* ── Submissions grid layout ── */
+.submissions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+  padding: 4px 0 32px;
+}
+
+/* ── Submission card ── */
+.sub-grid-card {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255,255,255,0.042);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: var(--radius);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  transition: var(--transition);
+  overflow: hidden;
+  animation: fadeIn 0.3s ease both;
+}
+.sub-grid-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(139,92,246,0.3);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.5), 0 0 0 1px rgba(139,92,246,0.1);
+}
+
+/* Card header strip */
+.sub-grid-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(99,60,200,0.18) 0%, rgba(99,102,241,0.1) 100%);
+  border-bottom: 1px solid rgba(139,92,246,0.15);
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sub-grid-idx {
+  font-size: 12px;
+  font-weight: 800;
+  color: #C4B5FD;
+  background: rgba(139,92,246,0.2);
+  padding: 2px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(139,92,246,0.3);
+  white-space: nowrap;
+}
+
+.sub-grid-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex: 1;
+  text-align: center;
+}
+
+.sub-grid-id {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: monospace;
+  background: rgba(0,0,0,0.2);
+  padding: 2px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+/* Fields list */
+.sub-grid-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  min-height: 60px;
+}
+
+.sub-grid-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.sub-grid-field:last-child { border-bottom: none; }
+
+.sub-grid-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.sub-grid-field-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+/* Card footer — action buttons */
+.sub-grid-card-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  background: rgba(0,0,0,0.12);
+  flex-wrap: wrap;
+}
+
+/* ── Light theme ── */
+[data-theme="light"] .sub-grid-card {
+  background: rgba(255,255,255,0.95);
+  border-color: #E5E7EB;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+  backdrop-filter: none;
+}
+[data-theme="light"] .sub-grid-card:hover {
+  border-color: rgba(139,92,246,0.3);
+  box-shadow: 0 8px 24px rgba(139,92,246,0.1);
+  transform: translateY(-3px);
+}
+[data-theme="light"] .sub-grid-card-header {
+  background: linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(99,102,241,0.05) 100%);
+  border-bottom-color: rgba(139,92,246,0.1);
+}
+[data-theme="light"] .sub-grid-idx {
+  background: rgba(139,92,246,0.1);
+  color: #7C3AED;
+  border-color: rgba(139,92,246,0.2);
+}
+[data-theme="light"] .sub-grid-id { background: #F3F4F6; color: #6B7280; }
+[data-theme="light"] .sub-grid-field { border-bottom-color: #F3F4F6; }
+[data-theme="light"] .sub-grid-field-label { color: #9CA3AF; }
+[data-theme="light"] .sub-grid-field-value { color: #111827; }
+[data-theme="light"] .sub-grid-card-footer { background: #F9FAFB; border-top-color: #F3F4F6; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .submissions-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+}
+@media (max-width: 600px) {
+  .submissions-grid { grid-template-columns: 1fr; gap: 12px; }
+  .view-toggle-bar { flex-wrap: wrap; }
+}
