@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -15,6 +16,18 @@ public class FormRenderDTO {
     private String formName;
     private String formDescription;
     private List<RenderFieldDTO> fields;
+
+    /** If false — only ONE submission per session is allowed. */
+    private boolean allowMultipleSubmissions;
+
+    /** If true — submission timestamp is shown in the submission list. */
+    private boolean showTimestamp;
+
+    /**
+     * Optional expiry date-time (ISO-8601). Null = no expiry.
+     * Frontend uses this to show an "Expired" screen instead of the form.
+     */
+    private LocalDateTime expiresAt;
 
     @Data
     @Builder

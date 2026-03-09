@@ -60,6 +60,23 @@ public class FormEntity {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    /** If false — only ONE submission per user session is allowed. Default true = no restriction. */
+    @Column(name = "allow_multiple_submissions", nullable = false)
+    @Builder.Default
+    private boolean allowMultipleSubmissions = true;
+
+    /** Timestamp is always recorded and shown — compulsory feature. */
+    @Column(name = "show_timestamp", nullable = false)
+    @Builder.Default
+    private boolean showTimestamp = true;
+
+    /**
+     * Optional expiry date-time. If set, submissions are blocked after this point.
+     * Null = no expiry (form stays active indefinitely).
+     */
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
+
     // ── Relationship ────────────────────────────────────────────────────────
     // CascadeType.ALL + orphanRemoval = JPA owns field lifecycle.
     // DynamicTableService owns the DDL lifecycle separately.

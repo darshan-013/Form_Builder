@@ -1003,3 +1003,195 @@
   background: rgba(139,92,246,0.08);
   border-color: rgba(139,92,246,0.2);
 }
+
+/* ══════════════════════════════════════════════════
+   Form Settings Panel
+   ══════════════════════════════════════════════════ */
+
+.form-settings-panel {
+  background: rgba(15,15,35,0.7);
+  border: 1px solid rgba(139,92,246,0.2);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-settings-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #94a3b8);
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Toggle row ────────────────────────────────── */
+.form-settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+  user-select: none;
+}
+
+.form-settings-toggle:hover {
+  background: rgba(139,92,246,0.08);
+  border-color: rgba(139,92,246,0.2);
+}
+
+.form-settings-toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.form-settings-toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.form-settings-toggle-desc {
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  line-height: 1.4;
+}
+
+/* ── Toggle switch knob ────────────────────────── */
+.toggle-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  flex-shrink: 0;
+  transition: background 0.22s, border-color 0.22s;
+  cursor: pointer;
+}
+
+.toggle-switch.toggle-on {
+  background: linear-gradient(135deg, #7C3AED, #4F46E5);
+  border-color: rgba(124,58,237,0.6);
+  box-shadow: 0 0 10px rgba(124,58,237,0.35);
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.22s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+.toggle-switch.toggle-on .toggle-knob {
+  transform: translateX(18px);
+}
+
+/* ── Expiry row ────────────────────────────────── */
+.form-settings-expiry {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+
+.form-settings-expiry-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.form-settings-date-input {
+  max-width: 220px;
+  font-size: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(15,15,35,0.8);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-primary, #f1f5f9);
+  colorscheme: dark;
+}
+
+.form-settings-date-input:focus {
+  outline: none;
+  border-color: rgba(139,92,246,0.5);
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.12);
+}
+
+/* ── Light theme overrides ─────────────────────── */
+[data-theme="light"] .form-settings-panel {
+  background: #fff;
+  border-color: rgba(99,102,241,0.15);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+
+[data-theme="light"] .form-settings-toggle {
+  background: rgba(99,102,241,0.04);
+  border-color: rgba(99,102,241,0.12);
+}
+
+[data-theme="light"] .form-settings-toggle:hover {
+  background: rgba(99,102,241,0.08);
+  border-color: rgba(99,102,241,0.22);
+}
+
+[data-theme="light"] .form-settings-toggle-label {
+  color: #1e293b;
+}
+
+[data-theme="light"] .form-settings-toggle-desc {
+  color: #64748b;
+}
+
+[data-theme="light"] .toggle-switch {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
+[data-theme="light"] .toggle-knob {
+  background: #fff;
+}
+
+[data-theme="light"] .form-settings-expiry {
+  background: rgba(99,102,241,0.04);
+  border-color: rgba(99,102,241,0.12);
+}
+
+[data-theme="light"] .form-settings-date-input {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #1e293b;
+  colorscheme: light;
+}
+
+[data-theme="light"] .form-settings-title {
+  color: #64748b;
+}
+

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -28,6 +28,13 @@ export default function SubmissionsPage() {
     const [loading, setLoading] = useState(true);
     const [selectedSubmission, setSelectedSubmission] = useState(null);
     const [viewMode, setViewMode] = useState('table'); // 'table' | 'grid'
+
+    // Search, Sort, Filter state
+    const [searchQuery, setSearchQuery] = useState('');
+    const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
+    const [dateRange, setDateRange] = useState({ start: '', end: '' });
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 10;
 
     // Edit state
     const [editingSubmission, setEditingSubmission] = useState(null);
@@ -142,7 +149,7 @@ export default function SubmissionsPage() {
         if (field.fieldType === 'multiple_choice') {
             const str = String(v).trim();
             if (str.startsWith('[')) {
-                try { return JSON.parse(str).join(', '); } catch {}
+                try { return JSON.parse(str).join(', '); } catch { }
             }
             return str;
         }
@@ -171,12 +178,13 @@ export default function SubmissionsPage() {
         const dynFields = (form?.fields || []).filter(
             f => !['section_header', 'label_text', 'description_block', 'page_break'].includes(f.fieldType)
         );
-        const headers = ['#', 'Submission ID', ...dynFields.map(f => f.label || f.fieldKey), 'Submitted At'];
+        const showTs = form?.showTimestamp ?? true;
+        const headers = ['#', 'Submission ID', ...dynFields.map(f => f.label || f.fieldKey), ...(showTs ? ['Submitted At'] : [])];
         const rows = submissions.map((sub, i) => [
             i + 1,
             sub.id || '',
             ...dynFields.map(f => formatCellValue(f, sub[f.fieldKey])),
-            sub.created_at ? new Date(sub.created_at).toLocaleString('en-IN') : '',
+            ...(showTs ? [sub.created_at ? new Date(sub.created_at).toLocaleString('en-IN') : ''] : []),
         ]);
         return { headers, rows };
     };
@@ -220,11 +228,11 @@ export default function SubmissionsPage() {
 
             // Info / metadata sheet
             const meta = XLSX.utils.aoa_to_sheet([
-                ['Form Name',         form.name || ''],
-                ['Description',       form.description || '—'],
+                ['Form Name', form.name || ''],
+                ['Description', form.description || '—'],
                 ['Total Submissions', submissions.length],
-                ['Exported At',       new Date().toLocaleString('en-IN')],
-                ['Exported By',       'FormCraft'],
+                ['Exported At', new Date().toLocaleString('en-IN')],
+                ['Exported By', 'FormCraft'],
             ]);
             meta['!cols'] = [{ wch: 22 }, { wch: 55 }];
             XLSX.utils.book_append_sheet(wb, meta, 'Info');
@@ -324,6 +332,70 @@ export default function SubmissionsPage() {
         }
     };
 
+    // ── Filtering & Sorting Logic ──────────────────────────────────────────────
+
+    const filteredAndSortedSubmissions = useMemo(() => {
+        let result = [...submissions];
+
+        // 1. Search filter
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            result = result.filter(sub => {
+                return Object.values(sub).some(val =>
+                    val && String(val).toLowerCase().includes(q)
+                );
+            });
+        }
+
+        // 2. Date range filter
+        if (dateRange.start || dateRange.end) {
+            result = result.filter(sub => {
+                if (!sub.created_at) return false;
+                const subDate = new Date(sub.created_at);
+                if (dateRange.start && subDate < new Date(dateRange.start)) return false;
+                if (dateRange.end) {
+                    const end = new Date(dateRange.end);
+                    end.setHours(23, 59, 59, 999);
+                    if (subDate > end) return false;
+                }
+                return true;
+            });
+        }
+
+        // 3. Sorting
+        if (sortConfig.key) {
+            result.sort((a, b) => {
+                let aVal = a[sortConfig.key];
+                let bVal = b[sortConfig.key];
+
+                if (aVal === null || aVal === undefined) return 1;
+                if (bVal === null || bVal === undefined) return -1;
+
+                if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+                if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+
+                if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        return result;
+    }, [submissions, searchQuery, sortConfig, dateRange]);
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, dateRange, sortConfig]);
+
+    // Handle sort toggle
+    const handleSort = (key) => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
     // Generate columns from form fields
     const columns = () => {
         if (!form || !form.fields) return [];
@@ -365,7 +437,7 @@ export default function SubmissionsPage() {
                     // Multiple choice grid — compact row→col summary
                     if (field.fieldType === 'multiple_choice_grid' && value) {
                         let obj = {};
-                        try { obj = JSON.parse(String(value)); } catch {}
+                        try { obj = JSON.parse(String(value)); } catch { }
                         const entries = Object.entries(obj);
                         if (entries.length === 0) return '—';
                         return (
@@ -383,7 +455,7 @@ export default function SubmissionsPage() {
                     // Checkbox grid — compact multi-select summary
                     if (field.fieldType === 'checkbox_grid' && value) {
                         let obj = {};
-                        try { obj = JSON.parse(String(value)); } catch {}
+                        try { obj = JSON.parse(String(value)); } catch { }
                         const entries = Object.entries(obj).filter(([, v]) => Array.isArray(v) ? v.length > 0 : !!v);
                         if (entries.length === 0) return '—';
                         return (
@@ -446,14 +518,15 @@ export default function SubmissionsPage() {
                     return strValue.length > 50 ? strValue.substring(0, 50) + '...' : strValue;
                 }
             })),
-            {
+            // Only show timestamp column when form has showTimestamp enabled
+            ...(form?.showTimestamp ? [{
                 key: 'created_at',
                 label: 'Submitted At',
                 sortable: true,
                 render: (value) => value ? new Date(value).toLocaleString('en-IN', {
                     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
                 }) : '—'
-            },
+            }] : []),
             {
                 key: 'actions',
                 label: 'Actions',
@@ -542,7 +615,7 @@ export default function SubmissionsPage() {
             const renderField = renderData?.fields?.find(f => f.fieldKey === field.fieldKey);
             let uiCfg = {};
             if (renderField?.uiConfigJson) {
-                try { uiCfg = JSON.parse(renderField.uiConfigJson); } catch {}
+                try { uiCfg = JSON.parse(renderField.uiConfigJson); } catch { }
             }
             const scaleMin = uiCfg.scaleMin ?? 1;
             const scaleMax = uiCfg.scaleMax ?? 5;
@@ -684,10 +757,10 @@ export default function SubmissionsPage() {
             const renderField = renderData?.fields?.find(f => f.fieldKey === field.fieldKey);
             let rows = [], cols = [];
             if (renderField?.gridJson) {
-                try { const g = JSON.parse(renderField.gridJson); rows = g.rows || []; cols = g.columns || []; } catch {}
+                try { const g = JSON.parse(renderField.gridJson); rows = g.rows || []; cols = g.columns || []; } catch { }
             }
             let selected = {};
-            if (val) { try { selected = JSON.parse(val); } catch {} }
+            if (val) { try { selected = JSON.parse(val); } catch { } }
             const handleGridChange = (row, col) => {
                 handleEditChange(field.fieldKey, JSON.stringify({ ...selected, [row]: col }));
             };
@@ -760,10 +833,10 @@ export default function SubmissionsPage() {
             const renderField = renderData?.fields?.find(f => f.fieldKey === field.fieldKey);
             let rows = [], cols = [];
             if (renderField?.gridJson) {
-                try { const g = JSON.parse(renderField.gridJson); rows = g.rows || []; cols = g.columns || []; } catch {}
+                try { const g = JSON.parse(renderField.gridJson); rows = g.rows || []; cols = g.columns || []; } catch { }
             }
             let selected = {};
-            if (val) { try { selected = JSON.parse(val); } catch {} }
+            if (val) { try { selected = JSON.parse(val); } catch { } }
             const handleCbGridChange = (row, col, checked) => {
                 const current = Array.isArray(selected[row]) ? selected[row] : (selected[row] ? [selected[row]] : []);
                 const next = checked ? [...new Set([...current, col])] : current.filter(v => v !== col);
@@ -906,29 +979,74 @@ export default function SubmissionsPage() {
                         </div>
                     )}
 
-                    {/* View mode toggle */}
+                    {/* View mode toggle & Search/Filter Bar */}
                     {!loading && form && submissions.length > 0 && (
-                        <div className="view-toggle-bar">
-                            <span className="view-toggle-label">View:</span>
-                            <div className="view-toggle-group">
-                                <button
-                                    className={`view-toggle-btn${viewMode === 'table' ? ' active' : ''}`}
-                                    onClick={() => setViewMode('table')}
-                                    title="Table view"
-                                >
-                                    ☰ Table
-                                </button>
-                                <button
-                                    className={`view-toggle-btn${viewMode === 'grid' ? ' active' : ''}`}
-                                    onClick={() => setViewMode('grid')}
-                                    title="Grid view"
-                                >
-                                    ⊞ Grid
-                                </button>
+                        <div className="submissions-controls-container">
+                            <div className="view-toggle-bar">
+                                <span className="view-toggle-label">View:</span>
+                                <div className="view-toggle-group">
+                                    <button
+                                        className={`view-toggle-btn${viewMode === 'table' ? ' active' : ''}`}
+                                        onClick={() => setViewMode('table')}
+                                        title="Table view"
+                                    >
+                                        ☰ Table
+                                    </button>
+                                    <button
+                                        className={`view-toggle-btn${viewMode === 'grid' ? ' active' : ''}`}
+                                        onClick={() => setViewMode('grid')}
+                                        title="Grid view"
+                                    >
+                                        ⊞ Grid
+                                    </button>
+                                </div>
+                                <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
+                                    {filteredAndSortedSubmissions.length} of {submissions.length} response{submissions.length !== 1 ? 's' : ''}
+                                </span>
                             </div>
-                            <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 4 }}>
-                                {submissions.length} response{submissions.length !== 1 ? 's' : ''}
-                            </span>
+
+                            <div className="filter-search-bar">
+                                <div className="search-box-wrapper">
+                                    <input
+                                        type="text"
+                                        placeholder="Search responses..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="search-input"
+                                    />
+                                    <span className="search-icon">🔍</span>
+                                </div>
+
+                                <div className="date-filters">
+                                    <div className="date-input-group">
+                                        <label>From:</label>
+                                        <input
+                                            type="date"
+                                            value={dateRange.start}
+                                            onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="date-input-group">
+                                        <label>To:</label>
+                                        <input
+                                            type="date"
+                                            value={dateRange.end}
+                                            onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                                        />
+                                    </div>
+                                    {(dateRange.start || dateRange.end || searchQuery) && (
+                                        <button
+                                            className="btn-clear-filters"
+                                            onClick={() => {
+                                                setSearchQuery('');
+                                                setDateRange({ start: '', end: '' });
+                                            }}
+                                        >
+                                            ✕ Clear
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -936,9 +1054,13 @@ export default function SubmissionsPage() {
                     {!loading && form && viewMode === 'table' && (
                         <div className="submissions-table-container">
                             <DataTable
-                                data={submissions}
+                                data={filteredAndSortedSubmissions}
                                 columns={columns()}
-                                pageSize={10}
+                                pageSize={pageSize}
+                                currentPage={currentPage}
+                                onPageChange={setCurrentPage}
+                                sortConfig={sortConfig}
+                                onSort={handleSort}
                             />
                         </div>
                     )}
@@ -953,70 +1075,97 @@ export default function SubmissionsPage() {
                             </div>
                         ) : (
                             <div className="submissions-grid">
-                                {submissions.map((sub, idx) => (
-                                    <div key={sub.id || idx} className="sub-grid-card">
-                                        {/* Card header */}
-                                        <div className="sub-grid-card-header">
-                                            <span className="sub-grid-idx">#{idx + 1}</span>
-                                            <span className="sub-grid-date">
-                                                {sub.created_at
-                                                    ? new Date(sub.created_at).toLocaleString('en-IN', {
-                                                        day: 'numeric', month: 'short', year: 'numeric',
-                                                        hour: '2-digit', minute: '2-digit'
-                                                    })
-                                                    : '—'}
-                                            </span>
-                                            <span className="sub-grid-id" title={sub.id}>
-                                                {sub.id ? sub.id.substring(0, 8) + '…' : '—'}
-                                            </span>
-                                        </div>
+                                {filteredAndSortedSubmissions
+                                    .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                                    .map((sub, idx) => (
+                                        <div key={sub.id || idx} className="sub-grid-card">
+                                            {/* Card header */}
+                                            <div className="sub-grid-card-header">
+                                                <span className="sub-grid-idx">#{((currentPage - 1) * pageSize) + idx + 1}</span>
+                                                {form?.showTimestamp && (
+                                                    <span className="sub-grid-date">
+                                                        {sub.created_at
+                                                            ? new Date(sub.created_at).toLocaleString('en-IN', {
+                                                                day: 'numeric', month: 'short', year: 'numeric',
+                                                                hour: '2-digit', minute: '2-digit'
+                                                            })
+                                                            : '—'}
+                                                    </span>
+                                                )}
+                                                <span className="sub-grid-id" title={sub.id}>
+                                                    {sub.id ? sub.id.substring(0, 8) + '…' : '—'}
+                                                </span>
+                                            </div>
 
-                                        {/* Field values */}
-                                        <div className="sub-grid-fields">
-                                            {(form?.fields || []).map((field) => {
-                                                const raw = sub[field.fieldKey];
-                                                if (raw === null || raw === undefined || raw === '') return null;
-                                                return (
-                                                    <div key={field.fieldKey} className="sub-grid-field">
-                                                        <span className="sub-grid-field-label">{field.label}</span>
-                                                        <span className="sub-grid-field-value">
-                                                            {formatCellValue(field, raw)}
-                                                        </span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
+                                            {/* Field values */}
+                                            <div className="sub-grid-fields">
+                                                {(form?.fields || []).map((field) => {
+                                                    const raw = sub[field.fieldKey];
+                                                    if (raw === null || raw === undefined || raw === '') return null;
+                                                    return (
+                                                        <div key={field.fieldKey} className="sub-grid-field">
+                                                            <span className="sub-grid-field-label">{field.label}</span>
+                                                            <span className="sub-grid-field-value">
+                                                                {formatCellValue(field, raw)}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
 
-                                        {/* Actions */}
-                                        <div className="sub-grid-card-footer">
-                                            <button
-                                                className="btn btn-secondary btn-sm"
-                                                onClick={() => setSelectedSubmission(sub)}
-                                                title="View details"
-                                            >
-                                                👁 View
-                                            </button>
-                                            <button
-                                                className="btn btn-sm"
-                                                style={{ background: '#3b82f6', color: '#fff', border: 'none' }}
-                                                onClick={() => openEdit(sub)}
-                                                title="Edit submission"
-                                            >
-                                                ✏️ Edit
-                                            </button>
-                                            <button
-                                                className="btn btn-sm"
-                                                style={{ background: '#ef4444', color: '#fff', border: 'none' }}
-                                                onClick={() => setDeletingSubmission(sub)}
-                                                title="Delete submission"
-                                            >
-                                                🗑 Delete
-                                            </button>
+                                            {/* Actions */}
+                                            <div className="sub-grid-card-footer">
+                                                <button
+                                                    className="btn btn-secondary btn-sm"
+                                                    onClick={() => setSelectedSubmission(sub)}
+                                                    title="View details"
+                                                >
+                                                    👁 View
+                                                </button>
+                                                <button
+                                                    className="btn btn-sm"
+                                                    style={{ background: '#3b82f6', color: '#fff', border: 'none' }}
+                                                    onClick={() => openEdit(sub)}
+                                                    title="Edit submission"
+                                                >
+                                                    ✏️ Edit
+                                                </button>
+                                                <button
+                                                    className="btn btn-sm"
+                                                    style={{ background: '#ef4444', color: '#fff', border: 'none' }}
+                                                    onClick={() => setDeletingSubmission(sub)}
+                                                    title="Delete submission"
+                                                >
+                                                    🗑 Delete
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))}
                             </div>
                         )
+                    )}
+
+                    {/* Pagination for Grid view */}
+                    {!loading && viewMode === 'grid' && Math.ceil(filteredAndSortedSubmissions.length / pageSize) > 1 && (
+                        <div className="datatable-pagination" style={{ marginTop: '24px' }}>
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                ‹ Previous
+                            </button>
+                            <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+                                Page {currentPage} of {Math.ceil(filteredAndSortedSubmissions.length / pageSize)}
+                            </span>
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredAndSortedSubmissions.length / pageSize), prev + 1))}
+                                disabled={currentPage === Math.ceil(filteredAndSortedSubmissions.length / pageSize)}
+                            >
+                                Next ›
+                            </button>
+                        </div>
                     )}
 
                     {/* No Form State */}
@@ -1045,12 +1194,14 @@ export default function SubmissionsPage() {
                                 <label className="form-label">Submission ID</label>
                                 <div className="sub-readonly-field sub-mono">{selectedSubmission.id}</div>
                             </div>
-                            <div className="form-group">
-                                <label className="form-label">Submitted At</label>
-                                <div className="sub-readonly-field">
-                                    {selectedSubmission.created_at ? new Date(selectedSubmission.created_at).toLocaleString('en-IN') : '—'}
+                            {form?.showTimestamp && (
+                                <div className="form-group">
+                                    <label className="form-label">Submitted At</label>
+                                    <div className="sub-readonly-field">
+                                        {selectedSubmission.created_at ? new Date(selectedSubmission.created_at).toLocaleString('en-IN') : '—'}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                             <div className="sub-divider" />
                             {form?.fields?.map((field) => (
                                 <div key={field.fieldKey} className="form-group">
@@ -1090,7 +1241,7 @@ export default function SubmissionsPage() {
                                             // Multiple choice grid — show row→col table
                                             if (field.fieldType === 'multiple_choice_grid') {
                                                 let obj = {};
-                                                try { obj = JSON.parse(String(value)); } catch {}
+                                                try { obj = JSON.parse(String(value)); } catch { }
                                                 const entries = Object.entries(obj);
                                                 if (entries.length === 0) return <span className="sub-empty">No value provided</span>;
                                                 return (
@@ -1116,7 +1267,7 @@ export default function SubmissionsPage() {
                                             // Checkbox grid — show row→[cols] table
                                             if (field.fieldType === 'checkbox_grid') {
                                                 let obj = {};
-                                                try { obj = JSON.parse(String(value)); } catch {}
+                                                try { obj = JSON.parse(String(value)); } catch { }
                                                 const entries = Object.entries(obj).filter(([, v]) => Array.isArray(v) ? v.length > 0 : !!v);
                                                 if (entries.length === 0) return <span className="sub-empty">No value provided</span>;
                                                 return (
@@ -1238,7 +1389,7 @@ export default function SubmissionsPage() {
                                 Cancel
                             </button>
                             <button className="btn btn-primary" onClick={handleEditSubmit} disabled={editLoading}>
-                                {editLoading ? <><span className="spinner" style={{width:16,height:16}} /> Saving…</> : '💾 Save Changes'}
+                                {editLoading ? <><span className="spinner" style={{ width: 16, height: 16 }} /> Saving…</> : '💾 Save Changes'}
                             </button>
                         </div>
                     </div>
@@ -1266,7 +1417,7 @@ export default function SubmissionsPage() {
                                 Cancel
                             </button>
                             <button className="btn btn-danger" onClick={handleDeleteConfirm} disabled={deleteLoading}>
-                                {deleteLoading ? <><span className="spinner" style={{width:16,height:16}} /> Deleting…</> : '🗑 Delete'}
+                                {deleteLoading ? <><span className="spinner" style={{ width: 16, height: 16 }} /> Deleting…</> : '🗑 Delete'}
                             </button>
                         </div>
                     </div>

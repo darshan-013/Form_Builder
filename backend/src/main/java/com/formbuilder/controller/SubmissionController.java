@@ -12,10 +12,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
 
+import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Slf4j
@@ -29,28 +31,39 @@ public class SubmissionController {
 
     private static final String UPLOAD_DIR = "uploads";
 
-    /** Check form is PUBLISHED before allowing submission */
-    private ResponseEntity<?> checkPublished(UUID id) {
+    /** Check form is PUBLISHED, not expired, and enforce single-submission if configured */
+    private ResponseEntity<?> checkPublishedAndSession(UUID id, HttpSession session) {
         FormEntity form = formService.getFormById(id);
         if (form.getStatus() != FormEntity.FormStatus.PUBLISHED) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("error", "This form is not accepting submissions. It is currently in DRAFT mode."));
+        }
+        // Expiry check
+        if (form.getExpiresAt() != null && LocalDateTime.now().isAfter(form.getExpiresAt())) {
+            return ResponseEntity.status(HttpStatus.GONE)
+                    .body(Map.of("error", "This form has expired and is no longer accepting submissions."));
+        }
+        if (!form.isAllowMultipleSubmissions()) {
+            String sessionKey = "submitted_" + id;
+            if (session.getAttribute(sessionKey) != null) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(Map.of("error", "You have already submitted this form. Only one submission is allowed."));
+            }
+            session.setAttribute(sessionKey, Boolean.TRUE);
         }
         return null;
     }
 
     /**
      * POST /api/forms/{id}/submit — JSON body
-     * Accepts flat { "fieldKey": value } or wrapped { "data": { "fieldKey": value } }.
-     * Spring @RequestBody handles body parsing — no manual stream reading.
-     * ValidationException thrown by validate() propagates to GlobalExceptionHandler → 400.
      */
     @PostMapping(value = "/{id}/submit", consumes = {"application/json", "application/json;charset=UTF-8"})
     public ResponseEntity<?> submitJson(
             @PathVariable UUID id,
-            @RequestBody(required = false) Map<String, Object> rawBody) {
+            @RequestBody(required = false) Map<String, Object> rawBody,
+            HttpSession session) {
 
-        ResponseEntity<?> guard = checkPublished(id);
+        ResponseEntity<?> guard = checkPublishedAndSession(id, session);
         if (guard != null) return guard;
 
         Map<String, Object> data = new HashMap<>();
@@ -79,9 +92,10 @@ public class SubmissionController {
     @PostMapping(value = "/{id}/submit", consumes = "multipart/form-data")
     public ResponseEntity<?> submitMultipart(
             @PathVariable UUID id,
-            MultipartHttpServletRequest multipart) {
+            MultipartHttpServletRequest multipart,
+            HttpSession session) {
 
-        ResponseEntity<?> guard = checkPublished(id);
+        ResponseEntity<?> guard = checkPublishedAndSession(id, session);
         if (guard != null) return guard;
 
         Map<String, Object> data  = new HashMap<>();
