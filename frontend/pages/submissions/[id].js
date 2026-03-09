@@ -159,39 +159,169 @@ export default function SubmissionsPage() {
         return String(v);
     };
 
-    /** Export submissions to CSV */
+    // ── Export helpers ─────────────────────────────────────────────────────────
+
+    /** Safe file name with date stamp */
+    const safeFileName = (ext) =>
+        `${(form?.name || 'submissions').replace(/[^a-z0-9]/gi, '_')}_submissions_${new Date().toISOString().slice(0, 10)}${ext}`;
+
+    /** Build flat headers + rows array shared by all export formats */
+    const buildExportRows = () => {
+        const dynFields = (form?.fields || []).filter(
+            f => !['section_header', 'label_text', 'description_block', 'page_break'].includes(f.fieldType)
+        );
+        const headers = ['#', 'Submission ID', ...dynFields.map(f => f.label || f.fieldKey), 'Submitted At'];
+        const rows = submissions.map((sub, i) => [
+            i + 1,
+            sub.id || '',
+            ...dynFields.map(f => formatCellValue(f, sub[f.fieldKey])),
+            sub.created_at ? new Date(sub.created_at).toLocaleString('en-IN') : '',
+        ]);
+        return { headers, rows };
+    };
+
+    /** Export CSV */
     const exportCSV = () => {
         if (!form?.fields || submissions.length === 0) return;
-        const dynamicFields = form.fields;
-
-        // Header row
-        const headers = ['#', 'Submission ID', ...dynamicFields.map(f => f.label), 'Submitted At'];
-
-        // Data rows
-        const rows = submissions.map((sub, i) => {
-            const cells = [
-                i + 1,
-                sub.id || '',
-                ...dynamicFields.map(f => formatCellValue(f, sub[f.fieldKey])),
-                sub.created_at ? new Date(sub.created_at).toLocaleString('en-IN') : '',
-            ];
-            // Escape each cell: wrap in quotes, double any internal quotes
-            return cells.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',');
-        });
-
-        const csvContent = [headers.map(h => `"${h}"`).join(','), ...rows].join('\r\n');
-        const BOM = '\uFEFF'; // UTF-8 BOM for Excel compatibility
-        const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const { headers, rows } = buildExportRows();
+        const csv = [
+            headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(','),
+            ...rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')),
+        ].join('\r\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${(form.name || 'submissions').replace(/[^a-z0-9]/gi, '_')}_submissions_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = safeFileName('.csv');
         a.click();
         URL.revokeObjectURL(url);
-        toastSuccess('CSV exported successfully! 📊');
+        toastSuccess('CSV exported! 📊');
     };
 
+    /** Export XLSX (Excel) */
+    const exportXLSX = async () => {
+        if (!form?.fields || submissions.length === 0) return;
+        try {
+            const XLSX = await import('xlsx');
+            const { headers, rows } = buildExportRows();
 
+            // Submissions sheet
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            // Auto column widths
+            ws['!cols'] = headers.map((h, ci) => ({
+                wch: Math.min(60, Math.max(12,
+                    Math.max(String(h).length, ...rows.map(r => String(r[ci] ?? '').length)) + 2
+                ))
+            }));
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Submissions');
+
+            // Info / metadata sheet
+            const meta = XLSX.utils.aoa_to_sheet([
+                ['Form Name',         form.name || ''],
+                ['Description',       form.description || '—'],
+                ['Total Submissions', submissions.length],
+                ['Exported At',       new Date().toLocaleString('en-IN')],
+                ['Exported By',       'FormCraft'],
+            ]);
+            meta['!cols'] = [{ wch: 22 }, { wch: 55 }];
+            XLSX.utils.book_append_sheet(wb, meta, 'Info');
+
+            XLSX.writeFile(wb, safeFileName('.xlsx'));
+            toastSuccess('Excel file exported! 📗');
+        } catch (err) {
+            console.error('XLSX export error:', err);
+            toastError('XLSX export failed. Please run: npm install xlsx');
+        }
+    };
+
+    /** Export PDF */
+    const exportPDF = async () => {
+        if (!form?.fields || submissions.length === 0) return;
+        try {
+            const { jsPDF } = await import('jspdf');
+            const autoTable = (await import('jspdf-autotable')).default;
+            const { headers, rows } = buildExportRows();
+
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+            const pageW = doc.internal.pageSize.getWidth();
+            const pageH = doc.internal.pageSize.getHeight();
+
+            // ── Purple header bar ──────────────────────────────────────────
+            doc.setFillColor(99, 60, 200);
+            doc.rect(0, 0, pageW, 58, 'F');
+
+            // Title
+            doc.setFontSize(20);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.text(form.name || 'Form Submissions', 36, 36);
+
+            // Subtitle
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(210, 200, 240);
+            doc.text(
+                `${submissions.length} response${submissions.length !== 1 ? 's' : ''}  ·  Exported ${new Date().toLocaleString('en-IN')}`,
+                36, 50
+            );
+
+            let startY = 74;
+            if (form.description) {
+                doc.setFontSize(9);
+                doc.setTextColor(80, 60, 120);
+                doc.text(form.description, 36, startY);
+                startY += 18;
+            }
+
+            // ── Data table ────────────────────────────────────────────────
+            autoTable(doc, {
+                head: [headers],
+                body: rows.map(r => r.map(c => String(c ?? ''))),
+                startY,
+                margin: { left: 36, right: 36 },
+                tableWidth: 'auto',
+                styles: {
+                    fontSize: 8,
+                    cellPadding: 5,
+                    overflow: 'linebreak',
+                    textColor: [30, 20, 50],
+                    lineColor: [210, 200, 240],
+                    lineWidth: 0.3,
+                },
+                headStyles: {
+                    fillColor: [99, 60, 200],
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold',
+                    fontSize: 8.5,
+                    cellPadding: { top: 7, bottom: 7, left: 5, right: 5 },
+                },
+                alternateRowStyles: { fillColor: [248, 245, 255] },
+                rowPageBreak: 'auto',
+                showHead: 'everyPage',
+                didDrawPage: (d) => {
+                    const totalPages = doc.internal.getNumberOfPages();
+                    doc.setFontSize(7.5);
+                    doc.setTextColor(160, 140, 190);
+                    doc.setFont(undefined, 'normal');
+                    doc.text('FormCraft — Submission Export', 36, pageH - 14);
+                    doc.text(
+                        `Page ${d.pageNumber} of ${totalPages}`,
+                        pageW / 2, pageH - 14,
+                        { align: 'center' }
+                    );
+                    doc.text(form.name || '', pageW - 36, pageH - 14, { align: 'right' });
+                },
+            });
+
+            doc.save(safeFileName('.pdf'));
+            toastSuccess('PDF exported! 📄');
+        } catch (err) {
+            console.error('PDF export error:', err);
+            toastError('PDF export failed. Please run: npm install jspdf jspdf-autotable');
+        }
+    };
 
     // Generate columns from form fields
     const columns = () => {
@@ -718,15 +848,31 @@ export default function SubmissionsPage() {
                             <Link href={`/preview/${id}`} className="btn btn-secondary">
                                 👁 Preview Form
                             </Link>
-                            {/* Export CSV — only shown when there are submissions */}
+                            {/* Export buttons — only shown when there are submissions */}
                             {submissions.length > 0 && (
-                                <button
-                                    className="btn btn-export-csv"
-                                    onClick={exportCSV}
-                                    title="Download all submissions as CSV (Excel compatible)"
-                                >
-                                    📊 Export CSV
-                                </button>
+                                <div className="export-btn-group">
+                                    <button
+                                        className="btn btn-export-csv"
+                                        onClick={exportCSV}
+                                        title="Download as CSV (Excel compatible)"
+                                    >
+                                        📊 CSV
+                                    </button>
+                                    <button
+                                        className="btn btn-export-xlsx"
+                                        onClick={exportXLSX}
+                                        title="Download as Excel (.xlsx)"
+                                    >
+                                        📗 XLSX
+                                    </button>
+                                    <button
+                                        className="btn btn-export-pdf"
+                                        onClick={exportPDF}
+                                        title="Download as PDF"
+                                    >
+                                        📄 PDF
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
