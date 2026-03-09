@@ -23,6 +23,7 @@ const TYPE_META = {
     section_header:       { label: 'Section Header',    cls: 'badge-static badge-section-header' },
     label_text:           { label: 'Label Text',        cls: 'badge-static badge-label-text' },
     description_block:    { label: 'Description Block', cls: 'badge-static badge-description-block' },
+    page_break:           { label: 'Page Break',        cls: 'badge-static badge-page-break' },
 };
 
 export default function FieldCard({
@@ -32,14 +33,41 @@ export default function FieldCard({
 }) {
     const meta = TYPE_META[field.fieldType] || { label: field.fieldType, cls: 'badge-text' };
     const isStatic = !!field.isStatic;
+    const isPageBreak = field.fieldType === 'page_break';
 
     const cardClass = [
         'field-card',
+        isPageBreak ? 'field-card-page-break' : '',
         isStatic ? 'field-card-static' : '',
         isDragging ? 'dragging' : '',
         dropPosition === 'top' ? 'drag-over-top' : '',
         dropPosition === 'bottom' ? 'drag-over-bottom' : '',
     ].filter(Boolean).join(' ');
+
+    if (isPageBreak) {
+        return (
+            <div
+                id={`field-card-${field.id}`}
+                className={cardClass}
+                draggable
+                onDragStart={(e) => onDragStart(e, index)}
+                onDragOver={(e) => onDragOver(e, index)}
+                onDrop={(e) => onDrop(e, index)}
+                onDragEnd={onDragEnd}
+            >
+                <span className="field-card-drag-handle" title="Drag to reorder">⠿</span>
+                <div className="page-break-card-content">
+                    <div className="page-break-card-line" />
+                    <span className="page-break-card-badge">⊸ Page Break{field.data ? `: ${field.data}` : ''}</span>
+                    <div className="page-break-card-line" />
+                </div>
+                <div className="field-card-actions">
+                    <button className="field-action-btn edit" onClick={() => onEdit(field)} title="Configure">✎</button>
+                    <button className="field-action-btn remove" onClick={() => onRemove(field.id)} title="Remove">✕</button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div

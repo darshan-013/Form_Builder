@@ -7,7 +7,7 @@ import Canvas from '../../components/Builder/Canvas';
 import { getForm, updateForm } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 
-const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block']);
+const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
 
 /**
  * Edit Form Builder Page — /builder/[id]
@@ -124,8 +124,10 @@ export default function EditBuilderPage() {
         );
     }
 
-    const dynamicCount = fields.filter(f => !STATIC_TYPES.has(f.fieldType)).length;
-    const staticCount  = fields.filter(f => STATIC_TYPES.has(f.fieldType)).length;
+    const dynamicCount   = fields.filter(f => !STATIC_TYPES.has(f.fieldType)).length;
+    const staticCount    = fields.filter(f => STATIC_TYPES.has(f.fieldType) && f.fieldType !== 'page_break').length;
+    const pageBreakCount = fields.filter(f => f.fieldType === 'page_break').length;
+    const pageCount      = pageBreakCount + 1;
 
     return (
         <>
@@ -154,6 +156,7 @@ export default function EditBuilderPage() {
                             <span className="badge badge-text">
                                 {dynamicCount} field{dynamicCount !== 1 ? 's' : ''}
                                 {staticCount > 0 ? ` + ${staticCount} static` : ''}
+                                {pageBreakCount > 0 ? ` · ${pageCount} pages` : ''}
                             </span>
                         )}
                         <Link href={`/preview/${id}`} className="btn btn-secondary btn-sm">👁 Preview</Link>

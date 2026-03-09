@@ -18,20 +18,20 @@ import RuleEngine, { setDefaultValues } from '../services/RuleEngine';
  *
  * Priority: ascending fieldOrder. Higher order = evaluated later = wins conflicts.
  */
-const STATIC_FIELD_TYPES = new Set(['section_header', 'label_text', 'description_block']);
+const STATIC_FIELD_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
 
 export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   const rawFields = form?.fields || [];
 
-  // Static elements — display only, never validated or submitted
+  // Static elements — identified purely by fieldType (isStatic from backend was mis-serialized as "static")
   const staticFields = useMemo(
-    () => rawFields.filter(f => STATIC_FIELD_TYPES.has(f.fieldType) || f.isStatic),
+    () => rawFields.filter(f => STATIC_FIELD_TYPES.has(f.fieldType)),
     [rawFields]
   );
 
-  // Dynamic fields only — used for rule engine, validation, submission
+  // Dynamic fields only — everything that is NOT a known static type
   const dynamicRawFields = useMemo(
-    () => rawFields.filter(f => !STATIC_FIELD_TYPES.has(f.fieldType) && !f.isStatic),
+    () => rawFields.filter(f => !STATIC_FIELD_TYPES.has(f.fieldType)),
     [rawFields]
   );
 
@@ -62,6 +62,51 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   const [submitting,  setSubmitting]  = useState(false);
   const [submitted,   setSubmitted]   = useState(false);
 
+  // ── Wizard (multi-step) state ──────────────────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(0);
+
+  /**
+   * Split all renderable items (dynamic + static) sorted by fieldOrder into pages.
+   * A page_break static element acts as the divider — it is consumed and NOT rendered.
+   * pages = [ { items: [...], title: string|null }, ... ]
+   *
+   * Detection: item.fieldType === 'page_break' (works for both render-endpoint
+   * responses where isStatic=true AND builder-preview where field comes through staticFields).
+   */
+  const pages = useMemo(() => {
+    // Merge dynamic fields + ALL static fields (including page_break), sort by fieldOrder
+    const allItems = [
+      ...fields.map(f => ({ ...f, _renderType: 'dynamic' })),
+      ...staticFields.map(f => ({ ...f, _renderType: 'static' })),
+    ].sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
+
+    const result = [];
+    let currentPageItems = [];
+    let currentPageTitle = null;
+
+    for (const item of allItems) {
+      // Detect page break by fieldType (primary) — works regardless of isStatic flag
+      if (item.fieldType === 'page_break') {
+        // Push everything collected so far as a completed page
+        result.push({ items: currentPageItems, title: currentPageTitle });
+        currentPageItems = [];
+        // The page_break's data/staticData becomes the NEXT page's title
+        currentPageTitle = item.staticData || item.data || item.label || null;
+      } else {
+        currentPageItems.push(item);
+      }
+    }
+    // Always push the final (or only) page
+    result.push({ items: currentPageItems, title: currentPageTitle });
+
+    return result;
+  }, [fields, staticFields]);
+
+  const totalPages = pages.length;
+  const isMultiStep = totalPages > 1;
+  const isFirstPage = currentPage === 0;
+  const isLastPage  = currentPage === totalPages - 1;
+
   // File objects stored in ref (avoids stale-closure issues in async handlers)
   const filesRef = useRef({});
 
@@ -79,6 +124,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     setErrors({});
     setTouched({});
     setFieldStates(RuleEngine.applyRules(fields, initial));
+    setCurrentPage(0); // reset wizard to first page
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fields]);
 
@@ -143,10 +189,54 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     setErrors((prev) => ({ ...prev, [field.fieldKey]: errs }));
   }
 
+  // ── Wizard Next — validate current page's visible dynamic fields then advance ─
+  const handleNext = async () => {
+    if (isPreview) { setCurrentPage(p => Math.min(p + 1, totalPages - 1)); return; }
+
+    // Mark only current page's dynamic fields as touched
+    const currentDynamic = (pages[currentPage]?.items || []).filter(f => f._renderType === 'dynamic');
+    const pageTouched = Object.fromEntries(currentDynamic.map(f => [f.fieldKey, true]));
+    setTouched(prev => ({ ...prev, ...pageTouched }));
+
+    // Validate only visible fields on current page
+    const visiblePageFields = currentDynamic
+      .filter(f => fieldStates[f.fieldKey]?.visible !== false)
+      .map(f => ({ ...f, required: fieldStates[f.fieldKey]?.required ?? f.required }));
+
+    const pageErrors = await ValidationEngine.validateForm(visiblePageFields, valuesRef.current, filesRef.current);
+    setErrors(prev => ({ ...prev, ...pageErrors }));
+
+    if (Object.keys(pageErrors).length > 0) {
+      const firstKey = Object.keys(pageErrors)[0];
+      const el = document.getElementById(`field-${firstKey}`);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+      return;
+    }
+
+    // Advance to next page and scroll to top of form
+    setCurrentPage(p => Math.min(p + 1, totalPages - 1));
+    setServerError('');
+    const card = document.querySelector('.form-renderer-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleBack = () => {
+    setCurrentPage(p => Math.max(p - 1, 0));
+    setServerError('');
+    const card = document.querySelector('.form-renderer-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   // ── onSubmit — full async validation, block if any errors ─────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isPreview) return;
+
+    // Guard: never submit if there are more pages ahead (wizard safety net)
+    if (isMultiStep && !isLastPage) {
+      handleNext();
+      return;
+    }
 
     // Mark all fields as touched so all errors become visible
     const allTouched = Object.fromEntries(fields.map((f) => [f.fieldKey, true]));
@@ -306,18 +396,37 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
         </div>
       )}
 
+      {/* ── Wizard Progress Bar (only when multi-step) ────────────────────── */}
+      {isMultiStep && (
+        <div className="wizard-progress-bar">
+          <div className="wizard-steps-track">
+            {pages.map((page, idx) => (
+              <div key={idx} className="wizard-step-wrapper">
+                <div className={`wizard-step-dot ${idx < currentPage ? 'completed' : ''} ${idx === currentPage ? 'active' : ''}`}>
+                  {idx < currentPage ? <span>✓</span> : <span>{idx + 1}</span>}
+                </div>
+                {idx < totalPages - 1 && (
+                  <div className={`wizard-step-connector ${idx < currentPage ? 'completed' : ''}`} />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="wizard-page-label">
+            {pages[currentPage]?.title
+              ? <span className="wizard-page-title">Step {currentPage + 1}: {pages[currentPage].title}</span>
+              : <span>Page {currentPage + 1} of {totalPages}</span>
+            }
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} noValidate>
         {fields.length === 0 && staticFields.length === 0 ? (
           <div className="form-empty-state">This form has no fields yet.</div>
         ) : (
           <div className="form-renderer-body">
-            {/* Merge dynamic + static fields, sort by fieldOrder, render each */}
-            {[
-              ...fields.map(f => ({ ...f, _renderType: 'dynamic' })),
-              ...staticFields.map(f => ({ ...f, _renderType: 'static' })),
-            ]
-              .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0))
-              .map((field) => {
+            {/* Render only current page items */}
+            {(pages[currentPage]?.items || []).map((field) => {
                 // ── Static elements — display only ───────────────────────
                 if (field._renderType === 'static') {
                   return (
@@ -363,12 +472,47 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
           </div>
         )}
 
-        <div className="form-renderer-footer">
+        {/* Hidden submit trigger — only used on last page */}
+        <button type="submit" id="__form-submit-hidden__" style={{ display: 'none' }} aria-hidden="true" />
+      </form>
+
+      {/* ── Footer: Back / Next / Submit — OUTSIDE <form> to prevent accidental submission ── */}
+      <div className={`form-renderer-footer${isMultiStep ? ' wizard-footer' : ''}`}>
+        {isMultiStep && !isFirstPage && (
           <button
-            type="submit"
+            type="button"
+            className="btn btn-secondary wizard-back-btn"
+            onClick={handleBack}
+            disabled={submitting}
+          >
+            ← Back
+          </button>
+        )}
+
+        {isMultiStep && !isLastPage ? (
+          /* Next button — validates current page then advances */
+          <button
+            type="button"
+            id="wizard-next-btn"
+            className="form-submit-btn"
+            onClick={handleNext}
+            disabled={submitting || isPreview}
+            style={{ marginLeft: 'auto' }}
+          >
+            Next →
+          </button>
+        ) : (
+          /* Submit button — triggers the hidden submit inside <form> */
+          <button
+            type="button"
             id="form-submit-btn"
             className="form-submit-btn"
             disabled={submitting || isPreview || fields.length === 0}
+            style={isMultiStep ? { marginLeft: 'auto' } : undefined}
+            onClick={() => {
+              const hidden = document.getElementById('__form-submit-hidden__');
+              if (hidden) hidden.click();
+            }}
           >
             {submitting ? (
               <><span className="spinner" style={{ borderTopColor: '#fff', width: 18, height: 18 }} /> Submitting…</>
@@ -378,8 +522,8 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
               'Submit Form →'
             )}
           </button>
-        </div>
-      </form>
+        )}
+      </div>
     </div>
   );
 }

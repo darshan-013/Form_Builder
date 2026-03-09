@@ -907,7 +907,99 @@
   border-color: rgba(99,102,241,0.2);
   background: rgba(99,102,241,0.04);
 }
-[data-theme="light"] .palette-field-static:hover {
-  border-color: rgba(99,102,241,0.5);
-  background: rgba(99,102,241,0.1);
+
+/* ══════════════════════════════════════════════════
+   PAGE BREAK field card styles
+   ══════════════════════════════════════════════════ */
+
+.field-card-page-break {
+  border-style: dashed !important;
+  border-color: rgba(139,92,246,0.35) !important;
+  background: rgba(139,92,246,0.04) !important;
+  padding: 10px 14px !important;
+}
+
+.field-card-page-break:hover {
+  border-color: rgba(139,92,246,0.6) !important;
+  background: rgba(139,92,246,0.08) !important;
+}
+
+.page-break-card-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.page-break-card-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(139,92,246,0.5), rgba(139,92,246,0.15));
+  border-radius: 1px;
+}
+
+.page-break-card-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #A78BFA;
+  white-space: nowrap;
+  padding: 3px 10px;
+  background: rgba(139,92,246,0.12);
+  border: 1px solid rgba(139,92,246,0.3);
+  border-radius: 999px;
+}
+
+/* badge in TYPE_META */
+.badge-page-break {
+  background: rgba(139,92,246,0.12);
+  border: 1px solid rgba(139,92,246,0.3);
+  color: #A78BFA;
+}
+
+/* StaticFieldModal — page break preview inside modal */
+.page-break-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.page-break-line {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(139,92,246,0.5), rgba(139,92,246,0.1));
+  border-radius: 2px;
+}
+
+.page-break-label-badge {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #A78BFA;
+  padding: 4px 14px;
+  background: rgba(139,92,246,0.1);
+  border: 1px solid rgba(139,92,246,0.3);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Light theme overrides */
+[data-theme="light"] .field-card-page-break {
+  border-color: rgba(139,92,246,0.3) !important;
+  background: rgba(139,92,246,0.03) !important;
+}
+[data-theme="light"] .page-break-card-badge,
+[data-theme="light"] .page-break-label-badge {
+  color: #6D28D9;
+  background: rgba(139,92,246,0.08);
+  border-color: rgba(139,92,246,0.2);
+}
+[data-theme="light"] .badge-page-break {
+  color: #6D28D9;
+  background: rgba(139,92,246,0.08);
+  border-color: rgba(139,92,246,0.2);
 }

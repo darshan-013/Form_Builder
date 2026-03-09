@@ -1142,3 +1142,132 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 [data-theme="light"] .static-description-block-content {
   color: #4B5563;
 }
+
+/* ══════════════════════════════════════════════════
+   WIZARD / MULTI-STEP STYLES
+   ══════════════════════════════════════════════════ */
+
+/* ── Wizard Progress Bar ─────────────────────────── */
+.wizard-progress-bar {
+  padding: 20px 36px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.wizard-steps-track {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  max-width: 480px;
+}
+
+.wizard-step-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.wizard-step-wrapper:last-child {
+  flex: 0;
+}
+
+.wizard-step-dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  border: 2px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: var(--text-muted);
+  transition: all 0.35s cubic-bezier(0.34,1.2,0.64,1);
+}
+
+.wizard-step-dot.active {
+  border-color: var(--accent);
+  background: rgba(139,92,246,0.2);
+  color: #C4B5FD;
+  box-shadow: 0 0 0 4px rgba(139,92,246,0.18), 0 0 20px rgba(139,92,246,0.25);
+  transform: scale(1.12);
+}
+
+.wizard-step-dot.completed {
+  border-color: #34D399;
+  background: rgba(52,211,153,0.15);
+  color: #34D399;
+  box-shadow: 0 0 12px rgba(52,211,153,0.2);
+}
+
+.wizard-step-connector {
+  flex: 1;
+  height: 2px;
+  background: rgba(255,255,255,0.1);
+  margin: 0 6px;
+  border-radius: 2px;
+  transition: background 0.4s ease;
+}
+
+.wizard-step-connector.completed {
+  background: linear-gradient(90deg, #34D399, rgba(52,211,153,0.4));
+}
+
+.wizard-page-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.wizard-page-title {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ── Wizard Footer ───────────────────────────────── */
+.form-renderer-footer.wizard-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wizard-back-btn {
+  padding: 12px 24px !important;
+  font-size: 14px !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+/* ── Light theme wizard ──────────────────────────── */
+[data-theme="light"] .wizard-step-dot {
+  border-color: rgba(0,0,0,0.15);
+  background: rgba(0,0,0,0.04);
+  color: #9CA3AF;
+}
+[data-theme="light"] .wizard-step-dot.active {
+  border-color: var(--accent);
+  background: rgba(139,92,246,0.1);
+  color: #7C3AED;
+}
+[data-theme="light"] .wizard-step-dot.completed {
+  border-color: #059669;
+  background: rgba(5,150,105,0.1);
+  color: #059669;
+}
+[data-theme="light"] .wizard-step-connector {
+  background: rgba(0,0,0,0.12);
+}
+[data-theme="light"] .wizard-step-connector.completed {
+  background: linear-gradient(90deg, #059669, rgba(5,150,105,0.4));
+}
+[data-theme="light"] .wizard-page-label {
+  color: #6B7280;
+}
+[data-theme="light"] .wizard-page-title {
+  color: #374151;
+}
