@@ -27,6 +27,7 @@ export default function SubmissionsPage() {
     const [submissions, setSubmissions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedSubmission, setSelectedSubmission] = useState(null);
+    const [viewMode, setViewMode] = useState('table'); // 'table' | 'grid'
 
     // Edit state
     const [editingSubmission, setEditingSubmission] = useState(null);
@@ -905,8 +906,34 @@ export default function SubmissionsPage() {
                         </div>
                     )}
 
-                    {/* Data Table */}
-                    {!loading && form && (
+                    {/* View mode toggle */}
+                    {!loading && form && submissions.length > 0 && (
+                        <div className="view-toggle-bar">
+                            <span className="view-toggle-label">View:</span>
+                            <div className="view-toggle-group">
+                                <button
+                                    className={`view-toggle-btn${viewMode === 'table' ? ' active' : ''}`}
+                                    onClick={() => setViewMode('table')}
+                                    title="Table view"
+                                >
+                                    ☰ Table
+                                </button>
+                                <button
+                                    className={`view-toggle-btn${viewMode === 'grid' ? ' active' : ''}`}
+                                    onClick={() => setViewMode('grid')}
+                                    title="Grid view"
+                                >
+                                    ⊞ Grid
+                                </button>
+                            </div>
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 4 }}>
+                                {submissions.length} response{submissions.length !== 1 ? 's' : ''}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Table View */}
+                    {!loading && form && viewMode === 'table' && (
                         <div className="submissions-table-container">
                             <DataTable
                                 data={submissions}
@@ -914,6 +941,82 @@ export default function SubmissionsPage() {
                                 pageSize={10}
                             />
                         </div>
+                    )}
+
+                    {/* Grid View */}
+                    {!loading && form && viewMode === 'grid' && (
+                        submissions.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state-icon">📭</div>
+                                <h3>No submissions yet</h3>
+                                <p>Share the form link to collect responses</p>
+                            </div>
+                        ) : (
+                            <div className="submissions-grid">
+                                {submissions.map((sub, idx) => (
+                                    <div key={sub.id || idx} className="sub-grid-card">
+                                        {/* Card header */}
+                                        <div className="sub-grid-card-header">
+                                            <span className="sub-grid-idx">#{idx + 1}</span>
+                                            <span className="sub-grid-date">
+                                                {sub.created_at
+                                                    ? new Date(sub.created_at).toLocaleString('en-IN', {
+                                                        day: 'numeric', month: 'short', year: 'numeric',
+                                                        hour: '2-digit', minute: '2-digit'
+                                                    })
+                                                    : '—'}
+                                            </span>
+                                            <span className="sub-grid-id" title={sub.id}>
+                                                {sub.id ? sub.id.substring(0, 8) + '…' : '—'}
+                                            </span>
+                                        </div>
+
+                                        {/* Field values */}
+                                        <div className="sub-grid-fields">
+                                            {(form?.fields || []).map((field) => {
+                                                const raw = sub[field.fieldKey];
+                                                if (raw === null || raw === undefined || raw === '') return null;
+                                                return (
+                                                    <div key={field.fieldKey} className="sub-grid-field">
+                                                        <span className="sub-grid-field-label">{field.label}</span>
+                                                        <span className="sub-grid-field-value">
+                                                            {formatCellValue(field, raw)}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="sub-grid-card-footer">
+                                            <button
+                                                className="btn btn-secondary btn-sm"
+                                                onClick={() => setSelectedSubmission(sub)}
+                                                title="View details"
+                                            >
+                                                👁 View
+                                            </button>
+                                            <button
+                                                className="btn btn-sm"
+                                                style={{ background: '#3b82f6', color: '#fff', border: 'none' }}
+                                                onClick={() => openEdit(sub)}
+                                                title="Edit submission"
+                                            >
+                                                ✏️ Edit
+                                            </button>
+                                            <button
+                                                className="btn btn-sm"
+                                                style={{ background: '#ef4444', color: '#fff', border: 'none' }}
+                                                onClick={() => setDeletingSubmission(sub)}
+                                                title="Delete submission"
+                                            >
+                                                🗑 Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )
                     )}
 
                     {/* No Form State */}
