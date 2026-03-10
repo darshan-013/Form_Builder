@@ -43,6 +43,9 @@ public class ValidationService {
     public List<String> validateField(FormFieldEntity field, Object value, String tableName,
             Map<String, MultipartFile> files) {
         List<String> errors = new ArrayList<>();
+        if ("field_group".equals(field.getFieldType())) {
+            return errors;
+        }
 
         // Parse validation rules
         JsonNode rules = parseValidationJson(field.getValidationJson());
@@ -57,7 +60,8 @@ public class ValidationService {
         String strValue = (value != null) ? value.toString().trim() : "";
         boolean isEmpty = strValue.isEmpty();
 
-        // Required check (universal — except boolean, multiple_choice_grid, checkbox_grid which have their own logic)
+        // Required check (universal — except boolean, multiple_choice_grid,
+        // checkbox_grid which have their own logic)
         if (field.isRequired() && isEmpty
                 && !"boolean".equals(field.getFieldType())
                 && !"multiple_choice_grid".equals(field.getFieldType())
@@ -66,7 +70,8 @@ public class ValidationService {
             return errors;
         }
 
-        // Skip further validation on empty optional fields (not grids — they handle empty internally)
+        // Skip further validation on empty optional fields (not grids — they handle
+        // empty internally)
         if (isEmpty && !field.isRequired()
                 && !"multiple_choice_grid".equals(field.getFieldType())
                 && !"checkbox_grid".equals(field.getFieldType())) {
@@ -75,18 +80,18 @@ public class ValidationService {
 
         // Type-specific validation
         switch (field.getFieldType().toLowerCase()) {
-            case "text"     -> validateTextField(field, strValue, rules, errors, tableName);
-            case "number"   -> validateNumberField(field, strValue, rules, errors, tableName);
-            case "date"     -> validateDateField(field, strValue, rules, errors);
-            case "boolean"  -> validateBooleanField(field, value, rules, errors);
+            case "text" -> validateTextField(field, strValue, rules, errors, tableName);
+            case "number" -> validateNumberField(field, strValue, rules, errors, tableName);
+            case "date" -> validateDateField(field, strValue, rules, errors);
+            case "boolean" -> validateBooleanField(field, value, rules, errors);
             case "dropdown" -> validateDropdownField(field, strValue, rules, errors);
-            case "radio"    -> validateRadioField(field, strValue, rules, errors);
-            case "multiple_choice"      -> validateMultipleChoiceField(field, strValue, rules, errors);
-            case "linear_scale"         -> validateLinearScaleField(field, strValue, rules, errors);
+            case "radio" -> validateRadioField(field, strValue, rules, errors);
+            case "multiple_choice" -> validateMultipleChoiceField(field, strValue, rules, errors);
+            case "linear_scale" -> validateLinearScaleField(field, strValue, rules, errors);
             case "multiple_choice_grid" -> validateMultipleChoiceGridField(field, strValue, rules, errors);
-            case "star_rating"          -> validateStarRatingField(field, strValue, rules, errors);
-            case "checkbox_grid"        -> validateCheckboxGridField(field, strValue, rules, errors);
-            case "file"     -> validateFileField(field, files, rules, errors, tableName);
+            case "star_rating" -> validateStarRatingField(field, strValue, rules, errors);
+            case "checkbox_grid" -> validateCheckboxGridField(field, strValue, rules, errors);
+            case "file" -> validateFileField(field, files, rules, errors, tableName);
         }
 
         if (!errors.isEmpty()) {
@@ -108,30 +113,38 @@ public class ValidationService {
 
         if (rules.has("minLength")) {
             int min = rules.get("minLength").asInt();
-            if (value.length() < min) errors.add(label + " must be at least " + min + " characters");
+            if (value.length() < min)
+                errors.add(label + " must be at least " + min + " characters");
         }
         if (rules.has("maxLength")) {
             int max = rules.get("maxLength").asInt();
-            if (value.length() > max) errors.add(label + " must not exceed " + max + " characters");
+            if (value.length() > max)
+                errors.add(label + " must not exceed " + max + " characters");
         }
         if (rules.has("exactLength")) {
             int exact = rules.get("exactLength").asInt();
-            if (value.length() != exact) errors.add(label + " must be exactly " + exact + " characters");
+            if (value.length() != exact)
+                errors.add(label + " must be exactly " + exact + " characters");
         }
         if (rules.has("noLeadingTrailingSpaces") && rules.get("noLeadingTrailingSpaces").asBoolean()) {
-            if (!value.equals(value.trim())) errors.add(label + " must not have leading or trailing spaces");
+            if (!value.equals(value.trim()))
+                errors.add(label + " must not have leading or trailing spaces");
         }
         if (rules.has("noConsecutiveSpaces") && rules.get("noConsecutiveSpaces").asBoolean()) {
-            if (value.contains("  ")) errors.add(label + " must not contain consecutive spaces");
+            if (value.contains("  "))
+                errors.add(label + " must not contain consecutive spaces");
         }
         if (rules.has("alphabetOnly") && rules.get("alphabetOnly").asBoolean()) {
-            if (!value.matches("^[A-Za-z\\s]+$")) errors.add(label + " must contain only alphabetic characters");
+            if (!value.matches("^[A-Za-z\\s]+$"))
+                errors.add(label + " must contain only alphabetic characters");
         }
         if (rules.has("alphanumericOnly") && rules.get("alphanumericOnly").asBoolean()) {
-            if (!value.matches("^[A-Za-z0-9\\s]+$")) errors.add(label + " must contain only letters and numbers");
+            if (!value.matches("^[A-Za-z0-9\\s]+$"))
+                errors.add(label + " must contain only letters and numbers");
         }
         if (rules.has("noSpecialCharacters") && rules.get("noSpecialCharacters").asBoolean()) {
-            if (!value.matches("^[A-Za-z0-9\\s]+$")) errors.add(label + " must not contain special characters");
+            if (!value.matches("^[A-Za-z0-9\\s]+$"))
+                errors.add(label + " must not contain special characters");
         }
         if (rules.has("allowSpecificSpecialCharacters")) {
             String allowed = rules.get("allowSpecificSpecialCharacters").asText();
@@ -141,14 +154,17 @@ public class ValidationService {
                 if (!value.matches(pattern))
                     errors.add(label + " contains invalid characters. Allowed special chars: " + allowed);
             } catch (Exception e) {
-                log.warn("Invalid allowSpecificSpecialCharacters pattern for field {}: {}", field.getFieldKey(), pattern);
+                log.warn("Invalid allowSpecificSpecialCharacters pattern for field {}: {}", field.getFieldKey(),
+                        pattern);
             }
         }
         if (rules.has("emailFormat") && rules.get("emailFormat").asBoolean()) {
-            if (!isValidEmail(value)) errors.add(label + " must be a valid email address");
+            if (!isValidEmail(value))
+                errors.add(label + " must be a valid email address");
         }
         if (rules.has("urlFormat") && rules.get("urlFormat").asBoolean()) {
-            if (!isValidUrl(value)) errors.add(label + " must be a valid URL");
+            if (!isValidUrl(value))
+                errors.add(label + " must be a valid URL");
         }
         if (rules.has("passwordStrength") && rules.get("passwordStrength").asBoolean()) {
             if (!validatePasswordStrength(value).isEmpty())
@@ -157,8 +173,11 @@ public class ValidationService {
         if (rules.has("customRegex")) {
             String regex = rules.get("customRegex").asText();
             try {
-                if (!Pattern.compile(regex).matcher(value).find()) errors.add(label + " format is invalid");
-            } catch (Exception e) { log.warn("Invalid regex pattern: {}", regex, e); }
+                if (!Pattern.compile(regex).matcher(value).find())
+                    errors.add(label + " format is invalid");
+            } catch (Exception e) {
+                log.warn("Invalid regex pattern: {}", regex, e);
+            }
         }
         if (!rules.has("customRegex") && field.getValidationRegex() != null && !field.getValidationRegex().isBlank()) {
             try {
@@ -190,38 +209,49 @@ public class ValidationService {
         }
 
         if (rules.has("integerOnly") && rules.get("integerOnly").asBoolean()) {
-            if (numValue != Math.floor(numValue)) errors.add(label + " must be an integer");
+            if (numValue != Math.floor(numValue))
+                errors.add(label + " must be an integer");
         }
         if (rules.has("decimalAllowed") && !rules.get("decimalAllowed").asBoolean()) {
-            if (numValue != Math.floor(numValue)) errors.add(label + " must not contain decimal places");
+            if (numValue != Math.floor(numValue))
+                errors.add(label + " must not contain decimal places");
         }
         if (rules.has("positiveOnly") && rules.get("positiveOnly").asBoolean()) {
-            if (numValue <= 0) errors.add(label + " must be positive");
+            if (numValue <= 0)
+                errors.add(label + " must be positive");
         }
         if (rules.has("negativeAllowed") && !rules.get("negativeAllowed").asBoolean()) {
-            if (numValue < 0) errors.add(label + " must not be negative");
+            if (numValue < 0)
+                errors.add(label + " must not be negative");
         }
         if (rules.has("zeroAllowed") && !rules.get("zeroAllowed").asBoolean()) {
-            if (numValue == 0) errors.add(label + " cannot be zero");
+            if (numValue == 0)
+                errors.add(label + " cannot be zero");
         }
 
-        // Range — support both "minValue"/"maxValue" (frontend) and "min"/"max" (Postman/API)
+        // Range — support both "minValue"/"maxValue" (frontend) and "min"/"max"
+        // (Postman/API)
         double min = Double.NaN;
-        if (rules.has("minValue")) min = rules.get("minValue").asDouble();
-        else if (rules.has("min"))  min = rules.get("min").asDouble();
+        if (rules.has("minValue"))
+            min = rules.get("minValue").asDouble();
+        else if (rules.has("min"))
+            min = rules.get("min").asDouble();
         if (!Double.isNaN(min) && numValue < min)
             errors.add(label + " must be at least " + formatNumber(min));
 
         double max = Double.NaN;
-        if (rules.has("maxValue")) max = rules.get("maxValue").asDouble();
-        else if (rules.has("max"))  max = rules.get("max").asDouble();
+        if (rules.has("maxValue"))
+            max = rules.get("maxValue").asDouble();
+        else if (rules.has("max"))
+            max = rules.get("max").asDouble();
         if (!Double.isNaN(max) && numValue > max)
             errors.add(label + " must not exceed " + formatNumber(max));
 
         if (rules.has("maxDigits")) {
             int maxDigits = rules.get("maxDigits").asInt();
             String intPart = value.split("\\.")[0].replaceAll("-", "");
-            if (intPart.length() > maxDigits) errors.add(label + " must not have more than " + maxDigits + " digits");
+            if (intPart.length() > maxDigits)
+                errors.add(label + " must not have more than " + maxDigits + " digits");
         }
         if (rules.has("maxDecimalPlaces")) {
             int maxDecimals = rules.get("maxDecimalPlaces").asInt();
@@ -229,23 +259,29 @@ public class ValidationService {
                 errors.add(label + " must not have more than " + maxDecimals + " decimal places");
         }
         if (rules.has("noLeadingZero") && rules.get("noLeadingZero").asBoolean()) {
-            if (value.matches("^0[0-9]+.*")) errors.add(label + " must not have leading zeros");
+            if (value.matches("^0[0-9]+.*"))
+                errors.add(label + " must not have leading zeros");
         }
         if (rules.has("phoneNumberFormat") && rules.get("phoneNumberFormat").asBoolean()) {
-            if (!value.matches("^[0-9]{10}$")) errors.add(label + " must be a valid 10-digit phone number");
+            if (!value.matches("^[0-9]{10}$"))
+                errors.add(label + " must be a valid 10-digit phone number");
         }
         if (rules.has("otpFormat")) {
             int length = rules.get("otpFormat").asInt();
-            if (!value.matches("^[0-9]{" + length + "}$")) errors.add(label + " must be a " + length + "-digit OTP");
+            if (!value.matches("^[0-9]{" + length + "}$"))
+                errors.add(label + " must be a " + length + "-digit OTP");
         }
         if (rules.has("ageValidation") && rules.get("ageValidation").asBoolean()) {
-            if (numValue < 18) errors.add(label + " must be at least 18");
+            if (numValue < 18)
+                errors.add(label + " must be at least 18");
         }
         if (rules.has("percentageRange") && rules.get("percentageRange").asBoolean()) {
-            if (numValue < 0 || numValue > 100) errors.add(label + " must be between 0 and 100");
+            if (numValue < 0 || numValue > 100)
+                errors.add(label + " must be between 0 and 100");
         }
         if (rules.has("currencyFormat") && rules.get("currencyFormat").asBoolean()) {
-            if (numValue < 0) errors.add(label + " must be a non-negative currency value");
+            if (numValue < 0)
+                errors.add(label + " must be a non-negative currency value");
             if (value.contains(".") && value.split("\\.")[1].length() > 2)
                 errors.add(label + " must have at most 2 decimal places for currency");
         }
@@ -265,18 +301,28 @@ public class ValidationService {
 
         LocalDate date = null;
         if (value.matches("^\\d{4}-\\d{2}-\\d{2}$")) {
-            try { date = LocalDate.parse(value); }
-            catch (DateTimeParseException e) { errors.add(label + " must be a valid date"); return; }
+            try {
+                date = LocalDate.parse(value);
+            } catch (DateTimeParseException e) {
+                errors.add(label + " must be a valid date");
+                return;
+            }
         } else if ("DD/MM/YYYY".equals(customFormat) && value.matches("^\\d{2}/\\d{2}/\\d{4}$")) {
             try {
                 String[] p = value.split("/");
                 date = LocalDate.of(Integer.parseInt(p[2]), Integer.parseInt(p[1]), Integer.parseInt(p[0]));
-            } catch (Exception e) { errors.add(label + " must be a valid date in DD/MM/YYYY format"); return; }
+            } catch (Exception e) {
+                errors.add(label + " must be a valid date in DD/MM/YYYY format");
+                return;
+            }
         } else if ("MM/DD/YYYY".equals(customFormat) && value.matches("^\\d{2}/\\d{2}/\\d{4}$")) {
             try {
                 String[] p = value.split("/");
                 date = LocalDate.of(Integer.parseInt(p[2]), Integer.parseInt(p[0]), Integer.parseInt(p[1]));
-            } catch (Exception e) { errors.add(label + " must be a valid date in MM/DD/YYYY format"); return; }
+            } catch (Exception e) {
+                errors.add(label + " must be a valid date in MM/DD/YYYY format");
+                return;
+            }
         } else {
             errors.add(label + " must be a valid date");
             return;
@@ -287,33 +333,42 @@ public class ValidationService {
         if (rules.has("minDate") && !rules.get("minDate").asText("").isEmpty()) {
             try {
                 LocalDate minD = LocalDate.parse(rules.get("minDate").asText());
-                if (date.isBefore(minD)) errors.add(label + " must be on or after " + formatDate(minD, customFormat));
-            } catch (DateTimeParseException ignored) {}
+                if (date.isBefore(minD))
+                    errors.add(label + " must be on or after " + formatDate(minD, customFormat));
+            } catch (DateTimeParseException ignored) {
+            }
         }
         if (rules.has("maxDate") && !rules.get("maxDate").asText("").isEmpty()) {
             try {
                 LocalDate maxD = LocalDate.parse(rules.get("maxDate").asText());
-                if (date.isAfter(maxD)) errors.add(label + " must be on or before " + formatDate(maxD, customFormat));
-            } catch (DateTimeParseException ignored) {}
+                if (date.isAfter(maxD))
+                    errors.add(label + " must be on or before " + formatDate(maxD, customFormat));
+            } catch (DateTimeParseException ignored) {
+            }
         }
         if (rules.has("pastOnly") && rules.get("pastOnly").asBoolean()) {
-            if (!date.isBefore(today)) errors.add(label + " must be a past date");
+            if (!date.isBefore(today))
+                errors.add(label + " must be a past date");
         }
         if (rules.has("futureOnly") && rules.get("futureOnly").asBoolean()) {
-            if (!date.isAfter(today)) errors.add(label + " must be a future date");
+            if (!date.isAfter(today))
+                errors.add(label + " must be a future date");
         }
         if (rules.has("noWeekend") && rules.get("noWeekend").asBoolean()) {
-            if (date.getDayOfWeek().getValue() >= 6) errors.add(label + " cannot be a Saturday or Sunday");
+            if (date.getDayOfWeek().getValue() >= 6)
+                errors.add(label + " cannot be a Saturday or Sunday");
         }
         if (rules.has("age18Plus") && !rules.get("age18Plus").asText("").isEmpty()) {
             int minAge = rules.get("age18Plus").asInt();
-            int age    = Period.between(date, today).getYears();
-            if (age < minAge) errors.add(label + " indicates age must be at least " + minAge + " years old");
+            int age = Period.between(date, today).getYears();
+            if (age < minAge)
+                errors.add(label + " indicates age must be at least " + minAge + " years old");
         }
         if (rules.has("notOlderThanXYears") && !rules.get("notOlderThanXYears").asText("").isEmpty()) {
             int maxYears = rules.get("notOlderThanXYears").asInt();
-            int age      = Period.between(date, today).getYears();
-            if (age > maxYears) errors.add(label + " must not be older than " + maxYears + " years");
+            int age = Period.between(date, today).getYears();
+            if (age > maxYears)
+                errors.add(label + " must not be older than " + maxYears + " years");
         }
     }
 
@@ -331,7 +386,10 @@ public class ValidationService {
 
     private void validateBooleanField(FormFieldEntity field, Object value, JsonNode rules, List<String> errors) {
         boolean boolValue = value != null && Boolean.parseBoolean(value.toString());
-        if (field.isRequired() && !boolValue) { errors.add(field.getLabel() + " must be accepted"); return; }
+        if (field.isRequired() && !boolValue) {
+            errors.add(field.getLabel() + " must be accepted");
+            return;
+        }
         if (rules.has("mustBeTrue") && rules.get("mustBeTrue").asBoolean() && !boolValue)
             errors.add(field.getLabel() + " must be accepted");
     }
@@ -339,14 +397,14 @@ public class ValidationService {
     // ═══════════════════════════════════════════════════════════════════════
     // DROPDOWN FIELD VALIDATION
     // Rules (stored in validation_json):
-    //   optionExists       boolean  — default TRUE — reject values not in options list
-    //   defaultNotAllowed  string   — placeholder text to reject (e.g. "-- Select --")
+    // optionExists boolean — default TRUE — reject values not in options list
+    // defaultNotAllowed string — placeholder text to reject (e.g. "-- Select --")
     // Options resolved from shared_options via JDBC JOIN (field.getOptionsJson()).
     // ═══════════════════════════════════════════════════════════════════════
 
     private void validateDropdownField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
-        String label       = field.getLabel();
-        String optionsJson = field.getOptionsJson();  // resolved via JDBC JOIN
+        String label = field.getLabel();
+        String optionsJson = field.getOptionsJson(); // resolved via JDBC JOIN
 
         log.debug("validateDropdown '{}' value='{}' hasOptions={}", field.getFieldKey(), value, optionsJson != null);
 
@@ -360,7 +418,7 @@ public class ValidationService {
         }
 
         // 2. optionExists — default TRUE (validates value exists in options list)
-        //    Only skip validation when admin explicitly sets optionExists = false
+        // Only skip validation when admin explicitly sets optionExists = false
         boolean optionExistsEnabled = !rules.has("optionExists") || rules.get("optionExists").asBoolean();
         if (optionExistsEnabled && optionsJson != null && !optionsJson.isBlank()) {
             if (!isValidOption(optionsJson, value)) {
@@ -372,14 +430,14 @@ public class ValidationService {
     // ═══════════════════════════════════════════════════════════════════════
     // RADIO FIELD VALIDATION
     // Rules (stored in validation_json):
-    //   validateSelectedOption  boolean — default TRUE — reject values not in options
-    //   requireSelection        boolean — enforce that a non-empty choice is made
+    // validateSelectedOption boolean — default TRUE — reject values not in options
+    // requireSelection boolean — enforce that a non-empty choice is made
     // Options resolved from shared_options via JDBC JOIN (field.getOptionsJson()).
     // ═══════════════════════════════════════════════════════════════════════
 
     private void validateRadioField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
-        String label       = field.getLabel();
-        String optionsJson = field.getOptionsJson();  // resolved via JDBC JOIN
+        String label = field.getLabel();
+        String optionsJson = field.getOptionsJson(); // resolved via JDBC JOIN
 
         log.debug("validateRadio '{}' value='{}' hasOptions={}", field.getFieldKey(), value, optionsJson != null);
 
@@ -391,7 +449,8 @@ public class ValidationService {
             }
         }
 
-        // 2. validateSelectedOption — default TRUE — ensure value exists in options list
+        // 2. validateSelectedOption — default TRUE — ensure value exists in options
+        // list
         boolean validateEnabled = !rules.has("validateSelectedOption")
                 || rules.get("validateSelectedOption").asBoolean();
         if (validateEnabled && optionsJson != null && !optionsJson.isBlank()) {
@@ -403,16 +462,18 @@ public class ValidationService {
 
     // ═══════════════════════════════════════════════════════════════════════
     // MULTIPLE CHOICE FIELD VALIDATION
-    // Single-select like radio, but displayed as selectable list options (Google Forms style).
+    // Single-select like radio, but displayed as selectable list options (Google
+    // Forms style).
     // Options resolved from shared_options via JDBC JOIN (field.getOptionsJson()).
     // Rules: requireSelection, validateSelectedOption (default true)
     // ═══════════════════════════════════════════════════════════════════════
 
     private void validateMultipleChoiceField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
-        String label       = field.getLabel();
+        String label = field.getLabel();
         String optionsJson = field.getOptionsJson();
 
-        log.debug("validateMultipleChoice '{}' value='{}' hasOptions={}", field.getFieldKey(), value, optionsJson != null);
+        log.debug("validateMultipleChoice '{}' value='{}' hasOptions={}", field.getFieldKey(), value,
+                optionsJson != null);
 
         // Parse selected values — support both JSON array and comma-separated string
         List<String> selected = new ArrayList<>();
@@ -435,7 +496,8 @@ public class ValidationService {
             } else {
                 // Fallback: comma-separated string
                 for (String s : trimmed.split(",")) {
-                    if (!s.trim().isBlank()) selected.add(s.trim());
+                    if (!s.trim().isBlank())
+                        selected.add(s.trim());
                 }
             }
         }
@@ -444,11 +506,13 @@ public class ValidationService {
         boolean isRequired = field.isRequired()
                 || (rules.has("requireSelection") && rules.get("requireSelection").asBoolean());
         if (selected.isEmpty()) {
-            if (isRequired) errors.add(label + " — please select at least one option");
+            if (isRequired)
+                errors.add(label + " — please select at least one option");
             return;
         }
 
-        // 2. validateSelectedOption — default TRUE — each selected value must exist in options
+        // 2. validateSelectedOption — default TRUE — each selected value must exist in
+        // options
         boolean validateEnabled = !rules.has("validateSelectedOption")
                 || rules.get("validateSelectedOption").asBoolean();
         if (validateEnabled && optionsJson != null && !optionsJson.isBlank()) {
@@ -488,8 +552,10 @@ public class ValidationService {
         } else if (field.getUiConfigJson() != null) {
             try {
                 JsonNode uiConfig = objectMapper.readTree(field.getUiConfigJson());
-                if (uiConfig.has("scaleMin")) minScale = uiConfig.get("scaleMin").asInt(1);
-            } catch (JsonProcessingException ignored) {}
+                if (uiConfig.has("scaleMin"))
+                    minScale = uiConfig.get("scaleMin").asInt(1);
+            } catch (JsonProcessingException ignored) {
+            }
         }
 
         if (rules.has("maxScale")) {
@@ -497,8 +563,10 @@ public class ValidationService {
         } else if (field.getUiConfigJson() != null) {
             try {
                 JsonNode uiConfig = objectMapper.readTree(field.getUiConfigJson());
-                if (uiConfig.has("scaleMax")) maxScale = uiConfig.get("scaleMax").asInt(5);
-            } catch (JsonProcessingException ignored) {}
+                if (uiConfig.has("scaleMax"))
+                    maxScale = uiConfig.get("scaleMax").asInt(5);
+            } catch (JsonProcessingException ignored) {
+            }
         }
 
         if (intValue < minScale) {
@@ -519,25 +587,28 @@ public class ValidationService {
         MultipartFile file = files != null ? files.get(field.getFieldKey()) : null;
 
         if (file == null || file.isEmpty()) {
-            if (field.isRequired()) errors.add(label + " is required");
+            if (field.isRequired())
+                errors.add(label + " is required");
             return;
         }
 
-        String filename    = file.getOriginalFilename();
-        long   fileSize    = file.getSize();
+        String filename = file.getOriginalFilename();
+        long fileSize = file.getSize();
         String contentType = file.getContentType();
 
         if (rules.has("allowedExtensions")) {
             String[] allowed = rules.get("allowedExtensions").asText().split(",");
             boolean validExt = Arrays.stream(allowed)
                     .anyMatch(ext -> filename != null && filename.toLowerCase().endsWith(ext.trim().toLowerCase()));
-            if (!validExt) errors.add(label + " must be one of: " + rules.get("allowedExtensions").asText());
+            if (!validExt)
+                errors.add(label + " must be one of: " + rules.get("allowedExtensions").asText());
         }
         if (rules.has("mimeTypeValidation")) {
             String[] allowedMimes = rules.get("mimeTypeValidation").asText().split(",");
             boolean validMime = Arrays.stream(allowedMimes)
                     .anyMatch(mime -> contentType != null && contentType.equals(mime.trim()));
-            if (!validMime) errors.add(label + " has invalid file type");
+            if (!validMime)
+                errors.add(label + " has invalid file type");
         }
         if (rules.has("maxFileSize")) {
             long maxSize = rules.get("maxFileSize").asLong() * 1024 * 1024;
@@ -554,14 +625,14 @@ public class ValidationService {
                 BufferedImage image = ImageIO.read(file.getInputStream());
                 if (image != null) {
                     JsonNode dim = rules.get("imageDimensionCheck");
-                    if (dim.has("minWidth")  && image.getWidth()  < dim.get("minWidth").asInt())
-                        errors.add(label + " width must be at least "  + dim.get("minWidth").asInt()  + " pixels");
-                    if (dim.has("maxWidth")  && image.getWidth()  > dim.get("maxWidth").asInt())
-                        errors.add(label + " width must not exceed "   + dim.get("maxWidth").asInt()  + " pixels");
+                    if (dim.has("minWidth") && image.getWidth() < dim.get("minWidth").asInt())
+                        errors.add(label + " width must be at least " + dim.get("minWidth").asInt() + " pixels");
+                    if (dim.has("maxWidth") && image.getWidth() > dim.get("maxWidth").asInt())
+                        errors.add(label + " width must not exceed " + dim.get("maxWidth").asInt() + " pixels");
                     if (dim.has("minHeight") && image.getHeight() < dim.get("minHeight").asInt())
                         errors.add(label + " height must be at least " + dim.get("minHeight").asInt() + " pixels");
                     if (dim.has("maxHeight") && image.getHeight() > dim.get("maxHeight").asInt())
-                        errors.add(label + " height must not exceed "  + dim.get("maxHeight").asInt() + " pixels");
+                        errors.add(label + " height must not exceed " + dim.get("maxHeight").asInt() + " pixels");
                 }
             } catch (IOException e) {
                 log.warn("Failed to read image dimensions for field {}", field.getFieldKey(), e);
@@ -586,11 +657,12 @@ public class ValidationService {
      * Value is stored as JSON object: {"Service":"Good","Cleanliness":"Average"}
      *
      * Grid config comes from shared_options (same FK as dropdown/radio):
-     *   options_json = {"rows":["Service","Cleanliness"],"columns":["Poor","Average","Good","Excellent"]}
+     * options_json =
+     * {"rows":["Service","Cleanliness"],"columns":["Poor","Average","Good","Excellent"]}
      *
      * Rules:
-     *   required        → at least one row must be answered
-     *   eachRowRequired → every row must have exactly one selection
+     * required → at least one row must be answered
+     * eachRowRequired → every row must have exactly one selection
      */
     private void validateMultipleChoiceGridField(FormFieldEntity field, String strValue,
             JsonNode rules, List<String> errors) {
@@ -618,18 +690,21 @@ public class ValidationService {
         if (optionsJson != null && !optionsJson.isBlank()) {
             try {
                 JsonNode grid = objectMapper.readTree(optionsJson);
-                if (grid.has("rows"))    rows    = parseJsonNodeArray(grid.get("rows"));
-                if (grid.has("columns")) columns = parseJsonNodeArray(grid.get("columns"));
+                if (grid.has("rows"))
+                    rows = parseJsonNodeArray(grid.get("rows"));
+                if (grid.has("columns"))
+                    columns = parseJsonNodeArray(grid.get("columns"));
             } catch (Exception e) {
                 log.warn("Failed to parse grid options_json for field '{}': {}", field.getFieldKey(), optionsJson);
             }
         }
 
-        boolean required        = field.isRequired() || (rules.has("required")        && rules.get("required").asBoolean());
+        boolean required = field.isRequired() || (rules.has("required") && rules.get("required").asBoolean());
         boolean eachRowRequired = rules.has("eachRowRequired") && rules.get("eachRowRequired").asBoolean();
 
         if (selections.isEmpty()) {
-            if (required) errors.add(label + " is required — please select at least one option");
+            if (required)
+                errors.add(label + " is required — please select at least one option");
             return;
         }
 
@@ -637,7 +712,8 @@ public class ValidationService {
         for (String row : rows) {
             String selected = selections.get(row);
             if (selected == null || selected.isBlank()) {
-                if (eachRowRequired) errors.add(label + ": please select an option for \"" + row + "\"");
+                if (eachRowRequired)
+                    errors.add(label + ": please select an option for \"" + row + "\"");
             } else if (!columns.isEmpty() && !columns.contains(selected)) {
                 errors.add(label + ": \"" + selected + "\" is not a valid option for \"" + row + "\"");
             }
@@ -670,10 +746,10 @@ public class ValidationService {
     // CHECKBOX GRID FIELD VALIDATION
     // Multi-select per row. Value stored as JSON: {"Row":["ColA","ColB"]}
     // Rules:
-    //   required        → at least one row must have at least one selection
-    //   eachRowRequired → every row must have at least one selection
-    //   minPerRow       → minimum selections per row
-    //   maxPerRow       → maximum selections per row
+    // required → at least one row must have at least one selection
+    // eachRowRequired → every row must have at least one selection
+    // minPerRow → minimum selections per row
+    // maxPerRow → maximum selections per row
     // ═══════════════════════════════════════════════════════════════════════
 
     private void validateCheckboxGridField(FormFieldEntity field, String strValue,
@@ -704,20 +780,22 @@ public class ValidationService {
         }
 
         // Parse rows and columns from optionsJson
-        List<String> rows    = List.of();
+        List<String> rows = List.of();
         List<String> columns = List.of();
-        String optionsJson   = field.getOptionsJson();
+        String optionsJson = field.getOptionsJson();
         if (optionsJson != null && !optionsJson.isBlank()) {
             try {
                 JsonNode grid = objectMapper.readTree(optionsJson);
-                if (grid.has("rows"))    rows    = parseJsonNodeArray(grid.get("rows"));
-                if (grid.has("columns")) columns = parseJsonNodeArray(grid.get("columns"));
+                if (grid.has("rows"))
+                    rows = parseJsonNodeArray(grid.get("rows"));
+                if (grid.has("columns"))
+                    columns = parseJsonNodeArray(grid.get("columns"));
             } catch (Exception e) {
                 log.warn("Failed to parse checkbox_grid options_json for '{}': {}", field.getFieldKey(), optionsJson);
             }
         }
 
-        boolean required        = field.isRequired() || (rules.has("required") && rules.get("required").asBoolean());
+        boolean required = field.isRequired() || (rules.has("required") && rules.get("required").asBoolean());
         boolean eachRowRequired = rules.has("eachRowRequired") && rules.get("eachRowRequired").asBoolean();
         int minPerRow = rules.has("minPerRow") ? rules.get("minPerRow").asInt(0) : 0;
         int maxPerRow = rules.has("maxPerRow") ? rules.get("maxPerRow").asInt(Integer.MAX_VALUE) : Integer.MAX_VALUE;
@@ -725,7 +803,8 @@ public class ValidationService {
         boolean anySelected = selections.values().stream().anyMatch(list -> !list.isEmpty());
 
         if (!anySelected) {
-            if (required) errors.add(label + " is required — please select at least one option");
+            if (required)
+                errors.add(label + " is required — please select at least one option");
             return;
         }
 
@@ -733,7 +812,8 @@ public class ValidationService {
         for (String row : rows) {
             List<String> rowSel = selections.getOrDefault(row, List.of());
             if (rowSel.isEmpty()) {
-                if (eachRowRequired) errors.add(label + ": please select at least one option for \"" + row + "\"");
+                if (eachRowRequired)
+                    errors.add(label + ": please select at least one option for \"" + row + "\"");
                 continue;
             }
             if (minPerRow > 0 && rowSel.size() < minPerRow)
@@ -753,7 +833,8 @@ public class ValidationService {
 
     /** Parse a JsonNode array into a List<String>. */
     private List<String> parseJsonNodeArray(JsonNode arrayNode) {
-        if (arrayNode == null || !arrayNode.isArray()) return List.of();
+        if (arrayNode == null || !arrayNode.isArray())
+            return List.of();
         List<String> result = new ArrayList<>();
         arrayNode.forEach(n -> result.add(n.asText()));
         return result;
@@ -761,7 +842,8 @@ public class ValidationService {
 
     /** Parse a JSON string array e.g. ["A","B","C"] into a List<String>. */
     private List<String> parseJsonStringArray(String json) {
-        if (json == null || json.isBlank()) return List.of();
+        if (json == null || json.isBlank())
+            return List.of();
         try {
             JsonNode node = objectMapper.readTree(json);
             return parseJsonNodeArray(node);
@@ -776,9 +858,14 @@ public class ValidationService {
     // ═══════════════════════════════════════════════════════════════════════
 
     private JsonNode parseValidationJson(String json) {
-        if (json == null || json.isBlank()) return null;
-        try { return objectMapper.readTree(json); }
-        catch (JsonProcessingException e) { log.warn("Failed to parse validation JSON: {}", json, e); return null; }
+        if (json == null || json.isBlank())
+            return null;
+        try {
+            return objectMapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to parse validation JSON: {}", json, e);
+            return null;
+        }
     }
 
     private boolean isValidEmail(String email) {
@@ -791,10 +878,14 @@ public class ValidationService {
 
     private List<String> validatePasswordStrength(String password) {
         List<String> errors = new ArrayList<>();
-        if (!password.matches(".*[A-Z].*")) errors.add("uppercase");
-        if (!password.matches(".*[a-z].*")) errors.add("lowercase");
-        if (!password.matches(".*[0-9].*")) errors.add("digit");
-        if (!password.matches(".*[!@#$%^&*(),.?\":{}|<>].*")) errors.add("special character");
+        if (!password.matches(".*[A-Z].*"))
+            errors.add("uppercase");
+        if (!password.matches(".*[a-z].*"))
+            errors.add("lowercase");
+        if (!password.matches(".*[0-9].*"))
+            errors.add("digit");
+        if (!password.matches(".*[!@#$%^&*(),.?\":{}|<>].*"))
+            errors.add("special character");
         return errors;
     }
 
@@ -803,15 +894,18 @@ public class ValidationService {
      * Supports plain strings ["A","B"] and objects [{"label":"A","value":"A"}].
      */
     private boolean isValidOption(String optionsJson, String value) {
-        if (optionsJson == null || optionsJson.isBlank()) return true; // no options = allow any
+        if (optionsJson == null || optionsJson.isBlank())
+            return true; // no options = allow any
         try {
             JsonNode options = objectMapper.readTree(optionsJson);
             if (options.isArray()) {
                 for (JsonNode option : options) {
-                    if (option.isTextual() && option.asText().equals(value)) return true;
+                    if (option.isTextual() && option.asText().equals(value))
+                        return true;
                     if (option.isObject()) {
                         JsonNode valNode = option.get("value");
-                        if (valNode != null && valNode.asText().equals(value)) return true;
+                        if (valNode != null && valNode.asText().equals(value))
+                            return true;
                     }
                 }
             }
@@ -823,7 +917,8 @@ public class ValidationService {
     }
 
     /**
-     * Check if a value already exists in the submission table (uniqueness validation).
+     * Check if a value already exists in the submission table (uniqueness
+     * validation).
      */
     private boolean isDuplicate(String tableName, String columnName, String value) {
         try {

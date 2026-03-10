@@ -11,7 +11,9 @@ export default function DataTable({
     currentPage = 1,
     onPageChange,
     sortConfig = { key: null, direction: 'asc' },
-    onSort
+    onSort,
+    selectedIds = new Set(),
+    onToggleSelection,
 }) {
     // Pagination
     const totalPages = Math.ceil(data.length / pageSize);
@@ -19,6 +21,15 @@ export default function DataTable({
         const start = (currentPage - 1) * pageSize;
         return data.slice(start, start + pageSize);
     }, [data, currentPage, pageSize]);
+
+    // Selection helpers
+    const isAllSelected = paginatedData.length > 0 && paginatedData.every(row => selectedIds.has(row.id));
+
+    const handleSelectAll = (e) => {
+        if (!onToggleSelection) return;
+        const ids = paginatedData.map(row => row.id);
+        onToggleSelection(ids, e.target.checked);
+    };
 
     if (!data || data.length === 0) {
         return (
@@ -41,6 +52,16 @@ export default function DataTable({
                 <table className="datatable">
                     <thead>
                         <tr>
+                            {onToggleSelection && (
+                                <th style={{ width: '40px' }}>
+                                    <input
+                                        type="checkbox"
+                                        className="datatable-checkbox"
+                                        checked={isAllSelected}
+                                        onChange={handleSelectAll}
+                                    />
+                                </th>
+                            )}
                             {columns.map((col) => (
                                 <th
                                     key={col.key}
@@ -64,17 +85,30 @@ export default function DataTable({
                         </tr>
                     </thead>
                     <tbody>
-                        {paginatedData.map((row, idx) => (
-                            <tr key={idx}>
-                                {columns.map((col) => (
-                                    <td key={col.key}>
-                                        {col.render
-                                            ? col.render(row[col.key], row)
-                                            : row[col.key] ?? '—'}
-                                    </td>
-                                ))}
-                            </tr>
-                        ))}
+                        {paginatedData.map((row, idx) => {
+                            const isSelected = selectedIds.has(row.id);
+                            return (
+                                <tr key={row.id || idx} className={isSelected ? 'row-selected' : ''}>
+                                    {onToggleSelection && (
+                                        <td>
+                                            <input
+                                                type="checkbox"
+                                                className="datatable-checkbox"
+                                                checked={isSelected}
+                                                onChange={() => onToggleSelection([row.id], !isSelected)}
+                                            />
+                                        </td>
+                                    )}
+                                    {columns.map((col) => (
+                                        <td key={col.key}>
+                                            {col.render
+                                                ? col.render(row[col.key], row)
+                                                : row[col.key] ?? '—'}
+                                        </td>
+                                    ))}
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

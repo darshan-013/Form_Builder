@@ -15,6 +15,7 @@ CHECK (field_type IN (
   'text', 'number', 'date', 'boolean',
   'dropdown', 'radio', 'file',
   'multiple_choice', 'linear_scale',
+  'field_group',
   'multiple_choice_grid',
   'star_rating',
   'checkbox_grid'

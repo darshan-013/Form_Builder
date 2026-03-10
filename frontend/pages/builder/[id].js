@@ -43,27 +43,36 @@ export default function EditBuilderPage() {
 
                 // Dynamic fields
                 const dynFields = (form.fields || []).map((f) => ({
-                    id:              f.id,
-                    fieldType:       f.fieldType,
-                    isStatic:        false,
-                    label:           f.label,
-                    fieldKey:        f.fieldKey,
-                    required:        f.required,
-                    defaultValue:    f.defaultValue || '',
+                    id: f.id,
+                    fieldType: f.fieldType,
+                    isStatic: false,
+                    label: f.label,
+                    fieldKey: f.fieldKey,
+                    required: f.required,
+                    defaultValue: f.defaultValue || '',
                     validationRegex: f.validationRegex || '',
                     sharedOptionsId: f.sharedOptionsId || null,
-                    validationJson:  f.validationJson || null,
-                    rulesJson:       f.rulesJson || null,
-                    uiConfigJson:    f.uiConfigJson || null,
-                    fieldOrder:      f.fieldOrder,
+                    validationJson: f.validationJson || null,
+                    rulesJson: f.rulesJson || null,
+                    uiConfigJson: f.uiConfigJson || null,
+                    fieldOrder: f.fieldOrder,
+                    // Calculated fields mapping
+                    isCalculated: f.isCalculated || false,
+                    formulaExpression: f.formulaExpression || '',
+                    precision: f.precision ?? 2,
+                    lockAfterCalculation: f.lockAfterCalculation || false,
+                    parentGroupKey: f.parentGroupKey || null,
+                    dependencies: f.dependencies || [],
+                    disabled: f.disabled || false,
+                    readOnly: f.readOnly || false,
                 }));
 
                 // Static fields from the new staticFields array in response
                 const statFields = (form.staticFields || []).map((sf) => ({
-                    id:         sf.id,
-                    fieldType:  sf.fieldType,
-                    isStatic:   true,
-                    data:       sf.data || '',
+                    id: sf.id,
+                    fieldType: sf.fieldType,
+                    isStatic: true,
+                    data: sf.data || '',
                     fieldOrder: sf.fieldOrder,
                 }));
 
@@ -80,40 +89,49 @@ export default function EditBuilderPage() {
         if (!formName.trim()) { toastError('Form name is required.'); return; }
 
         const dynamicFields = [];
-        const staticFields  = [];
+        const staticFields = [];
 
         fields.forEach((f, i) => {
             if (STATIC_TYPES.has(f.fieldType)) {
                 staticFields.push({
-                    fieldType:  f.fieldType,
-                    data:       f.data || '',
+                    fieldType: f.fieldType,
+                    data: f.data || '',
                     fieldOrder: i,
                 });
             } else {
                 dynamicFields.push({
-                    fieldKey:        f.fieldKey || `field_${i}`,
-                    label:           f.label || `Field ${i + 1}`,
-                    fieldType:       f.fieldType,
-                    required:        f.required,
-                    defaultValue:    f.defaultValue || null,
+                    fieldKey: f.fieldKey || `field_${i}`,
+                    label: f.label || `Field ${i + 1}`,
+                    fieldType: f.fieldType,
+                    required: f.required,
+                    defaultValue: f.defaultValue || null,
                     validationRegex: f.validationRegex || null,
-                    validationJson:  f.validationJson || null,
-                    rulesJson:       f.rulesJson || null,
-                    uiConfigJson:    f.uiConfigJson || null,
+                    validationJson: f.validationJson || null,
+                    rulesJson: f.rulesJson || null,
+                    uiConfigJson: f.uiConfigJson || null,
                     sharedOptionsId: f.sharedOptionsId || null,
-                    fieldOrder:      i,
+                    fieldOrder: i,
+                    // Calculated fields persistence
+                    isCalculated: f.isCalculated || false,
+                    formulaExpression: f.isCalculated ? (f.formulaExpression || null) : null,
+                    precision: f.isCalculated ? (f.precision ?? 2) : 2,
+                    lockAfterCalculation: f.isCalculated ? (f.lockAfterCalculation || false) : false,
+                    parentGroupKey: f.parentGroupKey || null,
+                    dependencies: f.dependencies || [],
+                    disabled: f.disabled || false,
+                    readOnly: f.readOnly || false,
                 });
             }
         });
 
         const dto = {
-            name:                    formName.trim(),
-            description:             formDescription.trim() || null,
-            fields:                  dynamicFields,
-            staticFields:            staticFields,
+            name: formName.trim(),
+            description: formDescription.trim() || null,
+            fields: dynamicFields,
+            staticFields: staticFields,
             allowMultipleSubmissions: allowMultipleSubmissions,
-            showTimestamp:           true, // always recorded — compulsory
-            expiresAt:               expiresAt ? expiresAt : null,
+            showTimestamp: true, // always recorded — compulsory
+            expiresAt: expiresAt ? expiresAt : null,
         };
 
         setSaving(true);
@@ -136,10 +154,10 @@ export default function EditBuilderPage() {
         );
     }
 
-    const dynamicCount   = fields.filter(f => !STATIC_TYPES.has(f.fieldType)).length;
-    const staticCount    = fields.filter(f => STATIC_TYPES.has(f.fieldType) && f.fieldType !== 'page_break').length;
+    const dynamicCount = fields.filter(f => !STATIC_TYPES.has(f.fieldType)).length;
+    const staticCount = fields.filter(f => STATIC_TYPES.has(f.fieldType) && f.fieldType !== 'page_break').length;
     const pageBreakCount = fields.filter(f => f.fieldType === 'page_break').length;
-    const pageCount      = pageBreakCount + 1;
+    const pageCount = pageBreakCount + 1;
 
     return (
         <>

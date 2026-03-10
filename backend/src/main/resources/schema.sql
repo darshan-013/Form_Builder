@@ -62,8 +62,8 @@ CREATE TABLE IF NOT EXISTS form_fields (
                                    REFERENCES forms (id) ON DELETE CASCADE,
     field_key         VARCHAR(100) NOT NULL,          -- column name in submission table
     label             VARCHAR(150) NOT NULL,          -- human-readable label shown on form
-    field_type        VARCHAR(50)  NOT NULL            -- text | number | date | boolean | dropdown | radio | file | multiple_choice | linear_scale
-                                   CHECK (field_type IN ('text', 'number', 'date', 'boolean', 'dropdown', 'radio', 'file', 'multiple_choice', 'linear_scale')),
+    field_type        VARCHAR(50)  NOT NULL            -- text | number | date | boolean | dropdown | radio | file | multiple_choice | linear_scale | field_group | grid_types
+                                   CHECK (field_type IN ('text', 'number', 'date', 'boolean', 'dropdown', 'radio', 'file', 'multiple_choice', 'linear_scale', 'field_group', 'multiple_choice_grid', 'star_rating', 'checkbox_grid')),
     required          BOOLEAN      NOT NULL DEFAULT FALSE,
     default_value     TEXT,
     validation_regex  TEXT,                           -- optional client+server-side regex
@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS form_fields (
     ui_config_json    TEXT,                           -- UI configuration JSON (e.g. scale min/max, labels)
     shared_options_id UUID                            -- FK → shared_options.id (required for dropdown/radio)
                        REFERENCES shared_options (id) ON DELETE SET NULL,
+    is_disabled       BOOLEAN      NOT NULL DEFAULT FALSE,
+    is_read_only      BOOLEAN      NOT NULL DEFAULT FALSE,
     field_order       INT          NOT NULL DEFAULT 0, -- render order in builder/preview
     created_at        TIMESTAMP    NOT NULL DEFAULT NOW(),
 

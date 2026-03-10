@@ -34,7 +34,7 @@ export default function SubmissionsPage() {
     const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const [currentPage, setCurrentPage] = useState(1);
-    const pageSize = 10;
+    const pageSize = 6;
 
     // Edit state
     const [editingSubmission, setEditingSubmission] = useState(null);
@@ -44,6 +44,11 @@ export default function SubmissionsPage() {
     // Delete state
     const [deletingSubmission, setDeletingSubmission] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    // Multi-select state
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
     // Handle file download
     const handleFileDownload = async (filename) => {
@@ -122,11 +127,54 @@ export default function SubmissionsPage() {
             toastSuccess('Submission deleted successfully');
             setDeletingSubmission(null);
             setSubmissions((prev) => prev.filter((s) => s.id !== deletingSubmission.id));
+            setSelectedIds((prev) => {
+                const n = new Set(prev);
+                n.delete(deletingSubmission.id);
+                return n;
+            });
         } catch (err) {
             console.error('Delete failed:', err);
             toastError(err.message || 'Failed to delete submission');
         } finally {
             setDeleteLoading(false);
+        }
+    };
+
+    // ── Bulk delete ──────────────────────────────────────────
+    const handleToggleSelection = (ids, isSelected) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            ids.forEach(id => {
+                if (isSelected) next.add(id);
+                else next.delete(id);
+            });
+            return next;
+        });
+    };
+
+    const clearSelection = () => setSelectedIds(new Set());
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return;
+        setBulkDeleting(true);
+        let deleted = 0;
+        const idsToDelete = [...selectedIds];
+
+        try {
+            // Delete sequentially to avoid overwhelming the server, or use Promise.all if supported
+            for (const subId of idsToDelete) {
+                await deleteSubmission(id, subId);
+                deleted++;
+            }
+            toastSuccess(`${deleted} submissions deleted successfully`);
+            setSubmissions((prev) => prev.filter((s) => !selectedIds.has(s.id)));
+            setSelectedIds(new Set());
+            setShowBulkConfirm(false);
+        } catch (err) {
+            console.error('Bulk delete failed:', err);
+            toastError('Failed to delete some submissions. Please refresh.');
+        } finally {
+            setBulkDeleting(false);
         }
     };
 
@@ -400,6 +448,14 @@ export default function SubmissionsPage() {
     const columns = () => {
         if (!form || !form.fields) return [];
 
+        // Create a map of group keys to labels
+        const groupLabels = {};
+        form.fields.forEach(f => {
+            if (f.fieldType === 'field_group') {
+                groupLabels[f.fieldKey] = f.label;
+            }
+        });
+
         return [
             {
                 key: 'id',
@@ -407,117 +463,124 @@ export default function SubmissionsPage() {
                 sortable: true,
                 render: (value) => value ? String(value).substring(0, 8) + '...' : '—'
             },
-            ...form.fields.map(field => ({
-                key: field.fieldKey,
-                label: field.label,
-                sortable: true,
-                render: (value) => {
-                    if (value === null || value === undefined) return '—';
-                    if (field.fieldType === 'boolean') return value ? '✓ Yes' : '✗ No';
-                    // Linear scale — show as a star/number badge
-                    if (field.fieldType === 'linear_scale' && value !== null && value !== undefined) {
-                        return (
-                            <span style={{
-                                padding: '3px 10px', borderRadius: '12px', fontSize: '13px',
-                                background: 'rgba(245,158,11,0.15)', color: '#FCD34D',
-                                border: '1px solid rgba(245,158,11,0.3)', fontWeight: 600
-                            }}>⭐ {value}</span>
-                        );
-                    }
-                    // Star Rating — show as colored stars
-                    if (field.fieldType === 'star_rating' && value !== null && value !== undefined) {
-                        const num = Number(value);
-                        return (
-                            <span style={{ color: '#F59E0B', fontSize: 18, letterSpacing: 2 }}>
-                                {'★'.repeat(num)}{'☆'.repeat(5 - num)}
-                                <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 6 }}>({num}/5)</span>
-                            </span>
-                        );
-                    }
-                    // Multiple choice grid — compact row→col summary
-                    if (field.fieldType === 'multiple_choice_grid' && value) {
-                        let obj = {};
-                        try { obj = JSON.parse(String(value)); } catch { }
-                        const entries = Object.entries(obj);
-                        if (entries.length === 0) return '—';
-                        return (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                {entries.slice(0, 2).map(([row, col], idx) => (
-                                    <span key={idx} style={{ fontSize: '12px' }}>
-                                        <b style={{ color: 'var(--text-primary)' }}>{row}:</b>{' '}
-                                        <span style={{ color: 'var(--text-secondary)' }}>{col}</span>
+            ...form.fields
+                .filter(field => !['field_group', 'section_header', 'label_text', 'description_block', 'page_break'].includes(field.fieldType))
+                .map(field => {
+                    const groupLabel = field.parentGroupKey ? groupLabels[field.parentGroupKey] : null;
+                    const fullLabel = groupLabel ? `${groupLabel} > ${field.label}` : field.label;
+
+                    return {
+                        key: field.fieldKey,
+                        label: fullLabel,
+                        sortable: true,
+                        render: (value) => {
+                            if (value === null || value === undefined) return '—';
+                            if (field.fieldType === 'boolean') return value ? '✓ Yes' : '✗ No';
+                            // Linear scale — show as a star/number badge
+                            if (field.fieldType === 'linear_scale' && value !== null && value !== undefined) {
+                                return (
+                                    <span style={{
+                                        padding: '3px 10px', borderRadius: '12px', fontSize: '13px',
+                                        background: 'rgba(245,158,11,0.15)', color: '#FCD34D',
+                                        border: '1px solid rgba(245,158,11,0.3)', fontWeight: 600
+                                    }}>⭐ {value}</span>
+                                );
+                            }
+                            // Star Rating — show as colored stars
+                            if (field.fieldType === 'star_rating' && value !== null && value !== undefined) {
+                                const num = Number(value);
+                                return (
+                                    <span style={{ color: '#F59E0B', fontSize: 18, letterSpacing: 2 }}>
+                                        {'★'.repeat(num)}{'☆'.repeat(5 - num)}
+                                        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 6 }}>({num}/5)</span>
                                     </span>
-                                ))}
-                                {entries.length > 2 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{entries.length - 2} more…</span>}
-                            </div>
-                        );
-                    }
-                    // Checkbox grid — compact multi-select summary
-                    if (field.fieldType === 'checkbox_grid' && value) {
-                        let obj = {};
-                        try { obj = JSON.parse(String(value)); } catch { }
-                        const entries = Object.entries(obj).filter(([, v]) => Array.isArray(v) ? v.length > 0 : !!v);
-                        if (entries.length === 0) return '—';
-                        return (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                {entries.slice(0, 2).map(([row, cols], idx) => (
-                                    <span key={idx} style={{ fontSize: '12px' }}>
-                                        <b style={{ color: 'var(--text-primary)' }}>{row}:</b>{' '}
-                                        <span style={{ color: 'var(--text-secondary)' }}>{Array.isArray(cols) ? cols.join(', ') : cols}</span>
-                                    </span>
-                                ))}
-                                {entries.length > 2 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{entries.length - 2} more…</span>}
-                            </div>
-                        );
-                    }
-                    // Multiple choice — parse JSON array and show as comma-separated tags
-                    if (field.fieldType === 'multiple_choice' && value) {
-                        let items = [];
-                        const str = String(value).trim();
-                        if (str.startsWith('[')) {
-                            try { items = JSON.parse(str); } catch { items = [str]; }
-                        } else {
-                            items = str.split(',').map(v => v.trim()).filter(Boolean);
+                                );
+                            }
+                            // Multiple choice grid — compact row→col summary
+                            if (field.fieldType === 'multiple_choice_grid' && value) {
+                                let obj = {};
+                                try { obj = JSON.parse(String(value)); } catch { }
+                                const entries = Object.entries(obj);
+                                if (entries.length === 0) return '—';
+                                return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        {entries.slice(0, 2).map(([row, col], idx) => (
+                                            <span key={idx} style={{ fontSize: '12px' }}>
+                                                <b style={{ color: 'var(--text-primary)' }}>{row}:</b>{' '}
+                                                <span style={{ color: 'var(--text-secondary)' }}>{col}</span>
+                                            </span>
+                                        ))}
+                                        {entries.length > 2 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{entries.length - 2} more…</span>}
+                                    </div>
+                                );
+                            }
+                            // Checkbox grid — compact multi-select summary
+                            if (field.fieldType === 'checkbox_grid' && value) {
+                                let obj = {};
+                                try { obj = JSON.parse(String(value)); } catch { }
+                                const entries = Object.entries(obj).filter(([, v]) => Array.isArray(v) ? v.length > 0 : !!v);
+                                if (entries.length === 0) return '—';
+                                return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        {entries.slice(0, 2).map(([row, cols], idx) => (
+                                            <span key={idx} style={{ fontSize: '12px' }}>
+                                                <b style={{ color: 'var(--text-primary)' }}>{row}:</b>{' '}
+                                                <span style={{ color: 'var(--text-secondary)' }}>{Array.isArray(cols) ? cols.join(', ') : cols}</span>
+                                            </span>
+                                        ))}
+                                        {entries.length > 2 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>+{entries.length - 2} more…</span>}
+                                    </div>
+                                );
+                            }
+                            // Multiple choice — parse JSON array and show as comma-separated tags
+                            if (field.fieldType === 'multiple_choice' && value) {
+                                let items = [];
+                                const str = String(value).trim();
+                                if (str.startsWith('[')) {
+                                    try { items = JSON.parse(str); } catch { items = [str]; }
+                                } else {
+                                    items = str.split(',').map(v => v.trim()).filter(Boolean);
+                                }
+                                return (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                        {items.map((item, idx) => (
+                                            <span key={idx} style={{
+                                                padding: '2px 8px', borderRadius: '12px', fontSize: '12px',
+                                                background: 'rgba(20,184,166,0.15)', color: '#5EEAD4',
+                                                border: '1px solid rgba(20,184,166,0.3)', whiteSpace: 'nowrap'
+                                            }}>{item}</span>
+                                        ))}
+                                    </div>
+                                );
+                            }
+                            if (field.fieldType === 'file' && value) {
+                                // Support multiple files stored as comma-separated filenames
+                                const filenames = String(value).split(',').map(f => f.trim()).filter(Boolean);
+                                return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {filenames.map((filename, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => handleFileDownload(filename)}
+                                                className="btn-file-download"
+                                                title={`Download: ${filename}`}
+                                            >
+                                                📎 {filename.length > 28 ? filename.substring(0, 28) + '...' : filename}
+                                            </button>
+                                        ))}
+                                    </div>
+                                );
+                            }
+                            if (field.fieldType === 'date' && value) {
+                                return new Date(value).toLocaleDateString('en-IN', {
+                                    day: 'numeric', month: 'short', year: 'numeric'
+                                });
+                            }
+                            const strValue = String(value);
+                            return strValue.length > 50 ? strValue.substring(0, 50) + '...' : strValue;
                         }
-                        return (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                {items.map((item, idx) => (
-                                    <span key={idx} style={{
-                                        padding: '2px 8px', borderRadius: '12px', fontSize: '12px',
-                                        background: 'rgba(20,184,166,0.15)', color: '#5EEAD4',
-                                        border: '1px solid rgba(20,184,166,0.3)', whiteSpace: 'nowrap'
-                                    }}>{item}</span>
-                                ))}
-                            </div>
-                        );
-                    }
-                    if (field.fieldType === 'file' && value) {
-                        // Support multiple files stored as comma-separated filenames
-                        const filenames = String(value).split(',').map(f => f.trim()).filter(Boolean);
-                        return (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {filenames.map((filename, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => handleFileDownload(filename)}
-                                        className="btn-file-download"
-                                        title={`Download: ${filename}`}
-                                    >
-                                        📎 {filename.length > 28 ? filename.substring(0, 28) + '...' : filename}
-                                    </button>
-                                ))}
-                            </div>
-                        );
-                    }
-                    if (field.fieldType === 'date' && value) {
-                        return new Date(value).toLocaleDateString('en-IN', {
-                            day: 'numeric', month: 'short', year: 'numeric'
-                        });
-                    }
-                    const strValue = String(value);
-                    return strValue.length > 50 ? strValue.substring(0, 50) + '...' : strValue;
-                }
-            })),
+                    };
+                }),
             // Only show timestamp column when form has showTimestamp enabled
             ...(form?.showTimestamp ? [{
                 key: 'created_at',
@@ -567,6 +630,19 @@ export default function SubmissionsPage() {
         return new Date(dt).toLocaleDateString('en-IN', {
             day: 'numeric', month: 'long', year: 'numeric'
         });
+    };
+
+    // ── Grid Selection Helpers ──────────────────────────────────────────
+    const currentGridSubmissions = useMemo(() => {
+        return filteredAndSortedSubmissions.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+    }, [filteredAndSortedSubmissions, currentPage, pageSize]);
+
+    const isAllGridSelected = currentGridSubmissions.length > 0 &&
+        currentGridSubmissions.every(s => selectedIds.has(s.id));
+
+    const handleToggleSelectAllGrid = () => {
+        const ids = currentGridSubmissions.map(s => s.id);
+        handleToggleSelection(ids, !isAllGridSelected);
     };
 
     // Render an edit field based on field type
@@ -1046,6 +1122,34 @@ export default function SubmissionsPage() {
                                         </button>
                                     )}
                                 </div>
+
+                                {viewMode === 'grid' && submissions.length > 0 && (
+                                    <div className="grid-select-all-row" style={{ marginTop: '12px', width: '100%', display: 'flex', justifyContent: 'flex-end', paddingRight: '20px' }}>
+                                        <button
+                                            className={`sb-btn ${isAllGridSelected ? 'sb-btn-active' : 'sb-btn-ghost'}`}
+                                            onClick={handleToggleSelectAllGrid}
+                                            style={{ fontSize: '13px', padding: '6px 20px', borderRadius: '8px', minWidth: '140px' }}
+                                            title={isAllGridSelected ? 'Deselect all on this page' : 'Select all on this page'}
+                                        >
+                                            {isAllGridSelected ? '☑ Deselect ALL' : '☐ Select ALL'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Selection Actions Bar (Integrated like Dashboard) */}
+                    {!loading && selectedIds.size > 0 && (
+                        <div className="section-bar section-bar-published animate-in" style={{ marginBottom: '20px', borderRadius: '12px' }}>
+                            <div className="section-bar-top">
+                                <div className="section-sel-row">
+                                    <span className="bulk-count">{selectedIds.size} selected</span>
+                                    <button className="sb-btn sb-btn-ghost" onClick={clearSelection}>✕ Clear</button>
+                                    <button className="sb-btn sb-btn-danger" onClick={() => setShowBulkConfirm(true)}>
+                                        🗑 Delete {selectedIds.size}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1061,6 +1165,8 @@ export default function SubmissionsPage() {
                                 onPageChange={setCurrentPage}
                                 sortConfig={sortConfig}
                                 onSort={handleSort}
+                                selectedIds={selectedIds}
+                                onToggleSelection={handleToggleSelection}
                             />
                         </div>
                     )}
@@ -1101,12 +1207,31 @@ export default function SubmissionsPage() {
                                             <div className="sub-grid-fields">
                                                 {(form?.fields || []).map((field) => {
                                                     const raw = sub[field.fieldKey];
-                                                    if (raw === null || raw === undefined || raw === '') return null;
+                                                    const isEmpty = raw === null || raw === undefined || raw === '';
+
                                                     return (
                                                         <div key={field.fieldKey} className="sub-grid-field">
                                                             <span className="sub-grid-field-label">{field.label}</span>
                                                             <span className="sub-grid-field-value">
-                                                                {formatCellValue(field, raw)}
+                                                                {isEmpty ? (
+                                                                    <span className="sub-empty">—</span>
+                                                                ) : field.fieldType === 'file' ? (
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                        {String(raw).split(',').map(f => f.trim()).filter(Boolean).map((filename, idx) => (
+                                                                            <button
+                                                                                key={idx}
+                                                                                onClick={() => handleFileDownload(filename)}
+                                                                                className="btn-file-download"
+                                                                                style={{ fontSize: '12px', padding: '4px 8px' }}
+                                                                                title={`Download: ${filename}`}
+                                                                            >
+                                                                                📎 {filename.length > 20 ? filename.substring(0, 20) + '...' : filename}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    formatCellValue(field, raw)
+                                                                )}
                                                             </span>
                                                         </div>
                                                     );
@@ -1139,6 +1264,20 @@ export default function SubmissionsPage() {
                                                     🗑 Delete
                                                 </button>
                                             </div>
+
+                                            {/* ── Select checkbox (Grid View) ── */}
+                                            <label
+                                                className={`card-select-checkbox${selectedIds.has(sub.id) ? ' card-select-checked' : ''}`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                title={selectedIds.has(sub.id) ? 'Deselect' : 'Select'}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.has(sub.id)}
+                                                    onChange={() => handleToggleSelection([sub.id], !selectedIds.has(sub.id))}
+                                                />
+                                                <span className="card-select-mark">{selectedIds.has(sub.id) ? '✓' : ''}</span>
+                                            </label>
                                         </div>
                                     ))}
                             </div>
@@ -1146,7 +1285,7 @@ export default function SubmissionsPage() {
                     )}
 
                     {/* Pagination for Grid view */}
-                    {!loading && viewMode === 'grid' && Math.ceil(filteredAndSortedSubmissions.length / pageSize) > 1 && (
+                    {!loading && viewMode === 'grid' && filteredAndSortedSubmissions.length > pageSize && (
                         <div className="datatable-pagination" style={{ marginTop: '24px' }}>
                             <button
                                 className="btn btn-secondary btn-sm"
@@ -1155,9 +1294,19 @@ export default function SubmissionsPage() {
                             >
                                 ‹ Previous
                             </button>
-                            <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-                                Page {currentPage} of {Math.ceil(filteredAndSortedSubmissions.length / pageSize)}
-                            </span>
+
+                            <div className="pagination-pages">
+                                {Array.from({ length: Math.ceil(filteredAndSortedSubmissions.length / pageSize) }, (_, i) => i + 1).map(page => (
+                                    <button
+                                        key={page}
+                                        className={`btn btn-sm ${currentPage === page ? 'btn-primary' : 'btn-secondary'}`}
+                                        onClick={() => setCurrentPage(page)}
+                                    >
+                                        {page}
+                                    </button>
+                                ))}
+                            </div>
+
                             <button
                                 className="btn btn-secondary btn-sm"
                                 onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredAndSortedSubmissions.length / pageSize), prev + 1))}
@@ -1418,6 +1567,30 @@ export default function SubmissionsPage() {
                             </button>
                             <button className="btn btn-danger" onClick={handleDeleteConfirm} disabled={deleteLoading}>
                                 {deleteLoading ? <><span className="spinner" style={{ width: 16, height: 16 }} /> Deleting…</> : '🗑 Delete'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* ── Bulk Delete Confirmation Modal ── */}
+            {showBulkConfirm && (
+                <div className="modal-overlay" onClick={() => !bulkDeleting && setShowBulkConfirm(false)}>
+                    <div className="modal-box sub-modal" style={{ maxWidth: '460px' }} onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <span className="modal-title">🗑 Bulk Delete Submissions</span>
+                            <button className="modal-close" onClick={() => setShowBulkConfirm(false)} disabled={bulkDeleting}>×</button>
+                        </div>
+                        <div className="modal-body">
+                            <p className="sub-delete-msg">
+                                Are you sure you want to delete <strong>{selectedIds.size}</strong> submissions? This action cannot be undone.
+                            </p>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setShowBulkConfirm(false)} disabled={bulkDeleting}>
+                                Cancel
+                            </button>
+                            <button className="btn btn-danger" onClick={handleBulkDelete} disabled={bulkDeleting}>
+                                {bulkDeleting ? <><span className="spinner" style={{ width: 16, height: 16 }} /> Deleting…</> : `🗑 Delete ${selectedIds.size} Submissions`}
                             </button>
                         </div>
                     </div>

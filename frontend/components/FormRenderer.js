@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import ValidationEngine from '../services/validation';
 import RuleEngine, { setDefaultValues } from '../services/RuleEngine';
+import CalculationEngine from '../services/CalculationEngine';
 
 /**
  * FormRenderer — enterprise dynamic form renderer with Conditional Rule Engine.
@@ -54,13 +55,13 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     );
   }
 
-  const [values,      setValues]      = useState(makeInitialValues);
-  const [errors,      setErrors]      = useState({});  // { fieldKey: string[] }
-  const [touched,     setTouched]     = useState({});  // { fieldKey: boolean }
+  const [values, setValues] = useState(makeInitialValues);
+  const [errors, setErrors] = useState({});  // { fieldKey: string[] }
+  const [touched, setTouched] = useState({});  // { fieldKey: boolean }
   const [fieldStates, setFieldStates] = useState(() => RuleEngine.applyRules(fields, makeInitialValues()));
   const [serverError, setServerError] = useState('');
-  const [submitting,  setSubmitting]  = useState(false);
-  const [submitted,   setSubmitted]   = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   // ── Wizard (multi-step) state ──────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(0);
@@ -105,7 +106,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   const totalPages = pages.length;
   const isMultiStep = totalPages > 1;
   const isFirstPage = currentPage === 0;
-  const isLastPage  = currentPage === totalPages - 1;
+  const isLastPage = currentPage === totalPages - 1;
 
   // File objects stored in ref (avoids stale-closure issues in async handlers)
   const filesRef = useRef({});
@@ -117,21 +118,36 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   // Re-initialise when fields change (async load or form switch)
   useEffect(() => {
     const initial = makeInitialValues();
-    setDefaultValues(initial); // snapshot for 'changed' operator (v2)
-    setValues(initial);
-    valuesRef.current = initial;
-    filesRef.current  = {};
+
+    // 1. Initial Rules
+    const initialStates = RuleEngine.applyRules(fields, initial);
+    let currentValues = { ...initial };
+    for (const [key, st] of Object.entries(initialStates)) {
+      if (st.setValue !== null) currentValues[key] = st.setValue;
+      if (st.copyValue !== null) currentValues[key] = st.copyValue;
+    }
+
+    // 2. Initial Calculations
+    const calculated = CalculationEngine.recalculateCalculatedFields(fields, currentValues);
+
+    // 3. Re-run rules if calculations changed values (cascade)
+    const finalStates = RuleEngine.applyRules(fields, calculated);
+
+    setDefaultValues(calculated); // snapshot for 'changed' operator (v2)
+    setValues(calculated);
+    valuesRef.current = calculated;
+    filesRef.current = {};
     setErrors({});
     setTouched({});
-    setFieldStates(RuleEngine.applyRules(fields, initial));
+    setFieldStates(finalStates);
     setCurrentPage(0); // reset wizard to first page
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fields]);
 
   // ── onChange — live validation + rule re-evaluation on every keystroke ─────
   function handleChange(field, value) {
-    // 1. Update raw value
-    const newValues = { ...valuesRef.current, [field.fieldKey]: value };
+    // 1. Update formValues state (stage 1)
+    let currentValues = { ...valuesRef.current, [field.fieldKey]: value };
 
     // 2. Update file ref — store FileList or single File
     if (field.fieldType === 'file') {
@@ -142,38 +158,48 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
       }
     }
 
-    // 3. Re-evaluate all rules — cascading setValue handled internally (MAX_PASSES = 5)
-    const newStates = RuleEngine.applyRules(fields, newValues);
-    setFieldStates(newStates);
+    // 3. Run RuleEngine.applyRules() (Rules before Calc)
+    let currentStates = RuleEngine.applyRules(fields, currentValues);
 
-    // 4. Apply any setValue / copyValue overrides from rules back into values (cascade result)
-    let finalValues = { ...newValues };
-    for (const [key, st] of Object.entries(newStates)) {
-      if (st.setValue !== null && String(finalValues[key] ?? '') !== String(st.setValue)) {
-        finalValues[key] = st.setValue;
+    // 4. Apply setValue/copyValue overrides from rules
+    for (const [key, st] of Object.entries(currentStates)) {
+      if (st.setValue !== null && String(currentValues[key] ?? '') !== String(st.setValue)) {
+        currentValues[key] = st.setValue;
       }
-      // NEW (v2): copyValue override
-      if (st.copyValue !== null && String(finalValues[key] ?? '') !== String(st.copyValue)) {
-        finalValues[key] = st.copyValue;
+      if (st.copyValue !== null && String(currentValues[key] ?? '') !== String(st.copyValue)) {
+        currentValues[key] = st.copyValue;
       }
     }
-    setValues(finalValues);
-    valuesRef.current = finalValues;
 
-    // 5. Validate changed field using rule-adjusted required flag
+    // 5. Run CalculationEngine.recalculate()
+    const calculatedValues = CalculationEngine.recalculateCalculatedFields(fields, currentValues);
+
+    // If calculations changed values, we might need a quick re-run of rules to update UI state (visible/required)
+    // based on the new calculated values.
+    if (JSON.stringify(calculatedValues) !== JSON.stringify(currentValues)) {
+      currentStates = RuleEngine.applyRules(fields, calculatedValues);
+      currentValues = calculatedValues;
+    }
+
+    // 6. Final State Updates
+    setFieldStates(currentStates);
+    setValues(currentValues);
+    valuesRef.current = currentValues;
+
+    // 7. Validate changed field using rule-adjusted required flag
     const effectiveField = {
       ...field,
-      required: newStates[field.fieldKey]?.required ?? field.required,
+      required: currentStates[field.fieldKey]?.required ?? field.required,
     };
     const errs = ValidationEngine.validateFieldSync(
-      effectiveField, finalValues[field.fieldKey], finalValues, filesRef.current
+      effectiveField, currentValues[field.fieldKey], currentValues, filesRef.current
     );
     setErrors((prev) => ({ ...prev, [field.fieldKey]: errs }));
 
-    // 6. Mark field touched (so error stays visible)
+    // 8. Mark field touched
     setTouched((prev) => ({ ...prev, [field.fieldKey]: true }));
 
-    // 7. Clear server banner
+    // 9. Clear server banner
     if (serverError) setServerError('');
   }
 
@@ -271,7 +297,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
       const hasFile = fields.some(
         (f) => f.fieldType === 'file' &&
           (filesRef.current[f.fieldKey] instanceof File ||
-           filesRef.current[f.fieldKey] instanceof FileList)
+            filesRef.current[f.fieldKey] instanceof FileList)
       );
 
       if (hasFile) {
@@ -425,8 +451,20 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
           <div className="form-empty-state">This form has no fields yet.</div>
         ) : (
           <div className="form-renderer-body">
-            {/* Render only current page items */}
-            {(pages[currentPage]?.items || []).map((field) => {
+            {/* Render fields with group hierarchy support */}
+            {(() => {
+              const currentItems = pages[currentPage]?.items || [];
+              const topLevelItems = currentItems.filter(f => !f.parentGroupKey);
+              const childrenByParent = {};
+
+              currentItems.forEach(f => {
+                if (f.parentGroupKey) {
+                  if (!childrenByParent[f.parentGroupKey]) childrenByParent[f.parentGroupKey] = [];
+                  childrenByParent[f.parentGroupKey].push(f);
+                }
+              });
+
+              const renderField = (field) => {
                 // ── Static elements — display only ───────────────────────
                 if (field._renderType === 'static') {
                   return (
@@ -443,6 +481,20 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                 // Hidden fields — render nothing, value preserved in state
                 if (st.visible === false) return null;
 
+                // ── Field Group Container ────────────────────────────────
+                if (field.fieldType === 'field_group') {
+                  const children = childrenByParent[field.fieldKey] || [];
+                  return (
+                    <div key={field.id || field.fieldKey} className="field-group-container">
+                      {field.label && <h3 className="field-group-title">{st.label ?? field.label}</h3>}
+                      <div className="field-group-children">
+                        {children.map(renderField)}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ── Standard Input Field ─────────────────────────────────
                 // Effective value: copyValue > setValue > user input (priority order)
                 const effectiveValue =
                   st.copyValue !== null && st.copyValue !== undefined
@@ -459,8 +511,8 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                     errors={errors[field.fieldKey] || []}
                     touched={!!touched[field.fieldKey]}
                     onChange={(val) => handleChange(field, val)}
-                    onBlur={(val)   => handleBlur(field, val)}
-                    disabled={isPreview || !!st.disabled}
+                    onBlur={(val) => handleBlur(field, val)}
+                    disabled={isPreview || !!st.disabled || !!field.disabled || !!field.readOnly || !!field.lockAfterCalculation}
                     filterOptions={st.filterOptions ?? null}
                     min={st.min ?? null}
                     max={st.max ?? null}
@@ -468,7 +520,10 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                     placeholderOverride={st.placeholder ?? null}
                   />
                 );
-              })}
+              };
+
+              return topLevelItems.map(renderField);
+            })()}
           </div>
         )}
 
@@ -496,7 +551,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
             id="wizard-next-btn"
             className="form-submit-btn"
             onClick={handleNext}
-            disabled={submitting || isPreview}
+            disabled={submitting}
             style={{ marginLeft: 'auto' }}
           >
             Next →
@@ -579,15 +634,15 @@ function StaticElement({ field }) {
  * Shows the FIRST (highest-priority) error only for clean UX.
  */
 function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
-                      filterOptions, min, max, labelOverride, placeholderOverride }) {
-  const id         = `field-${field.fieldKey}`;
-  const errorList  = Array.isArray(errors) ? errors : [];
+  filterOptions, min, max, labelOverride, placeholderOverride }) {
+  const id = `field-${field.fieldKey}`;
+  const errorList = Array.isArray(errors) ? errors : [];
   const shownError = touched && errorList.length > 0 ? errorList[0] : null;
-  const hasError   = !!shownError;
+  const hasError = !!shownError;
   const inputClass = `form-input${hasError ? ' input-error' : ''}`;
 
   // ── NEW (v2): resolve effective label and placeholder ──────────────────────
-  const effectiveLabel       = labelOverride       ?? field.label;
+  const effectiveLabel = labelOverride ?? field.label;
   const effectivePlaceholder = placeholderOverride
     ?? (field.defaultValue ? `e.g. ${field.defaultValue}` : `Enter ${field.label.toLowerCase()}…`);
 
@@ -607,6 +662,7 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         <label className="form-field-label" htmlFor={id}>
           {effectiveLabel}
           {field.required && <span className="form-field-required-star" title="Required"> *</span>}
+          {field.isCalculated && <span className="badge badge-text" style={{ marginLeft: 8, background: 'rgba(99,102,241,0.1)', color: 'var(--accent)', fontSize: '0.7em', padding: '2px 6px' }}>∑ Calculated</span>}
         </label>
       )}
 
@@ -618,7 +674,7 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
           className={inputClass}
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
-          onBlur={(e)   => onBlur(e.target.value)}
+          onBlur={(e) => onBlur(e.target.value)}
           placeholder={effectivePlaceholder}
           disabled={disabled}
           autoComplete="off"
@@ -635,7 +691,7 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
           className={inputClass}
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
-          onBlur={(e)   => onBlur(e.target.value)}
+          onBlur={(e) => onBlur(e.target.value)}
           placeholder={placeholderOverride ?? (field.defaultValue || '')}
           min={min ?? undefined}
           max={max ?? undefined}
@@ -652,7 +708,7 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         try {
           const rules = JSON.parse(field.validationJson || '{}');
           if (rules.customFormat) customFormat = rules.customFormat;
-        } catch {}
+        } catch { }
 
         return (
           <>
@@ -662,7 +718,7 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
               className={inputClass}
               value={value || ''}
               onChange={(e) => onChange(e.target.value)}
-              onBlur={(e)   => onBlur(e.target.value)}
+              onBlur={(e) => onBlur(e.target.value)}
               min={min ?? undefined}
               max={max ?? undefined}
               disabled={disabled}
@@ -706,7 +762,7 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
           className={`form-select${hasError ? ' input-error' : ''}`}
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
-          onBlur={(e)   => onBlur(e.target.value)}
+          onBlur={(e) => onBlur(e.target.value)}
           disabled={disabled}
           aria-describedby={hasError ? `${id}-err` : undefined}
           aria-invalid={hasError || undefined}
@@ -804,14 +860,14 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         if (field.gridJson) {
           try {
             const g = JSON.parse(field.gridJson);
-            rows = g.rows    || [];
+            rows = g.rows || [];
             cols = g.columns || [];
-          } catch {}
+          } catch { }
         }
         // Current value is a JSON object {"Row":"Col"}
         let selected = {};
         if (value && typeof value === 'string') {
-          try { selected = JSON.parse(value); } catch {}
+          try { selected = JSON.parse(value); } catch { }
         } else if (value && typeof value === 'object') {
           selected = value;
         }
@@ -864,11 +920,11 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         // Parse ui_config_json for scale bounds and labels
         let uiCfg = {};
         if (field.uiConfigJson) {
-          try { uiCfg = JSON.parse(field.uiConfigJson); } catch {}
+          try { uiCfg = JSON.parse(field.uiConfigJson); } catch { }
         }
-        const scaleMin   = uiCfg.scaleMin   ?? 1;
-        const scaleMax   = uiCfg.scaleMax   ?? 5;
-        const labelLeft  = uiCfg.labelLeft  || '';
+        const scaleMin = uiCfg.scaleMin ?? 1;
+        const scaleMax = uiCfg.scaleMax ?? 5;
+        const labelLeft = uiCfg.labelLeft || '';
         const labelRight = uiCfg.labelRight || '';
         const steps = [];
         for (let i = scaleMin; i <= scaleMax; i++) steps.push(i);
@@ -910,11 +966,11 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         // Parse ui_config_json for scale bounds and labels
         let uiCfg = {};
         if (field.uiConfigJson) {
-          try { uiCfg = JSON.parse(field.uiConfigJson); } catch {}
+          try { uiCfg = JSON.parse(field.uiConfigJson); } catch { }
         }
-        const scaleMin   = uiCfg.scaleMin   ?? 1;
-        const scaleMax   = uiCfg.scaleMax   ?? 5;
-        const labelLeft  = uiCfg.labelLeft  || '';
+        const scaleMin = uiCfg.scaleMin ?? 1;
+        const scaleMax = uiCfg.scaleMax ?? 5;
+        const labelLeft = uiCfg.labelLeft || '';
         const labelRight = uiCfg.labelRight || '';
         const steps = [];
         for (let i = scaleMin; i <= scaleMax; i++) steps.push(i);
@@ -958,14 +1014,14 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         if (field.gridJson) {
           try {
             const g = JSON.parse(field.gridJson);
-            rows = g.rows    || [];
+            rows = g.rows || [];
             cols = g.columns || [];
-          } catch {}
+          } catch { }
         }
         // Current value: {"Row":["ColA","ColB"]} — arrays per row (multi-select)
         let selected = {};
         if (value && typeof value === 'string') {
-          try { selected = JSON.parse(value); } catch {}
+          try { selected = JSON.parse(value); } catch { }
         } else if (value && typeof value === 'object') {
           selected = value;
         }

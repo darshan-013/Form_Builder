@@ -20,7 +20,8 @@ import java.util.stream.Collectors;
 
 /**
  * Builds the FormRenderDTO used by the public form renderer.
- * Merges dynamic fields (form_fields) with static UI elements (static_form_fields)
+ * Merges dynamic fields (form_fields) with static UI elements
+ * (static_form_fields)
  * sorted by field_order so the builder layout is preserved.
  */
 @Slf4j
@@ -28,10 +29,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FormRenderService {
 
-    private final FormJpaRepository        formRepo;
-    private final SharedOptionsRepository  sharedOptionsRepo;
+    private final FormJpaRepository formRepo;
+    private final SharedOptionsRepository sharedOptionsRepo;
     private final StaticFormFieldRepository staticRepo;
-    private final ObjectMapper             objectMapper;
+    private final ObjectMapper objectMapper;
 
     public FormRenderDTO render(UUID formId) {
         FormEntity form = formRepo.findByIdWithFields(formId)
@@ -42,15 +43,14 @@ public class FormRenderService {
                 form.getFields().stream()
                         .sorted(Comparator.comparingInt(FormFieldEntity::getFieldOrder))
                         .map(this::toRenderField)
-                        .collect(Collectors.toList())
-        );
+                        .collect(Collectors.toList()));
 
         // 2. Static fields — merged in by field_order
         List<StaticFormFieldEntity> staticFields = staticRepo.findByFormIdOrderByFieldOrderAsc(formId);
         for (StaticFormFieldEntity sf : staticFields) {
             renderFields.add(RenderFieldDTO.builder()
                     .fieldKey("__static__" + sf.getId())
-                    .label(sf.getData())          // label carries the display text
+                    .label(sf.getData()) // label carries the display text
                     .fieldType(sf.getFieldType())
                     .fieldOrder(sf.getFieldOrder())
                     .isStatic(true)
@@ -79,10 +79,10 @@ public class FormRenderService {
         String gridJson = null;
 
         boolean isChoice = "dropdown".equals(f.getFieldType())
-                        || "radio".equals(f.getFieldType())
-                        || "multiple_choice".equals(f.getFieldType());
-        boolean isGrid   = "multiple_choice_grid".equals(f.getFieldType())
-                        || "checkbox_grid".equals(f.getFieldType());
+                || "radio".equals(f.getFieldType())
+                || "multiple_choice".equals(f.getFieldType());
+        boolean isGrid = "multiple_choice_grid".equals(f.getFieldType())
+                || "checkbox_grid".equals(f.getFieldType());
 
         if (isChoice) {
             options = parseOptionsJson(resolveOptionsJson(f));
@@ -101,11 +101,31 @@ public class FormRenderService {
                 .rulesJson(f.getRulesJson())
                 .defaultValue(f.getDefaultValue())
                 .fieldOrder(f.getFieldOrder())
+                .disabled(f.isDisabled())
+                .readOnly(f.isReadOnly())
                 .options(options)
                 .gridJson(gridJson)
                 .uiConfigJson(f.getUiConfigJson())
                 .isStatic(false)
+                // Calculated fields
+                .isCalculated(Boolean.TRUE.equals(f.getIsCalculated()))
+                .formulaExpression(f.getFormulaExpression())
+                .dependencies(parseDependencies(f.getDependenciesJson()))
+                .precision(f.getPrecision())
+                .lockAfterCalculation(Boolean.TRUE.equals(f.getLockAfterCalculation()))
+                .parentGroupKey(f.getParentGroupKey())
                 .build();
+    }
+
+    private List<String> parseDependencies(String json) {
+        if (json == null || json.isBlank())
+            return List.of();
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {
+            });
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     /**
@@ -127,12 +147,17 @@ public class FormRenderService {
                 });
     }
 
-    /** Parse options_json → OptionDTO list. Handles both string[] and {label,value}[] formats. */
+    /**
+     * Parse options_json → OptionDTO list. Handles both string[] and
+     * {label,value}[] formats.
+     */
     private List<OptionDTO> parseOptionsJson(String optionsJson) {
-        if (optionsJson == null || optionsJson.isBlank()) return List.of();
+        if (optionsJson == null || optionsJson.isBlank())
+            return List.of();
         try {
             List<Map<String, Object>> raw = objectMapper.readValue(
-                    optionsJson, new TypeReference<List<Map<String, Object>>>() {});
+                    optionsJson, new TypeReference<List<Map<String, Object>>>() {
+                    });
             return raw.stream()
                     .map(m -> {
                         String label = m.getOrDefault("label", m.getOrDefault("value", "")).toString();
@@ -142,7 +167,8 @@ public class FormRenderService {
                     .collect(Collectors.toList());
         } catch (Exception e) {
             try {
-                List<String> raw = objectMapper.readValue(optionsJson, new TypeReference<List<String>>() {});
+                List<String> raw = objectMapper.readValue(optionsJson, new TypeReference<List<String>>() {
+                });
                 return raw.stream()
                         .map(v -> OptionDTO.builder().label(v).value(v).build())
                         .collect(Collectors.toList());

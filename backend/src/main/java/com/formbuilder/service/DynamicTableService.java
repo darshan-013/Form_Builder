@@ -31,18 +31,18 @@ public class DynamicTableService {
 
     // Map.ofEntries used because Map.of() is limited to 10 entries
     private static final Map<String, String> SQL_TYPE = Map.ofEntries(
-            Map.entry("text",                 "TEXT"),
-            Map.entry("number",               "INTEGER"),
-            Map.entry("date",                 "DATE"),
-            Map.entry("boolean",              "BOOLEAN"),
-            Map.entry("dropdown",             "VARCHAR(255)"),
-            Map.entry("radio",                "VARCHAR(255)"),
-            Map.entry("multiple_choice",      "TEXT"),
-            Map.entry("linear_scale",         "INTEGER"),
-            Map.entry("file",                 "TEXT"),
+            Map.entry("text", "TEXT"),
+            Map.entry("number", "INTEGER"),
+            Map.entry("date", "DATE"),
+            Map.entry("boolean", "BOOLEAN"),
+            Map.entry("dropdown", "VARCHAR(255)"),
+            Map.entry("radio", "VARCHAR(255)"),
+            Map.entry("multiple_choice", "TEXT"),
+            Map.entry("linear_scale", "INTEGER"),
+            Map.entry("file", "TEXT"),
             Map.entry("multiple_choice_grid", "TEXT"),
-            Map.entry("star_rating",          "INTEGER"),   // 1–5 stars, stored as integer
-            Map.entry("checkbox_grid",        "TEXT")       // JSON {"Row":["ColA","ColB"]}
+            Map.entry("star_rating", "INTEGER"), // 1–5 stars, stored as integer
+            Map.entry("checkbox_grid", "TEXT") // JSON {"Row":["ColA","ColB"]}
     );
 
     private final JdbcTemplate jdbc;
@@ -87,12 +87,16 @@ public class DynamicTableService {
 
         // Step 2 — one column per field
         for (FormFieldEntity field : fields) {
-            addColumn(tableName, field.getFieldKey(), field.getFieldType());
+            if (!"field_group".equals(field.getFieldType())) {
+                addColumn(tableName, field.getFieldKey(), field.getFieldType());
+            }
         }
     }
 
     /** ALTER TABLE <tableName> ADD COLUMN <fieldKey> <sqlType> */
     public void addColumn(String tableName, String fieldKey, String fieldType) {
+        if ("field_group".equals(fieldType))
+            return;
         String sql = "ALTER TABLE " + q(tableName)
                 + " ADD COLUMN IF NOT EXISTS " + q(fieldKey) + " " + sqlType(fieldType);
         log.debug("DDL addColumn: {}", sql);
