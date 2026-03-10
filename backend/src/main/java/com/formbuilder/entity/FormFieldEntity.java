@@ -45,7 +45,8 @@ public class FormFieldEntity {
     private String label;
 
     /**
-     * Logical type. Allowed values: text | number | date | boolean | dropdown | radio | file.
+     * Logical type. Allowed values: text | number | date | boolean | dropdown |
+     * radio | file.
      * Mapped to SQL types by DynamicTableService.
      */
     @Column(name = "field_type", nullable = false, length = 50)
@@ -54,35 +55,49 @@ public class FormFieldEntity {
     @Column(name = "required", nullable = false)
     private boolean required;
 
+    @Column(name = "is_disabled", nullable = false)
+    private boolean disabled;
+
+    @Column(name = "is_read_only", nullable = false)
+    private boolean readOnly;
+
     @Column(name = "default_value", columnDefinition = "TEXT")
     private String defaultValue;
 
     @Column(name = "validation_regex", columnDefinition = "TEXT")
     private String validationRegex;
 
-    /** JSON object of advanced validation rules e.g. {"minLength":3,"emailFormat":true} */
+    /**
+     * JSON object of advanced validation rules e.g.
+     * {"minLength":3,"emailFormat":true}
+     */
     @Column(name = "validation_json", columnDefinition = "TEXT")
     private String validationJson;
 
     /**
      * UI configuration JSON — used for field-type-specific settings.
-     * linear_scale: {"scaleMin":1,"scaleMax":5,"labelLeft":"Poor","labelRight":"Excellent"}
+     * linear_scale:
+     * {"scaleMin":1,"scaleMax":5,"labelLeft":"Poor","labelRight":"Excellent"}
      */
     @Column(name = "ui_config_json", columnDefinition = "TEXT")
     private String uiConfigJson;
 
     /**
-     * Conditional Rule Engine config — stored as TEXT, evaluated ONLY on the frontend.
-     * Structure: { combinator:"AND"|"OR", conditions:[...], actions:[{type, setValue?}] }
+     * Conditional Rule Engine config — stored as TEXT, evaluated ONLY on the
+     * frontend.
+     * Structure: { combinator:"AND"|"OR", conditions:[...], actions:[{type,
+     * setValue?}] }
      */
     @Column(name = "rules_json", columnDefinition = "TEXT")
     private String rulesJson;
 
     /**
      * FK → shared_options.id
-     * Used by: dropdown, radio, multiple_choice → flat array: [{"label":"A","value":"A"},...]
-     * Used by: multiple_choice_grid            → grid object: {"rows":[...],"columns":[...]}
-     * ON DELETE SET NULL — field loses its options gracefully if shared_options row is deleted.
+     * Used by: dropdown, radio, multiple_choice → flat array:
+     * [{"label":"A","value":"A"},...]
+     * Used by: multiple_choice_grid → grid object: {"rows":[...],"columns":[...]}
+     * ON DELETE SET NULL — field loses its options gracefully if shared_options row
+     * is deleted.
      */
     @Column(name = "shared_options_id", columnDefinition = "UUID")
     private UUID sharedOptionsId;
@@ -90,6 +105,25 @@ public class FormFieldEntity {
     /** Zero-based render order — maintained by drag-and-drop in the builder. */
     @Column(name = "field_order", nullable = false)
     private int fieldOrder;
+
+    // Calculated fields
+    @Column(name = "is_calculated")
+    private Boolean isCalculated;
+
+    @Column(name = "formula_expression", columnDefinition = "TEXT")
+    private String formulaExpression;
+
+    @Column(name = "dependencies_json", columnDefinition = "TEXT")
+    private String dependenciesJson;
+
+    @Column(name = "calc_precision")
+    private Integer precision;
+
+    @Column(name = "lock_after_calc")
+    private Boolean lockAfterCalculation;
+
+    @Column(name = "parent_group_key", length = 100)
+    private String parentGroupKey;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

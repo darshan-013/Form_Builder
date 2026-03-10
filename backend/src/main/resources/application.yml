@@ -26,6 +26,9 @@ spring:
         - classpath:migration_add_grid.sql
         - classpath:migration_add_status.sql
         - classpath:migration_add_page_break.sql
+        - classpath:migration_add_calculated_fields.sql
+        - classpath:migration_add_field_groups.sql
+        - classpath:migration_add_disabled_readonly.sql
 
   jpa:
     hibernate:

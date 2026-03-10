@@ -23,11 +23,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FormService {
 
-    private final FormJpaRepository        formRepo;
-    private final FormFieldJpaRepository   fieldRepo;
-    private final SharedOptionsRepository  sharedOptionsRepo;
+    private final FormJpaRepository formRepo;
+    private final FormFieldJpaRepository fieldRepo;
+    private final SharedOptionsRepository sharedOptionsRepo;
     private final StaticFormFieldRepository staticRepo;
-    private final DynamicTableService      dynamicTable;
+    private final DynamicTableService dynamicTable;
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
@@ -36,7 +36,10 @@ public class FormService {
         return formRepo.findAllByCreatedByOrderByCreatedAtDesc(owner);
     }
 
-    /** Returns a form by ID — any owner (used by public endpoints like submit/render). */
+    /**
+     * Returns a form by ID — any owner (used by public endpoints like
+     * submit/render).
+     */
     public FormEntity getFormById(UUID id) {
         return formRepo.findByIdWithFields(id)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
@@ -44,7 +47,8 @@ public class FormService {
 
     /**
      * Returns a form by ID scoped to the authenticated owner.
-     * Throws NoSuchElementException (→ 404) if form doesn't exist OR belongs to someone else.
+     * Throws NoSuchElementException (→ 404) if form doesn't exist OR belongs to
+     * someone else.
      */
     public FormEntity getOwnedFormById(UUID id, String owner) {
         return formRepo.findByIdAndCreatedBy(id, owner)
@@ -63,7 +67,8 @@ public class FormService {
                 .description(dto.getDescription())
                 .tableName(tableName)
                 .createdBy(owner)
-                .allowMultipleSubmissions(dto.getAllowMultipleSubmissions() == null ? true : dto.getAllowMultipleSubmissions())
+                .allowMultipleSubmissions(
+                        dto.getAllowMultipleSubmissions() == null ? true : dto.getAllowMultipleSubmissions())
                 .showTimestamp(true) // always compulsory — timestamp every submission
                 .expiresAt(dto.getExpiresAt())
                 .fields(new ArrayList<>())
@@ -124,7 +129,8 @@ public class FormService {
         existing.setName(dto.getName());
         existing.setDescription(dto.getDescription());
         // null → keep whatever was already saved; explicit value → update it
-        if (dto.getAllowMultipleSubmissions() != null) existing.setAllowMultipleSubmissions(dto.getAllowMultipleSubmissions());
+        if (dto.getAllowMultipleSubmissions() != null)
+            existing.setAllowMultipleSubmissions(dto.getAllowMultipleSubmissions());
         existing.setShowTimestamp(true); // always compulsory — timestamp every submission
         // expiresAt: always update — null means "clear the expiry"
         existing.setExpiresAt(dto.getExpiresAt());
@@ -144,6 +150,16 @@ public class FormService {
                     existingField.setUiConfigJson(dtoField.getUiConfigJson());
                     existingField.setSharedOptionsId(dtoField.getSharedOptionsId());
                     existingField.setFieldOrder(dtoField.getFieldOrder());
+                    existingField.setDisabled(dtoField.isDisabled());
+                    existingField.setReadOnly(dtoField.isReadOnly());
+
+                    // Calculated fields persistence
+                    existingField.setIsCalculated(dtoField.getIsCalculated());
+                    existingField.setFormulaExpression(dtoField.getFormulaExpression());
+                    existingField.setDependenciesJson(serializeDependencies(dtoField.getDependencies()));
+                    existingField.setPrecision(dtoField.getPrecision());
+                    existingField.setLockAfterCalculation(dtoField.getLockAfterCalculation());
+                    existingField.setParentGroupKey(dtoField.getParentGroupKey());
                 } else {
                     existing.getFields().add(toFieldEntity(dtoField, existing));
                 }
@@ -195,7 +211,10 @@ public class FormService {
 
     // ── Shared Options CRUD ───────────────────────────────────────────────────
 
-    /** Create a new shared_options row. Called when admin saves a new dropdown/radio field. */
+    /**
+     * Create a new shared_options row. Called when admin saves a new dropdown/radio
+     * field.
+     */
     @Transactional
     public SharedOptionsEntity createSharedOptions(String optionsJson) {
         SharedOptionsEntity shared = SharedOptionsEntity.builder()
@@ -213,7 +232,8 @@ public class FormService {
     /**
      * Update options_json on a shared_options row.
      * Because form_fields stores NO options_json, all fields that reference this
-     * shared_options row automatically see the new options at render/validation time.
+     * shared_options row automatically see the new options at render/validation
+     * time.
      */
     @Transactional
     public Optional<SharedOptionsEntity> updateSharedOptions(UUID id, String optionsJson) {
@@ -234,7 +254,8 @@ public class FormService {
     }
 
     private void saveStaticFields(UUID formId, List<FormDTO.StaticFieldDTO> staticDTOs) {
-        if (staticDTOs == null || staticDTOs.isEmpty()) return;
+        if (staticDTOs == null || staticDTOs.isEmpty())
+            return;
         for (FormDTO.StaticFieldDTO sf : staticDTOs) {
             staticRepo.save(StaticFormFieldEntity.builder()
                     .formId(formId)
@@ -261,11 +282,31 @@ public class FormService {
                 .uiConfigJson(dto.getUiConfigJson())
                 .sharedOptionsId(dto.getSharedOptionsId())
                 .fieldOrder(dto.getFieldOrder())
+                .disabled(dto.isDisabled())
+                .readOnly(dto.isReadOnly())
+                // Calculated fields
+                .isCalculated(dto.getIsCalculated())
+                .formulaExpression(dto.getFormulaExpression())
+                .dependenciesJson(serializeDependencies(dto.getDependencies()))
+                .precision(dto.getPrecision())
+                .lockAfterCalculation(dto.getLockAfterCalculation())
+                .parentGroupKey(dto.getParentGroupKey())
                 .build();
     }
 
+    private String serializeDependencies(List<String> deps) {
+        if (deps == null || deps.isEmpty())
+            return null;
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(deps);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private void validateUniqueFieldKeys(List<FormFieldDTO> fields) {
-        if (fields == null || fields.isEmpty()) return;
+        if (fields == null || fields.isEmpty())
+            return;
         Set<String> seenKeys = new HashSet<>();
         List<String> duplicates = new ArrayList<>();
         for (FormFieldDTO field : fields) {
@@ -276,8 +317,8 @@ public class FormService {
         }
         if (!duplicates.isEmpty()) {
             throw new IllegalArgumentException(
-                "Duplicate field keys found: " + String.join(", ", duplicates) +
-                ". Each field must have a unique key.");
+                    "Duplicate field keys found: " + String.join(", ", duplicates) +
+                            ". Each field must have a unique key.");
         }
     }
 }

@@ -8,7 +8,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** Response for GET /api/forms/{formId}/render — consumed directly by the frontend renderer. */
+/**
+ * Response for GET /api/forms/{formId}/render — consumed directly by the
+ * frontend renderer.
+ */
 @Data
 @Builder
 public class FormRenderDTO {
@@ -36,13 +39,21 @@ public class FormRenderDTO {
         private String label;
         private String fieldType;
         private boolean required;
+        private boolean disabled;
+        private boolean readOnly;
         private String validationRegex;
         private String validationJson;
-        /** Conditional Rule Engine config — passed through to frontend for live evaluation. */
+        /**
+         * Conditional Rule Engine config — passed through to frontend for live
+         * evaluation.
+         */
         private String rulesJson;
         private String defaultValue;
         private int fieldOrder;
-        /** Populated for dropdown/radio/multiple_choice — flat options from shared_options table */
+        /**
+         * Populated for dropdown/radio/multiple_choice — flat options from
+         * shared_options table
+         */
         private List<OptionDTO> options;
         /**
          * Populated for multiple_choice_grid — raw JSON string from shared_options:
@@ -50,13 +61,29 @@ public class FormRenderDTO {
          * Frontend parses this to render the grid table.
          */
         private String gridJson;
-        /** UI config for field-type-specific settings (e.g. linear_scale min/max/labels) */
+        /**
+         * UI config for field-type-specific settings (e.g. linear_scale min/max/labels)
+         */
         private String uiConfigJson;
-        /** true = static UI element — no input collected, skip validation & submission */
+        /**
+         * true = static UI element — no input collected, skip validation & submission
+         */
         @JsonProperty("isStatic")
         private boolean isStatic;
-        /** Display content for static elements (section_header, label_text, description_block) */
+        /**
+         * Display content for static elements (section_header, label_text,
+         * description_block)
+         */
         private String staticData;
+
+        // Calculated fields
+        @JsonProperty("isCalculated")
+        private boolean isCalculated;
+        private String formulaExpression;
+        private List<String> dependencies;
+        private Integer precision;
+        private boolean lockAfterCalculation;
+        private String parentGroupKey;
     }
 
     @Data

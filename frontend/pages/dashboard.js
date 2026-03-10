@@ -16,14 +16,19 @@ export default function DashboardPage() {
 
     // ── Per-section search ─────────────────────────────────
     const [publishedSearch, setPublishedSearch] = useState('');
-    const [draftSearch, setDraftSearch]         = useState('');
+    const [draftSearch, setDraftSearch] = useState('');
 
     // ── Per-section selection ──────────────────────────────
     const [publishedSelected, setPublishedSelected] = useState(new Set());
-    const [draftSelected, setDraftSelected]         = useState(new Set());
+    const [draftSelected, setDraftSelected] = useState(new Set());
+
+    // ── Per-section pagination ─────────────────────────────
+    const [publishedPage, setPublishedPage] = useState(1);
+    const [draftPage, setDraftPage] = useState(1);
+    const pageSize = 9;
 
     // ── Bulk delete state ──────────────────────────────────
-    const [bulkTarget, setBulkTarget]   = useState(null); // 'published' | 'draft'
+    const [bulkTarget, setBulkTarget] = useState(null); // 'published' | 'draft'
     const [bulkDeleting, setBulkDeleting] = useState(false);
 
     useEffect(() => {
@@ -35,9 +40,13 @@ export default function DashboardPage() {
             .finally(() => setLoading(false));
     }, [router]);
 
+    // Reset page on search
+    useEffect(() => { setPublishedPage(1); }, [publishedSearch]);
+    useEffect(() => { setDraftPage(1); }, [draftSearch]);
+
     // ── Base sections ──────────────────────────────────────
     const allPublished = forms.filter((f) => f.status === 'PUBLISHED');
-    const allDraft     = forms.filter((f) => !f.status || f.status === 'DRAFT');
+    const allDraft = forms.filter((f) => !f.status || f.status === 'DRAFT');
 
     // ── Filtered by search ─────────────────────────────────
     const match = (f, q) =>
@@ -45,16 +54,16 @@ export default function DashboardPage() {
         (f.description || '').toLowerCase().includes(q.toLowerCase());
 
     const publishedForms = allPublished.filter((f) => match(f, publishedSearch));
-    const draftForms     = allDraft.filter((f) => match(f, draftSearch));
+    const draftForms = allDraft.filter((f) => match(f, draftSearch));
 
     // ── Selection helpers ──────────────────────────────────
     const toggle = (set, setFn, id) =>
         setFn((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
     const selectAllPublished = () => setPublishedSelected(new Set(publishedForms.map((f) => f.id)));
-    const clearPublished     = () => setPublishedSelected(new Set());
-    const selectAllDraft     = () => setDraftSelected(new Set(draftForms.map((f) => f.id)));
-    const clearDraft         = () => setDraftSelected(new Set());
+    const clearPublished = () => setPublishedSelected(new Set());
+    const selectAllDraft = () => setDraftSelected(new Set(draftForms.map((f) => f.id)));
+    const clearDraft = () => setDraftSelected(new Set());
 
     // ── Single delete ──────────────────────────────────────
     const handleDelete = async () => {
@@ -64,7 +73,7 @@ export default function DashboardPage() {
             await deleteForm(deleteTarget.id);
             setForms((prev) => prev.filter((f) => f.id !== deleteTarget.id));
             setPublishedSelected((p) => { const n = new Set(p); n.delete(deleteTarget.id); return n; });
-            setDraftSelected((p)     => { const n = new Set(p); n.delete(deleteTarget.id); return n; });
+            setDraftSelected((p) => { const n = new Set(p); n.delete(deleteTarget.id); return n; });
             toastSuccess(`"${deleteTarget.name}" deleted.`);
         } catch { toastError('Failed to delete form.'); }
         finally { setDeleting(false); setDeleteTarget(null); }
@@ -73,11 +82,11 @@ export default function DashboardPage() {
     // ── Bulk delete ────────────────────────────────────────
     const handleBulkDelete = async () => {
         const selectedSet = bulkTarget === 'published' ? publishedSelected : draftSelected;
-        const clearFn     = bulkTarget === 'published' ? clearPublished : clearDraft;
+        const clearFn = bulkTarget === 'published' ? clearPublished : clearDraft;
         setBulkDeleting(true);
         let deleted = 0;
         for (const id of [...selectedSet]) {
-            try { await deleteForm(id); deleted++; } catch {}
+            try { await deleteForm(id); deleted++; } catch { }
         }
         setForms((prev) => prev.filter((f) => !selectedSet.has(f.id)));
         clearFn();
@@ -103,8 +112,8 @@ export default function DashboardPage() {
     // ── Card ───────────────────────────────────────────────
     const renderCard = (form, selectedSet, setSelectedFn) => {
         const isPublished = form.status === 'PUBLISHED';
-        const busy        = !!statusLoading[form.id];
-        const isSelected  = selectedSet.has(form.id);
+        const busy = !!statusLoading[form.id];
+        const isSelected = selectedSet.has(form.id);
         return (
             <div key={form.id}
                 className={`form-card animate-in${isPublished ? ' form-card-published' : ''}${isSelected ? ' form-card-selected' : ''}`}>
@@ -292,7 +301,28 @@ export default function DashboardPage() {
                                         </div>
                                     ) : (
                                         <div className="dashboard-grid">
-                                            {publishedForms.map((f) => renderCard(f, publishedSelected, setPublishedSelected))}
+                                            {publishedForms
+                                                .slice((publishedPage - 1) * pageSize, publishedPage * pageSize)
+                                                .map((f) => renderCard(f, publishedSelected, setPublishedSelected))}
+                                        </div>
+                                    )}
+
+                                    {/* Published Pagination */}
+                                    {publishedForms.length > pageSize && (
+                                        <div className="datatable-pagination" style={{ marginTop: '24px' }}>
+                                            <button className="btn btn-secondary btn-sm"
+                                                disabled={publishedPage === 1}
+                                                onClick={() => setPublishedPage(p => p - 1)}>‹ Prev</button>
+                                            <div className="pagination-pages">
+                                                {Array.from({ length: Math.ceil(publishedForms.length / pageSize) }, (_, i) => i + 1).map(p => (
+                                                    <button key={p}
+                                                        className={`btn btn-sm ${publishedPage === p ? 'btn-primary' : 'btn-secondary'}`}
+                                                        onClick={() => setPublishedPage(p)}>{p}</button>
+                                                ))}
+                                            </div>
+                                            <button className="btn btn-secondary btn-sm"
+                                                disabled={publishedPage === Math.ceil(publishedForms.length / pageSize)}
+                                                onClick={() => setPublishedPage(p => p + 1)}>Next ›</button>
                                         </div>
                                     )}
                                 </section>
@@ -320,7 +350,28 @@ export default function DashboardPage() {
                                         </div>
                                     ) : (
                                         <div className="dashboard-grid">
-                                            {draftForms.map((f) => renderCard(f, draftSelected, setDraftSelected))}
+                                            {draftForms
+                                                .slice((draftPage - 1) * pageSize, draftPage * pageSize)
+                                                .map((f) => renderCard(f, draftSelected, setDraftSelected))}
+                                        </div>
+                                    )}
+
+                                    {/* Draft Pagination */}
+                                    {draftForms.length > pageSize && (
+                                        <div className="datatable-pagination" style={{ marginTop: '24px' }}>
+                                            <button className="btn btn-secondary btn-sm"
+                                                disabled={draftPage === 1}
+                                                onClick={() => setDraftPage(p => p - 1)}>‹ Prev</button>
+                                            <div className="pagination-pages">
+                                                {Array.from({ length: Math.ceil(draftForms.length / pageSize) }, (_, i) => i + 1).map(p => (
+                                                    <button key={p}
+                                                        className={`btn btn-sm ${draftPage === p ? 'btn-primary' : 'btn-secondary'}`}
+                                                        onClick={() => setDraftPage(p)}>{p}</button>
+                                                ))}
+                                            </div>
+                                            <button className="btn btn-secondary btn-sm"
+                                                disabled={draftPage === Math.ceil(draftForms.length / pageSize)}
+                                                onClick={() => setDraftPage(p => p + 1)}>Next ›</button>
                                         </div>
                                     )}
                                 </section>

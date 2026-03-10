@@ -55,7 +55,7 @@
  * ══════════════════════════════════════════════════════════════════════════
  */
 
-export const MAX_PASSES     = 5;
+export const MAX_PASSES = 5;
 export const MAX_NEST_DEPTH = 3;
 
 /** Operators that need no value input in the condition row */
@@ -143,46 +143,46 @@ export function getAffectedTargets(depMap, changedKey) {
 export function evaluateCondition(condition, formValues) {
   const { fieldKey, operator, value: ruleVal } = condition;
   const rawActual = formValues[fieldKey];
-  const actual    = rawActual == null ? '' : String(rawActual).trim();
-  const expected  = ruleVal   == null ? '' : String(ruleVal).trim();
+  const actual = rawActual == null ? '' : String(rawActual).trim();
+  const expected = ruleVal == null ? '' : String(ruleVal).trim();
 
   switch (operator) {
     // ── Universal ─────────────────────────────────────────────────────────
     case 'equals':
-    case '=':            return actual === expected;
+    case '=': return actual === expected;
     case 'not equals':
-    case '!=':           return actual !== expected;
-    case 'is empty':     return actual === '';
+    case '!=': return actual !== expected;
+    case 'is empty': return actual === '';
     case 'is not empty': return actual !== '';
 
     // ── Number (7 operators) ──────────────────────────────────────────────
-    case '>':   return Number(actual) >  Number(expected);
-    case '>=':  return Number(actual) >= Number(expected);
-    case '<':   return Number(actual) <  Number(expected);
-    case '<=':  return Number(actual) <= Number(expected);
+    case '>': return Number(actual) > Number(expected);
+    case '>=': return Number(actual) >= Number(expected);
+    case '<': return Number(actual) < Number(expected);
+    case '<=': return Number(actual) <= Number(expected);
     case 'between': {
       const parts = expected.split(',');
       const lo = Number(parts[0]?.trim());
       const hi = Number(parts[1]?.trim());
-      const n  = Number(actual);
+      const n = Number(actual);
       return !isNaN(n) && !isNaN(lo) && !isNaN(hi) && n >= lo && n <= hi;
     }
 
     // ── Text (8 operators) ────────────────────────────────────────────────
-    case 'contains':     return actual.toLowerCase().includes(expected.toLowerCase());
+    case 'contains': return actual.toLowerCase().includes(expected.toLowerCase());
     case 'not contains': return !actual.toLowerCase().includes(expected.toLowerCase());
-    case 'starts with':  return actual.toLowerCase().startsWith(expected.toLowerCase());
-    case 'ends with':    return actual.toLowerCase().endsWith(expected.toLowerCase());
+    case 'starts with': return actual.toLowerCase().startsWith(expected.toLowerCase());
+    case 'ends with': return actual.toLowerCase().endsWith(expected.toLowerCase());
 
     // ── Date (7 operators) ────────────────────────────────────────────────
-    case 'before':    return actual !== '' && expected !== '' && actual < expected;
-    case 'after':     return actual !== '' && expected !== '' && actual > expected;
-    case 'is today':  return actual === new Date().toISOString().slice(0, 10);
-    case 'is past':   return actual !== '' && actual < new Date().toISOString().slice(0, 10);
+    case 'before': return actual !== '' && expected !== '' && actual < expected;
+    case 'after': return actual !== '' && expected !== '' && actual > expected;
+    case 'is today': return actual === new Date().toISOString().slice(0, 10);
+    case 'is past': return actual !== '' && actual < new Date().toISOString().slice(0, 10);
     case 'is future': return actual !== '' && actual > new Date().toISOString().slice(0, 10);
 
     // ── Boolean (2 operators) ─────────────────────────────────────────────
-    case 'is true':  return rawActual === true  || rawActual === 'true';
+    case 'is true': return rawActual === true || rawActual === 'true';
     case 'is false': return rawActual === false || rawActual === 'false' || rawActual === '' || rawActual == null;
 
     // ── Dropdown / Radio (4 operators) ────────────────────────────────────
@@ -196,7 +196,7 @@ export function evaluateCondition(condition, formValues) {
     }
 
     // ── File (2 operators) ────────────────────────────────────────────────
-    case 'is uploaded':     return actual !== '' && rawActual != null;
+    case 'is uploaded': return actual !== '' && rawActual != null;
     case 'is not uploaded': return actual === '' || rawActual == null;
 
     // ── NEW (v2): Regex ───────────────────────────────────────────────────
@@ -211,14 +211,14 @@ export function evaluateCondition(condition, formValues) {
 
     // ── NEW (v2): String length ───────────────────────────────────────────
     // Use case: IF description length > 100 THEN show summary_field
-    case 'length >': return actual.length >  Number(expected);
-    case 'length <': return actual.length <  Number(expected);
+    case 'length >': return actual.length > Number(expected);
+    case 'length <': return actual.length < Number(expected);
     case 'length =': return actual.length === Number(expected);
 
     // ── NEW (v2): Multi-checkbox / comma-list count ───────────────────────
     // Use case: IF skills count selected > 3 THEN show experience_level
-    case 'count selected >': return actual.split(',').filter(Boolean).length >  Number(expected);
-    case 'count selected <': return actual.split(',').filter(Boolean).length <  Number(expected);
+    case 'count selected >': return actual.split(',').filter(Boolean).length > Number(expected);
+    case 'count selected <': return actual.split(',').filter(Boolean).length < Number(expected);
     case 'count selected =': return actual.split(',').filter(Boolean).length === Number(expected);
 
     // ── NEW (v2): Changed from default ────────────────────────────────────
@@ -294,17 +294,17 @@ export function applyRules(fields, formValues) {
 
   function makeBaseState() {
     return Object.fromEntries(fields.map(f => [f.fieldKey, {
-      visible:       f._parsedRule && hasShowAction(f._parsedRule) ? false : true,
-      required:      !!f.required,
-      disabled:      false,
-      setValue:      null,
+      visible: f._parsedRule && hasShowAction(f._parsedRule) ? false : true,
+      required: !!f.required,
+      disabled: !!f.disabled || !!f.readOnly,
+      setValue: null,
       // ── NEW (v2) defaults ─────────────────────────────────────────────
-      copyValue:     null,   // null = no copy override
+      copyValue: null,   // null = no copy override
       filterOptions: null,   // null = show all options
-      min:           null,   // null = use field's own min
-      max:           null,   // null = use field's own max
-      label:         null,   // null = use field's own label
-      placeholder:   null,   // null = use field's own placeholder
+      min: null,   // null = use field's own min
+      max: null,   // null = use field's own max
+      label: null,   // null = use field's own label
+      placeholder: null,   // null = use field's own placeholder
     }]));
   }
 
@@ -316,14 +316,14 @@ export function applyRules(fields, formValues) {
     const key = field.fieldKey;
     switch (action.type) {
       // ── Existing actions ─────────────────────────────────────────────────
-      case 'show':         state[key].visible  = true;  break;
-      case 'hide':         state[key].visible  = false; break;
-      case 'makeRequired': state[key].required = true;  break;
+      case 'show': state[key].visible = true; break;
+      case 'hide': state[key].visible = false; break;
+      case 'makeRequired': state[key].required = true; break;
       case 'makeOptional': state[key].required = false; break;
-      case 'enable':       state[key].disabled = false; break;
-      case 'disable':      state[key].disabled = true;  break;
-      case 'setValue':     state[key].setValue = action.setValue ?? ''; break;
-      case 'clearValue':   state[key].setValue = ''; break;
+      case 'enable': state[key].disabled = false; break;
+      case 'disable': state[key].disabled = true; break;
+      case 'setValue': state[key].setValue = action.setValue ?? ''; break;
+      case 'clearValue': state[key].setValue = ''; break;
 
       // ── NEW (v2): copyValue ───────────────────────────────────────────────
       // Copies the live value of another field into this field.
@@ -435,6 +435,18 @@ export function applyRules(fields, formValues) {
     if (!evaluateGroup(field._parsedRule, workingValues)) continue;
     for (const action of (field._parsedRule.actions || [])) {
       applyAction(action, finalState, field, workingValues);
+    }
+  }
+
+  // ── NEW: Propagation Logic for Field Groups ──────────────────────────
+  // If a parent group is hidden, all its children must also be hidden.
+  // We do this in-place on finalState.
+  for (const field of ordered) {
+    const parentKey = field.parentGroupKey;
+    if (parentKey && finalState[parentKey]) {
+      if (finalState[parentKey].visible === false) {
+        finalState[field.fieldKey].visible = false;
+      }
     }
   }
 

@@ -1,6 +1,5 @@
 package com.formbuilder.service;
 
-
 import com.formbuilder.entity.FormFieldEntity;
 import com.formbuilder.exception.ValidationException;
 import com.formbuilder.repository.FormJpaRepository;
@@ -21,6 +20,7 @@ public class SubmissionService {
     private final JdbcTemplate jdbc;
     private final FormJpaRepository formRepo;
     private final ValidationService validationService;
+    private final CalculationEngine calculationEngine;
 
     // ─────────────────────────────────────────────────────────────────────────
     // VALIDATE — direct JDBC, bypasses JPA FetchType.LAZY + open-in-view:false
@@ -29,15 +29,17 @@ public class SubmissionService {
     public void validate(UUID formId, Map<String, Object> data, Map<String, MultipartFile> files) {
         String tableName = getTableName(formId);
 
-        // JOIN shared_options so options_json is available for dropdown/radio validation
+        // JOIN shared_options so options_json is available for dropdown/radio
+        // validation
         // without any JPA/repo calls inside the validation path
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
                 "SELECT ff.field_key, ff.label, ff.field_type, ff.required, " +
-                "ff.validation_json, ff.validation_regex, ff.shared_options_id, ff.ui_config_json, " +
-                "so.options_json " +
-                "FROM form_fields ff " +
-                "LEFT JOIN shared_options so ON ff.shared_options_id = so.id " +
-                "WHERE ff.form_id = ? ORDER BY ff.field_order ASC", formId);
+                        "ff.validation_json, ff.validation_regex, ff.shared_options_id, ff.ui_config_json, " +
+                        "so.options_json " +
+                        "FROM form_fields ff " +
+                        "LEFT JOIN shared_options so ON ff.shared_options_id = so.id " +
+                        "WHERE ff.form_id = ? ORDER BY ff.field_order ASC",
+                formId);
 
         log.info("validate() form={} fields={} keys={}",
                 formId, fieldRows.size(), data != null ? data.keySet() : "none");
@@ -57,7 +59,8 @@ public class SubmissionService {
             }
         }
 
-        if (!fieldErrors.isEmpty()) throw new ValidationException(fieldErrors);
+        if (!fieldErrors.isEmpty())
+            throw new ValidationException(fieldErrors);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -70,24 +73,29 @@ public class SubmissionService {
         // JOIN shared_options to carry options_json for dropdown/radio validation
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
                 "SELECT ff.field_key, ff.label, ff.field_type, ff.required, " +
-                "ff.validation_json, ff.validation_regex, ff.shared_options_id, ff.ui_config_json, " +
-                "so.options_json " +
-                "FROM form_fields ff " +
-                "LEFT JOIN shared_options so ON ff.shared_options_id = so.id " +
-                "WHERE ff.form_id = ? ORDER BY ff.field_order ASC", formId);
+                        "ff.validation_json, ff.validation_regex, ff.shared_options_id, ff.ui_config_json, " +
+                        "so.options_json " +
+                        "FROM form_fields ff " +
+                        "LEFT JOIN shared_options so ON ff.shared_options_id = so.id " +
+                        "WHERE ff.form_id = ? ORDER BY ff.field_order ASC",
+                formId);
 
         Map<String, List<String>> fieldErrors = new LinkedHashMap<>();
         for (Map<String, Object> row : fieldRows) {
-            String fieldKey  = (String) row.get("field_key");
+            String fieldKey = (String) row.get("field_key");
             String fieldType = (String) row.get("field_type");
-            if ("file".equals(fieldType)) continue;
-            if (!data.containsKey(fieldKey)) continue;
+            if ("file".equals(fieldType))
+                continue;
+            if (!data.containsKey(fieldKey))
+                continue;
 
             FormFieldEntity field = rowToField(row);
             List<String> errs = validationService.validateField(field, data.get(fieldKey), tableName, null);
-            if (!errs.isEmpty()) fieldErrors.put(fieldKey, errs);
+            if (!errs.isEmpty())
+                fieldErrors.put(fieldKey, errs);
         }
-        if (!fieldErrors.isEmpty()) throw new ValidationException(fieldErrors);
+        if (!fieldErrors.isEmpty())
+            throw new ValidationException(fieldErrors);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -97,17 +105,38 @@ public class SubmissionService {
     public void insert(UUID formId, Map<String, Object> data) {
         String tableName = getTableName(formId);
 
+        // Fetch all field metadata including calculated-field columns
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
-                "SELECT field_key, field_type, default_value " +
-                "FROM form_fields WHERE form_id = ? ORDER BY field_order ASC", formId);
+                "SELECT field_key, field_type, default_value, " +
+                        "is_calculated, formula_expression, calc_precision " +
+                        "FROM form_fields WHERE form_id = ? ORDER BY field_order ASC",
+                formId);
+
+        // ── Backend recalculation: prevent client tampering of formula values ──
+        // Build working values: submitted data with defaults for any missing key
+        Map<String, Object> workingValues = new LinkedHashMap<>();
+        for (Map<String, Object> row : fieldRows) {
+            String key = (String) row.get("field_key");
+            Object val = (data != null) ? data.get(key) : null;
+            if (val == null)
+                val = row.get("default_value");
+            workingValues.put(key, val);
+        }
+        // Override calculated fields with server-evaluated results
+        workingValues = calculationEngine.recalculate(fieldRows, workingValues);
+        final Map<String, Object> finalValues = workingValues;
 
         List<String> cols = new ArrayList<>();
         List<Object> vals = new ArrayList<>();
         for (Map<String, Object> row : fieldRows) {
-            String fieldKey  = (String) row.get("field_key");
+            String fieldKey = (String) row.get("field_key");
             String fieldType = (String) row.get("field_type");
-            Object value     = (data != null) ? data.get(fieldKey) : null;
-            if (value == null) value = row.get("default_value");
+
+            if ("field_group".equals(fieldType)) {
+                continue;
+            }
+
+            Object value = finalValues.get(fieldKey);
             cols.add('"' + fieldKey + '"');
             vals.add(convertValue(value, fieldType));
         }
@@ -136,7 +165,8 @@ public class SubmissionService {
     public Map<String, Object> getSubmission(UUID formId, UUID submissionId) {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT * FROM \"" + getTableName(formId) + "\" WHERE id = ?", submissionId);
-        if (rows.isEmpty()) throw new NoSuchElementException("Submission not found: " + submissionId);
+        if (rows.isEmpty())
+            throw new NoSuchElementException("Submission not found: " + submissionId);
         return rows.get(0);
     }
 
@@ -147,7 +177,8 @@ public class SubmissionService {
     public void deleteSubmission(UUID formId, UUID submissionId) {
         int affected = jdbc.update(
                 "DELETE FROM \"" + getTableName(formId) + "\" WHERE id = ?", submissionId);
-        if (affected == 0) throw new NoSuchElementException("Submission not found: " + submissionId);
+        if (affected == 0)
+            throw new NoSuchElementException("Submission not found: " + submissionId);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -163,21 +194,25 @@ public class SubmissionService {
         List<String> setClauses = new ArrayList<>();
         List<Object> vals = new ArrayList<>();
         for (Map<String, Object> row : fieldRows) {
-            String fieldKey  = (String) row.get("field_key");
+            String fieldKey = (String) row.get("field_key");
             String fieldType = (String) row.get("field_type");
-            if ("file".equals(fieldType)) continue;
-            if (!data.containsKey(fieldKey)) continue;
+            if ("file".equals(fieldType) || "field_group".equals(fieldType))
+                continue;
+            if (!data.containsKey(fieldKey))
+                continue;
             setClauses.add("\"" + fieldKey + "\" = ?");
             vals.add(convertValue(data.get(fieldKey), fieldType));
         }
-        if (setClauses.isEmpty()) throw new IllegalArgumentException("No updatable fields provided");
+        if (setClauses.isEmpty())
+            throw new IllegalArgumentException("No updatable fields provided");
 
         vals.add(submissionId);
         String sql = "UPDATE \"" + tableName + "\" SET "
                 + String.join(", ", setClauses) + " WHERE id = ?";
         log.debug("UPDATE: {}", sql);
         int affected = jdbc.update(sql, vals.toArray());
-        if (affected == 0) throw new NoSuchElementException("Submission not found: " + submissionId);
+        if (affected == 0)
+            throw new NoSuchElementException("Submission not found: " + submissionId);
         return getSubmission(formId, submissionId);
     }
 
@@ -188,7 +223,8 @@ public class SubmissionService {
     private String getTableName(UUID formId) {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT table_name FROM forms WHERE id = ?", formId);
-        if (rows.isEmpty()) throw new NoSuchElementException("Form not found: " + formId);
+        if (rows.isEmpty())
+            throw new NoSuchElementException("Form not found: " + formId);
         return (String) rows.get(0).get("table_name");
     }
 
@@ -204,35 +240,46 @@ public class SubmissionService {
         // Carry resolved options_json (from shared_options JOIN) into the entity
         f.setOptionsJson((String) row.get("options_json"));
         Object sid = row.get("shared_options_id");
-        if (sid instanceof UUID uid) f.setSharedOptionsId(uid);
+        if (sid instanceof UUID uid)
+            f.setSharedOptionsId(uid);
         else if (sid != null) {
-            try { f.setSharedOptionsId(UUID.fromString(sid.toString())); }
-            catch (IllegalArgumentException ignored) {}
+            try {
+                f.setSharedOptionsId(UUID.fromString(sid.toString()));
+            } catch (IllegalArgumentException ignored) {
+            }
         }
         return f;
     }
 
     private Object convertValue(Object value, String fieldType) {
-        if (value == null) return null;
+        if (value == null)
+            return null;
         String s = value.toString().trim();
-        if (s.isEmpty()) return null;
+        if (s.isEmpty())
+            return null;
         try {
             return switch (fieldType) {
                 case "number" -> {
-                    try { yield Integer.parseInt(s); }
-                    catch (NumberFormatException e) { yield Double.parseDouble(s); }
+                    try {
+                        yield Integer.parseInt(s);
+                    } catch (NumberFormatException e) {
+                        yield Double.parseDouble(s);
+                    }
                 }
                 case "linear_scale", "star_rating" -> {
                     // Always stored as INTEGER — parse the numeric string sent from frontend
-                    try { yield Integer.parseInt(s); }
-                    catch (NumberFormatException e) { yield (int) Math.round(Double.parseDouble(s)); }
+                    try {
+                        yield Integer.parseInt(s);
+                    } catch (NumberFormatException e) {
+                        yield (int) Math.round(Double.parseDouble(s));
+                    }
                 }
                 case "multiple_choice_grid" -> s; // stored as JSON TEXT {"Row":"Col"}
-                case "checkbox_grid" -> s;        // stored as JSON TEXT {"Row":["ColA","ColB"]}
-                case "date"    -> java.sql.Date.valueOf(s);
+                case "checkbox_grid" -> s; // stored as JSON TEXT {"Row":["ColA","ColB"]}
+                case "date" -> java.sql.Date.valueOf(s);
                 case "boolean" -> switch (s.toLowerCase()) {
-                    case "true",  "1", "yes", "on"  -> true;
-                    case "false", "0", "no",  "off" -> false;
+                    case "true", "1", "yes", "on" -> true;
+                    case "false", "0", "no", "off" -> false;
                     default -> Boolean.parseBoolean(s);
                 };
                 default -> s;

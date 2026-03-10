@@ -41,35 +41,44 @@ export default function NewBuilderPage() {
         fields.forEach((f, i) => {
             if (STATIC_TYPES.has(f.fieldType)) {
                 staticFields.push({
-                    fieldType:  f.fieldType,
-                    data:       f.data || '',
+                    fieldType: f.fieldType,
+                    data: f.data || '',
                     fieldOrder: i,
                 });
             } else {
                 dynamicFields.push({
-                    fieldKey:        f.fieldKey || `field_${i}`,
-                    label:           f.label || `Field ${i + 1}`,
-                    fieldType:       f.fieldType,
-                    required:        f.required,
-                    defaultValue:    f.defaultValue || null,
+                    fieldKey: f.fieldKey || `field_${i}`,
+                    label: f.label || `Field ${i + 1}`,
+                    fieldType: f.fieldType,
+                    required: f.required,
+                    defaultValue: f.defaultValue || null,
                     validationRegex: f.validationRegex || null,
-                    validationJson:  f.validationJson || null,
-                    rulesJson:       f.rulesJson || null,
-                    uiConfigJson:    f.uiConfigJson || null,
+                    validationJson: f.validationJson || null,
+                    rulesJson: f.rulesJson || null,
+                    uiConfigJson: f.uiConfigJson || null,
                     sharedOptionsId: f.sharedOptionsId || null,
-                    fieldOrder:      i,
+                    fieldOrder: i,
+                    // Calculated fields persistence
+                    isCalculated: f.isCalculated || false,
+                    formulaExpression: f.isCalculated ? (f.formulaExpression || null) : null,
+                    precision: f.isCalculated ? (f.precision ?? 2) : 2,
+                    lockAfterCalculation: f.isCalculated ? (f.lockAfterCalculation || false) : false,
+                    parentGroupKey: f.parentGroupKey || null,
+                    dependencies: f.dependencies || [],
+                    disabled: f.disabled || false,
+                    readOnly: f.readOnly || false,
                 });
             }
         });
 
         const dto = {
-            name:                    formName.trim(),
-            description:             formDescription.trim() || null,
-            fields:                  dynamicFields,
-            staticFields:            staticFields,
+            name: formName.trim(),
+            description: formDescription.trim() || null,
+            fields: dynamicFields,
+            staticFields: staticFields,
             allowMultipleSubmissions: allowMultipleSubmissions,
-            showTimestamp:           true, // always recorded — compulsory
-            expiresAt:               expiresAt ? expiresAt : null,
+            showTimestamp: true, // always recorded — compulsory
+            expiresAt: expiresAt ? expiresAt : null,
         };
 
         setSaving(true);
@@ -84,9 +93,9 @@ export default function NewBuilderPage() {
         }
     };
 
-    const totalCount   = fields.length;
+    const totalCount = fields.length;
     const dynamicCount = fields.filter(f => !STATIC_TYPES.has(f.fieldType)).length;
-    const staticCount  = fields.filter(f => STATIC_TYPES.has(f.fieldType) && f.fieldType !== 'page_break').length;
+    const staticCount = fields.filter(f => STATIC_TYPES.has(f.fieldType) && f.fieldType !== 'page_break').length;
     const pageBreakCount = fields.filter(f => f.fieldType === 'page_break').length;
     const pageCount = pageBreakCount + 1; // pages = breaks + 1
 
