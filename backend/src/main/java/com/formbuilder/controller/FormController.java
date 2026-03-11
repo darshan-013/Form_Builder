@@ -139,10 +139,33 @@ public class FormController {
         return ResponseEntity.ok(formService.updateForm(id, dto, auth.getName()));
     }
 
-    /** Delete — only the owner can delete their form. */
+    /** Soft-delete — moves form to trash. Only the owner can do this. */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id, Authentication auth) {
         formService.deleteForm(id, auth.getName());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** List trash — all soft-deleted forms for the authenticated user. */
+    @GetMapping("/trash")
+    public ResponseEntity<List<FormEntity>> getTrash(Authentication auth) {
+        return ResponseEntity.ok(formService.getTrashForms(auth.getName()));
+    }
+
+    /** Restore — move a trashed form back to active. */
+    @PostMapping("/{id}/restore")
+    public ResponseEntity<Map<String, Object>> restore(@PathVariable UUID id, Authentication auth) {
+        FormEntity form = formService.restoreForm(id, auth.getName());
+        return ResponseEntity.ok(Map.of(
+                "id", id.toString(),
+                "message", "Form restored successfully",
+                "name", form.getName()));
+    }
+
+    /** Permanently delete — only works if form is already in trash. */
+    @DeleteMapping("/{id}/permanent")
+    public ResponseEntity<Void> permanentDelete(@PathVariable UUID id, Authentication auth) {
+        formService.permanentDeleteForm(id, auth.getName());
         return ResponseEntity.noContent().build();
     }
 

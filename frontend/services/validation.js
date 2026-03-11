@@ -52,7 +52,7 @@
 
 const EMPTY_MSG = () => 'Please fill in this field';
 
-const toStr   = (v) => (v == null ? '' : String(v));
+const toStr = (v) => (v == null ? '' : String(v));
 const trimmed = (v) => toStr(v).trim();
 
 function safeJson(json, fallback) {
@@ -66,7 +66,7 @@ function readImageDimensions(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
-      img.onload  = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
       img.onerror = () => resolve(null);
       img.src = e.target.result;
     };
@@ -99,7 +99,7 @@ function isValidUrl(v) {
  */
 function buildRules(field) {
   const rules = safeJson(field.validationJson, {});
-  if (field.required)                          rules.required    = true;
+  if (field.required) rules.required = true;
   if (field.validationRegex && !rules.customRegex) rules.customRegex = field.validationRegex;
   return rules;
 }
@@ -109,8 +109,8 @@ function buildRules(field) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function validateText(value, rules, label) {
   const errors = [];
-  const raw  = toStr(value);
-  const val  = raw.trim();
+  const raw = toStr(value);
+  const val = raw.trim();
 
   if (!val) {
     if (rules.required) errors.push(EMPTY_MSG());
@@ -151,7 +151,7 @@ function validateText(value, rules, label) {
   }
   if (rules.allowSpecificSpecialCharacters) {
     const allowed = rules.allowSpecificSpecialCharacters;
-    const esc     = allowed.replace(/([[\]\\^-])/g, '\\$1');
+    const esc = allowed.replace(/([[\]\\^-])/g, '\\$1');
     try {
       if (!new RegExp(`^[A-Za-z0-9\\s${esc}]+$`).test(val)) {
         errors.push(`${label} may only use letters, numbers, spaces and: ${allowed}`);
@@ -168,9 +168,9 @@ function validateText(value, rules, label) {
   }
   if (rules.passwordStrength) {
     const missing = [];
-    if (!/[A-Z]/.test(val))                            missing.push('uppercase letter');
-    if (!/[a-z]/.test(val))                            missing.push('lowercase letter');
-    if (!/[0-9]/.test(val))                            missing.push('number');
+    if (!/[A-Z]/.test(val)) missing.push('uppercase letter');
+    if (!/[a-z]/.test(val)) missing.push('lowercase letter');
+    if (!/[0-9]/.test(val)) missing.push('number');
     if (!/[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'`~/]/.test(val)) missing.push('special character');
     if (missing.length) errors.push(`${label} must include: ${missing.join(', ')}`);
   }
@@ -288,9 +288,9 @@ function parseRuleDate(str) {
  * Format a Date as DD/MM/YYYY or MM/DD/YYYY for display in error messages.
  */
 function formatForDisplay(dt, fmt) {
-  const y  = dt.getFullYear();
-  const m  = String(dt.getMonth() + 1).padStart(2, '0');
-  const d  = String(dt.getDate()).padStart(2, '0');
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
   if (fmt === 'DD/MM/YYYY') return `${d}/${m}/${y}`;
   if (fmt === 'MM/DD/YYYY') return `${m}/${d}/${y}`;
   return `${y}-${m}-${d}`;          // YYYY-MM-DD default
@@ -298,7 +298,7 @@ function formatForDisplay(dt, fmt) {
 
 function validateDate(value, rules, label) {
   const errors = [];
-  const raw    = trimmed(value);
+  const raw = trimmed(value);
 
   if (!raw) {
     if (rules.required) errors.push(EMPTY_MSG());
@@ -336,7 +336,7 @@ function validateDate(value, rules, label) {
   }
 
   // Today at midnight for fair comparison
-  const now   = new Date();
+  const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   if (rules.minDate) {
@@ -368,7 +368,7 @@ function validateDate(value, rules, label) {
 
   if (rules.age18Plus != null && rules.age18Plus !== '') {
     const minAge = Number(rules.age18Plus);
-    const age    = calcAge(d, today);
+    const age = calcAge(d, today);
     if (age < minAge) {
       errors.push(`${label} indicates age must be at least ${minAge} years old`);
     }
@@ -376,7 +376,7 @@ function validateDate(value, rules, label) {
 
   if (rules.notOlderThanXYears != null && rules.notOlderThanXYears !== '') {
     const maxYears = Number(rules.notOlderThanXYears);
-    const age      = calcAge(d, today);
+    const age = calcAge(d, today);
     if (age > maxYears) {
       errors.push(`${label} must not be older than ${maxYears} years`);
     }
@@ -389,7 +389,7 @@ function validateDate(value, rules, label) {
 // BOOLEAN
 // ═══════════════════════════════════════════════════════════════════════════════
 function validateBoolean(value, rules, label) {
-  const errors  = [];
+  const errors = [];
   const checked = value === true || value === 'true';
 
   if (rules.required && !checked) {
@@ -407,14 +407,52 @@ function validateBoolean(value, rules, label) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function validateDropdown(value, rules, label, parsedOptions) {
   const errors = [];
-  const val    = trimmed(value);
+
+  // Detect multi-select: value is an Array OR a JSON array string
+  let selected = null; // null means single-select mode
+  if (Array.isArray(value)) {
+    selected = value.map(v => String(v).trim()).filter(Boolean);
+  } else {
+    const str = trimmed(value);
+    if (str.startsWith('[')) {
+      try { selected = JSON.parse(str).map(v => String(v).trim()).filter(Boolean); }
+      catch { selected = null; }
+    }
+  }
+
+  if (selected !== null) {
+    // ── Multi-select validation ──
+    if (selected.length === 0) {
+      if (rules.required) errors.push(EMPTY_MSG());
+      return errors;
+    }
+
+    // Validate each selected value is in options list
+    if (parsedOptions && Array.isArray(parsedOptions) && parsedOptions.length > 0) {
+      for (const sel of selected) {
+        if (!parsedOptions.includes(sel)) {
+          errors.push(`${label} contains an invalid selection`);
+          return errors;
+        }
+      }
+    }
+
+    if (rules.multiSelectLimit && selected.length > Number(rules.multiSelectLimit)) {
+      errors.push(`${label} allows at most ${rules.multiSelectLimit} selection${rules.multiSelectLimit === 1 ? '' : 's'}`);
+    }
+
+    return errors;
+  }
+
+  // ── Single-select validation ──
+  const val = trimmed(value);
 
   if (!val) {
     if (rules.required) errors.push(EMPTY_MSG());
     return errors;
   }
 
-  // Always validate the chosen value is a real option
+  // Validate the chosen value is a real option
   if (parsedOptions && Array.isArray(parsedOptions) && parsedOptions.length > 0) {
     if (!parsedOptions.includes(val)) {
       errors.push(`${label} contains an invalid selection`);
@@ -426,10 +464,6 @@ function validateDropdown(value, rules, label, parsedOptions) {
     errors.push(`Please select a valid option for ${label}`);
   }
 
-  if (rules.multiSelectLimit && Array.isArray(value) && value.length > Number(rules.multiSelectLimit)) {
-    errors.push(`${label} allows at most ${rules.multiSelectLimit} selection${rules.multiSelectLimit === 1 ? '' : 's'}`);
-  }
-
   return errors;
 }
 
@@ -438,7 +472,7 @@ function validateDropdown(value, rules, label, parsedOptions) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function validateRadio(value, rules, label, parsedOptions) {
   const errors = [];
-  const val    = trimmed(value);
+  const val = trimmed(value);
 
   if (!val) {
     if (rules.required) errors.push(EMPTY_MSG());
@@ -470,7 +504,7 @@ function validateLinearScale(value, rules, label, field) {
   // Read bounds from validationRules first, fallback to uiConfigJson
   let uiCfg = {};
   if (field && field.uiConfigJson) {
-    try { uiCfg = JSON.parse(field.uiConfigJson); } catch {}
+    try { uiCfg = JSON.parse(field.uiConfigJson); } catch { }
   }
   const minScale = rules.minScale ?? uiCfg.scaleMin ?? 1;
   const maxScale = rules.maxScale ?? uiCfg.scaleMax ?? 5;
@@ -538,15 +572,15 @@ async function validateFile(fileOrList, rules, label, allFiles) {
 
   // ── Per-file checks ──────────────────────────────────────────────────────
   for (const file of files) {
-    const name = file.name   || '';
-    const size = file.size   || 0;
-    const mime = file.type   || '';
+    const name = file.name || '';
+    const size = file.size || 0;
+    const mime = file.type || '';
     const fileLabel = files.length > 1 ? `"${name}"` : label;
 
     // Extension
     if (rules.allowedExtensions) {
       const allowed = rules.allowedExtensions.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-      const ext     = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
+      const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
       if (allowed.length && !allowed.includes(ext)) {
         errors.push(`${fileLabel} must be one of: ${allowed.join(', ')}`);
       }
@@ -583,8 +617,8 @@ async function validateFile(fileOrList, rules, label, allFiles) {
         if (!dims) {
           errors.push(`${fileLabel} could not be read as an image`);
         } else {
-          if (dim.minWidth  && dims.width  < Number(dim.minWidth))  errors.push(`${fileLabel} image width must be at least ${dim.minWidth}px (actual: ${dims.width}px)`);
-          if (dim.maxWidth  && dims.width  > Number(dim.maxWidth))  errors.push(`${fileLabel} image width must not exceed ${dim.maxWidth}px (actual: ${dims.width}px)`);
+          if (dim.minWidth && dims.width < Number(dim.minWidth)) errors.push(`${fileLabel} image width must be at least ${dim.minWidth}px (actual: ${dims.width}px)`);
+          if (dim.maxWidth && dims.width > Number(dim.maxWidth)) errors.push(`${fileLabel} image width must not exceed ${dim.maxWidth}px (actual: ${dims.width}px)`);
           if (dim.minHeight && dims.height < Number(dim.minHeight)) errors.push(`${fileLabel} image height must be at least ${dim.minHeight}px (actual: ${dims.height}px)`);
           if (dim.maxHeight && dims.height > Number(dim.maxHeight)) errors.push(`${fileLabel} image height must not exceed ${dim.maxHeight}px (actual: ${dims.height}px)`);
         }
@@ -608,7 +642,7 @@ async function validateFile(fileOrList, rules, label, allFiles) {
   // Duplicate file name prevention
   if (rules.duplicateFilePrevention && files.length > 1) {
     const names = files.map(f => f.name.toLowerCase());
-    const seen  = new Set();
+    const seen = new Set();
     for (const n of names) {
       if (seen.has(n)) { errors.push(`${label} contains duplicate files (${n})`); break; }
       seen.add(n);
@@ -645,7 +679,7 @@ function validateFileSync(fileOrList, rules, label, allFiles) {
 
     if (rules.allowedExtensions) {
       const allowed = rules.allowedExtensions.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-      const ext     = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
+      const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
       if (allowed.length && !allowed.includes(ext)) errors.push(`${fileLabel} must be one of: ${allowed.join(', ')}`);
     }
     if (rules.mimeTypeValidation) {
@@ -666,7 +700,7 @@ function validateFileSync(fileOrList, rules, label, allFiles) {
   // Duplicate prevention (sync)
   if (rules.duplicateFilePrevention && files.length > 1) {
     const names = files.map(f => f.name.toLowerCase());
-    const seen  = new Set();
+    const seen = new Set();
     for (const n of names) {
       if (seen.has(n)) { errors.push(`${label} contains duplicate files (${n})`); break; }
       seen.add(n);
@@ -718,15 +752,15 @@ function validateMultipleChoiceGrid(value, rules, label, field) {
   if (gridJson) {
     try {
       const g = JSON.parse(gridJson);
-      rows    = g.rows    || [];
+      rows = g.rows || [];
       columns = g.columns || [];
-    } catch {}
+    } catch { }
   }
 
   // Parse selected values
   let selected = {};
   if (value && typeof value === 'string') {
-    try { selected = JSON.parse(value); } catch {}
+    try { selected = JSON.parse(value); } catch { }
   } else if (value && typeof value === 'object') {
     selected = value;
   }
@@ -800,15 +834,15 @@ function validateCheckboxGrid(value, rules, label, field) {
   if (gridJson) {
     try {
       const g = JSON.parse(gridJson);
-      rows    = g.rows    || [];
+      rows = g.rows || [];
       columns = g.columns || [];
-    } catch {}
+    } catch { }
   }
 
   // Parse selected values — {"Row":["ColA","ColB"]}
   let selected = {};
   if (value && typeof value === 'string') {
-    try { selected = JSON.parse(value); } catch {}
+    try { selected = JSON.parse(value); } catch { }
   } else if (value && typeof value === 'object') {
     selected = value;
   }
@@ -868,21 +902,21 @@ function validateCheckboxGrid(value, rules, label, field) {
 async function validateField(field, value, formData = {}, files = {}) {
   const rules = buildRules(field);
   const label = field.label || field.fieldKey;
-  const type  = (field.fieldType || '').toLowerCase();
-  const opts  = (type === 'dropdown' || type === 'radio' || type === 'multiple_choice') ? resolveOptionValues(field) : null;
+  const type = (field.fieldType || '').toLowerCase();
+  const opts = (type === 'dropdown' || type === 'radio' || type === 'multiple_choice') ? resolveOptionValues(field) : null;
 
   switch (type) {
-    case 'text':                  return validateText(value, rules, label);
-    case 'number':                return validateNumber(value, rules, label);
-    case 'date':                  return validateDate(value, rules, label);
-    case 'boolean':               return validateBoolean(value, rules, label);
-    case 'dropdown':              return validateDropdown(value, rules, label, opts);
-    case 'radio':                 return validateRadio(value, rules, label, opts);
-    case 'multiple_choice':       return validateMultipleChoice(value, rules, label, opts);
-    case 'linear_scale':          return validateLinearScale(value, rules, label, field);
-    case 'star_rating':           return validateStarRating(value, rules, label);
-    case 'multiple_choice_grid':  return validateMultipleChoiceGrid(value, rules, label, field);
-    case 'checkbox_grid':         return validateCheckboxGrid(value, rules, label, field);
+    case 'text': return validateText(value, rules, label);
+    case 'number': return validateNumber(value, rules, label);
+    case 'date': return validateDate(value, rules, label);
+    case 'boolean': return validateBoolean(value, rules, label);
+    case 'dropdown': return validateDropdown(value, rules, label, opts);
+    case 'radio': return validateRadio(value, rules, label, opts);
+    case 'multiple_choice': return validateMultipleChoice(value, rules, label, opts);
+    case 'linear_scale': return validateLinearScale(value, rules, label, field);
+    case 'star_rating': return validateStarRating(value, rules, label);
+    case 'multiple_choice_grid': return validateMultipleChoiceGrid(value, rules, label, field);
+    case 'checkbox_grid': return validateCheckboxGrid(value, rules, label, field);
     case 'file': {
       const fileVal = files[field.fieldKey];
       const resolved = fileVal instanceof FileList || fileVal instanceof File
@@ -901,21 +935,21 @@ async function validateField(field, value, formData = {}, files = {}) {
 function validateFieldSync(field, value, formData = {}, files = {}) {
   const rules = buildRules(field);
   const label = field.label || field.fieldKey;
-  const type  = (field.fieldType || '').toLowerCase();
-  const opts  = (type === 'dropdown' || type === 'radio' || type === 'multiple_choice') ? resolveOptionValues(field) : null;
+  const type = (field.fieldType || '').toLowerCase();
+  const opts = (type === 'dropdown' || type === 'radio' || type === 'multiple_choice') ? resolveOptionValues(field) : null;
 
   switch (type) {
-    case 'text':                  return validateText(value, rules, label);
-    case 'number':                return validateNumber(value, rules, label);
-    case 'date':                  return validateDate(value, rules, label);
-    case 'boolean':               return validateBoolean(value, rules, label);
-    case 'dropdown':              return validateDropdown(value, rules, label, opts);
-    case 'radio':                 return validateRadio(value, rules, label, opts);
-    case 'multiple_choice':       return validateMultipleChoice(value, rules, label, opts);
-    case 'linear_scale':          return validateLinearScale(value, rules, label, field);
-    case 'star_rating':           return validateStarRating(value, rules, label);
-    case 'multiple_choice_grid':  return validateMultipleChoiceGrid(value, rules, label, field);
-    case 'checkbox_grid':         return validateCheckboxGrid(value, rules, label, field);
+    case 'text': return validateText(value, rules, label);
+    case 'number': return validateNumber(value, rules, label);
+    case 'date': return validateDate(value, rules, label);
+    case 'boolean': return validateBoolean(value, rules, label);
+    case 'dropdown': return validateDropdown(value, rules, label, opts);
+    case 'radio': return validateRadio(value, rules, label, opts);
+    case 'multiple_choice': return validateMultipleChoice(value, rules, label, opts);
+    case 'linear_scale': return validateLinearScale(value, rules, label, field);
+    case 'star_rating': return validateStarRating(value, rules, label);
+    case 'multiple_choice_grid': return validateMultipleChoiceGrid(value, rules, label, field);
+    case 'checkbox_grid': return validateCheckboxGrid(value, rules, label, field);
     case 'file': {
       const fileVal = files[field.fieldKey];
       const resolved = fileVal instanceof FileList || fileVal instanceof File

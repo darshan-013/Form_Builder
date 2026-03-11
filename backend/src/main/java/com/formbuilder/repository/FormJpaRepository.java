@@ -13,19 +13,35 @@ import java.util.UUID;
 @Repository
 public interface FormJpaRepository extends JpaRepository<FormEntity, UUID> {
 
-    /** Returns all forms newest-first (unscoped — kept for internal use). */
-    @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields ORDER BY f.createdAt DESC")
+    /**
+     * Returns all non-deleted forms newest-first (unscoped — kept for internal
+     * use).
+     */
+    @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.softDeleted = false ORDER BY f.createdAt DESC")
     List<FormEntity> findAllByOrderByCreatedAtDesc();
 
-    /** Returns forms owned by a specific user, newest-first. */
-    @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.createdBy = :owner ORDER BY f.createdAt DESC")
+    /**
+     * Returns active (non-deleted) forms owned by a specific user, newest-first.
+     */
+    @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.createdBy = :owner AND f.softDeleted = false ORDER BY f.createdAt DESC")
     List<FormEntity> findAllByCreatedByOrderByCreatedAtDesc(@Param("owner") String owner);
 
-    /** Find form by ID with fields eagerly loaded. */
-    @Query("SELECT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.id = :id")
+    /** Find active form by ID with fields eagerly loaded. */
+    @Query("SELECT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.id = :id AND f.softDeleted = false")
     Optional<FormEntity> findByIdWithFields(@Param("id") UUID id);
 
-    /** Find form by ID scoped to owner — returns empty if form belongs to another user. */
-    @Query("SELECT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.id = :id AND f.createdBy = :owner")
+    /** Find active form by ID scoped to owner. */
+    @Query("SELECT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.id = :id AND f.createdBy = :owner AND f.softDeleted = false")
     Optional<FormEntity> findByIdAndCreatedBy(@Param("id") UUID id, @Param("owner") String owner);
+
+    /**
+     * Find ANY form by ID (including soft-deleted) — used for
+     * restore/permanent-delete.
+     */
+    @Query("SELECT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.id = :id AND f.createdBy = :owner")
+    Optional<FormEntity> findByIdAndCreatedByIncludingTrashed(@Param("id") UUID id, @Param("owner") String owner);
+
+    /** Returns soft-deleted forms for a specific user (the trash bin). */
+    @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.createdBy = :owner AND f.softDeleted = true ORDER BY f.deletedAt DESC")
+    List<FormEntity> findTrashedByOwner(@Param("owner") String owner);
 }

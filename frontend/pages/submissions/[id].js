@@ -87,8 +87,28 @@ export default function SubmissionsPage() {
         if (form?.fields) {
             form.fields.forEach((field) => {
                 if (field.fieldType !== 'file') {
-                    const val = submission[field.fieldKey];
-                    initialData[field.fieldKey] = val !== null && val !== undefined ? String(val) : '';
+                    const raw = submission[field.fieldKey];
+                    if (raw === null || raw === undefined) {
+                        initialData[field.fieldKey] = '';
+                    } else {
+                        const str = String(raw);
+                        // For dropdown single-select stored as JSON string ("\"Option\""), unwrap it
+                        if (field.fieldType === 'dropdown') {
+                            const trimmed = str.trim();
+                            if (trimmed.startsWith('[')) {
+                                // Multi-select: keep as JSON string so checkboxes can parse it
+                                initialData[field.fieldKey] = trimmed;
+                            } else if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+                                // Single-select stored as JSON quoted string → unwrap
+                                try { initialData[field.fieldKey] = JSON.parse(trimmed); }
+                                catch { initialData[field.fieldKey] = trimmed; }
+                            } else {
+                                initialData[field.fieldKey] = trimmed;
+                            }
+                        } else {
+                            initialData[field.fieldKey] = str;
+                        }
+                    }
                 }
             });
         }
@@ -194,10 +214,14 @@ export default function SubmissionsPage() {
             return `${n}/5 ${'★'.repeat(n)}${'☆'.repeat(5 - n)}`;
         }
         if (field.fieldType === 'linear_scale') return String(v);
-        if (field.fieldType === 'multiple_choice') {
+        if (field.fieldType === 'multiple_choice' || field.fieldType === 'dropdown') {
             const str = String(v).trim();
             if (str.startsWith('[')) {
                 try { return JSON.parse(str).join(', '); } catch { }
+            }
+            // For single-select dropdown stored as JSON string "\"Option\"", remove the quotes for export
+            if (str.startsWith('"') && str.endsWith('"')) {
+                try { return JSON.parse(str); } catch { }
             }
             return str;
         }
@@ -532,22 +556,34 @@ export default function SubmissionsPage() {
                                     </div>
                                 );
                             }
-                            // Multiple choice — parse JSON array and show as comma-separated tags
-                            if (field.fieldType === 'multiple_choice' && value) {
+                            // Multiple choice & Multi-select Dropdown — parse JSON array and show as comma-separated tags
+                            if ((field.fieldType === 'multiple_choice' || field.fieldType === 'dropdown') && value) {
                                 let items = [];
                                 const str = String(value).trim();
                                 if (str.startsWith('[')) {
                                     try { items = JSON.parse(str); } catch { items = [str]; }
+                                } else if (str.startsWith('"') && str.endsWith('"')) {
+                                    // Single-select dropdown stored as JSON string ("\"Option\"") -> strip quotes
+                                    try { items = [JSON.parse(str)]; } catch { items = [str]; }
                                 } else {
                                     items = str.split(',').map(v => v.trim()).filter(Boolean);
                                 }
+
+                                // For standard single-select fallback (or when only 1 item from non-array string)
+                                if (items.length === 1 && field.fieldType === 'dropdown' && !str.startsWith('[')) {
+                                    const strValue = String(items[0]);
+                                    return strValue.length > 50 ? strValue.substring(0, 50) + '...' : strValue;
+                                }
+
                                 return (
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                                         {items.map((item, idx) => (
                                             <span key={idx} style={{
                                                 padding: '2px 8px', borderRadius: '12px', fontSize: '12px',
-                                                background: 'rgba(20,184,166,0.15)', color: '#5EEAD4',
-                                                border: '1px solid rgba(20,184,166,0.3)', whiteSpace: 'nowrap'
+                                                background: field.fieldType === 'dropdown' ? 'rgba(99,102,241,0.15)' : 'rgba(20,184,166,0.15)',
+                                                color: field.fieldType === 'dropdown' ? '#a5b4fc' : '#5EEAD4',
+                                                border: field.fieldType === 'dropdown' ? '1px solid rgba(99,102,241,0.3)' : '1px solid rgba(20,184,166,0.3)',
+                                                whiteSpace: 'nowrap'
                                             }}>{item}</span>
                                         ))}
                                     </div>
@@ -725,25 +761,82 @@ export default function SubmissionsPage() {
             );
         }
 
-        // Dropdown — single <select>
+        // Dropdown — single <select> or multi-select custom UI
         if (field.fieldType === 'dropdown') {
             const renderField = renderData?.fields?.find(f => f.fieldKey === field.fieldKey);
             const opts = Array.isArray(renderField?.options) ? renderField.options : [];
+            let isMulti = false;
+            try {
+                const uiCfg = JSON.parse(renderField?.uiConfigJson || '{}');
+                isMulti = !!uiCfg.multiple;
+            } catch { }
+
+            if (!isMulti) {
+                return (
+                    <select
+                        className="form-select"
+                        value={val}
+                        onChange={(e) => handleEditChange(field.fieldKey, e.target.value)}
+                    >
+                        <option value="">— Select —</option>
+                        {opts.map((opt, idx) => {
+                            const optLabel = typeof opt === 'string' ? opt : (opt.label || opt.value || '');
+                            const optValue = typeof opt === 'string' ? opt : (opt.value || opt.label || '');
+                            return (
+                                <option key={idx} value={optValue}>{optLabel}</option>
+                            );
+                        })}
+                    </select>
+                );
+            }
+
+            // Multi Select — render as checkboxes similar to multiple_choice
+            let selected = [];
+            if (val) {
+                const str = String(val).trim();
+                if (str.startsWith('[')) {
+                    try { selected = JSON.parse(str); } catch { selected = []; }
+                } else {
+                    selected = str.split(',').map(v => v.trim()).filter(Boolean);
+                }
+            }
             return (
-                <select
-                    className="form-select"
-                    value={val}
-                    onChange={(e) => handleEditChange(field.fieldKey, e.target.value)}
-                >
-                    <option value="">— Select —</option>
+                <div className="radio-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {opts.map((opt, idx) => {
                         const optLabel = typeof opt === 'string' ? opt : (opt.label || opt.value || '');
                         const optValue = typeof opt === 'string' ? opt : (opt.value || opt.label || '');
+                        const isChecked = selected.includes(optValue);
+                        const handleChange = (e) => {
+                            const currentVal = editFormData[field.fieldKey] || '';
+                            let currentSelected = [];
+                            if (currentVal) {
+                                const str = String(currentVal).trim();
+                                if (str.startsWith('[')) {
+                                    try { currentSelected = JSON.parse(str); } catch { currentSelected = []; }
+                                } else {
+                                    currentSelected = str.split(',').map(v => v.trim()).filter(Boolean);
+                                }
+                            }
+                            const checked = e.target.checked;
+                            const next = checked
+                                ? [...currentSelected, optValue]
+                                : currentSelected.filter(v => v !== optValue);
+                            const unique = [...new Set(next)];
+                            handleEditChange(field.fieldKey, JSON.stringify(unique));
+                        };
                         return (
-                            <option key={idx} value={optValue}>{optLabel}</option>
+                            <label key={idx} className="radio-option checkbox-style">
+                                <input
+                                    type="checkbox"
+                                    value={optValue}
+                                    checked={isChecked}
+                                    onChange={handleChange}
+                                />
+                                <span>{optLabel}</span>
+                            </label>
                         );
                     })}
-                </select>
+                </div>
             );
         }
 
@@ -997,6 +1090,9 @@ export default function SubmissionsPage() {
                             </Link>
                             <Link href={`/preview/${id}`} className="btn btn-secondary">
                                 👁 Preview Form
+                            </Link>
+                            <Link href={`/submissions/trash/${id}`} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                🗑 Trash
                             </Link>
                             {/* Export buttons — only shown when there are submissions */}
                             {submissions.length > 0 && (

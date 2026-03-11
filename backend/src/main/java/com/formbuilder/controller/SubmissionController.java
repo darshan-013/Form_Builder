@@ -31,7 +31,10 @@ public class SubmissionController {
 
     private static final String UPLOAD_DIR = "uploads";
 
-    /** Check form is PUBLISHED, not expired, and enforce single-submission if configured */
+    /**
+     * Check form is PUBLISHED, not expired, and enforce single-submission if
+     * configured
+     */
     private ResponseEntity<?> checkPublishedAndSession(UUID id, HttpSession session) {
         FormEntity form = formService.getFormById(id);
         if (form.getStatus() != FormEntity.FormStatus.PUBLISHED) {
@@ -57,14 +60,15 @@ public class SubmissionController {
     /**
      * POST /api/forms/{id}/submit — JSON body
      */
-    @PostMapping(value = "/{id}/submit", consumes = {"application/json", "application/json;charset=UTF-8"})
+    @PostMapping(value = "/{id}/submit", consumes = { "application/json", "application/json;charset=UTF-8" })
     public ResponseEntity<?> submitJson(
             @PathVariable UUID id,
             @RequestBody(required = false) Map<String, Object> rawBody,
             HttpSession session) {
 
         ResponseEntity<?> guard = checkPublishedAndSession(id, session);
-        if (guard != null) return guard;
+        if (guard != null)
+            return guard;
 
         Map<String, Object> data = new HashMap<>();
         if (rawBody != null) {
@@ -96,19 +100,22 @@ public class SubmissionController {
             HttpSession session) {
 
         ResponseEntity<?> guard = checkPublishedAndSession(id, session);
-        if (guard != null) return guard;
+        if (guard != null)
+            return guard;
 
-        Map<String, Object> data  = new HashMap<>();
+        Map<String, Object> data = new HashMap<>();
         Map<String, MultipartFile> files = new HashMap<>();
 
         try {
             multipart.getParameterMap().forEach((key, values) -> {
-                if (values != null && values.length > 0) data.put(key, values[0]);
+                if (values != null && values.length > 0)
+                    data.put(key, values[0]);
             });
             multipart.getMultiFileMap().forEach((key, fileList) -> {
                 if (fileList != null && !fileList.isEmpty()) {
                     MultipartFile first = fileList.get(0);
-                    if (first != null && !first.isEmpty()) files.put(key, first);
+                    if (first != null && !first.isEmpty())
+                        files.put(key, first);
                     data.put("__files__" + key, fileList);
                 }
             });
@@ -120,20 +127,24 @@ public class SubmissionController {
             Set<String> savedKeys = new HashSet<>();
             for (Map.Entry<String, Object> entry : new HashMap<>(data).entrySet()) {
                 String key = entry.getKey();
-                if (!key.startsWith("__files__")) continue;
+                if (!key.startsWith("__files__"))
+                    continue;
                 String fieldKey = key.substring("__files__".length());
                 savedKeys.add(fieldKey);
                 @SuppressWarnings("unchecked")
                 List<MultipartFile> fileList = (List<MultipartFile>) entry.getValue();
                 List<String> savedNames = new ArrayList<>();
                 for (MultipartFile f : fileList) {
-                    if (f != null && !f.isEmpty()) savedNames.add(saveFile(f));
+                    if (f != null && !f.isEmpty())
+                        savedNames.add(saveFile(f));
                 }
-                if (!savedNames.isEmpty()) data.put(fieldKey, String.join(",", savedNames));
+                if (!savedNames.isEmpty())
+                    data.put(fieldKey, String.join(",", savedNames));
                 data.remove(key);
             }
             for (Map.Entry<String, MultipartFile> e : files.entrySet()) {
-                if (!savedKeys.contains(e.getKey())) data.put(e.getKey(), saveFile(e.getValue()));
+                if (!savedKeys.contains(e.getKey()))
+                    data.put(e.getKey(), saveFile(e.getValue()));
             }
 
             submissionService.insert(id, data);
@@ -148,10 +159,12 @@ public class SubmissionController {
 
     private String saveFile(MultipartFile file) throws IOException {
         Path uploadPath = Paths.get(UPLOAD_DIR);
-        if (!Files.exists(uploadPath)) Files.createDirectories(uploadPath);
-        String original  = file.getOriginalFilename();
+        if (!Files.exists(uploadPath))
+            Files.createDirectories(uploadPath);
+        String original = file.getOriginalFilename();
         String extension = (original != null && original.contains("."))
-                ? original.substring(original.lastIndexOf('.')) : "";
+                ? original.substring(original.lastIndexOf('.'))
+                : "";
         String unique = UUID.randomUUID() + extension;
         Files.copy(file.getInputStream(), uploadPath.resolve(unique));
         log.info("Saved file: {} (original: {})", unique, original);
@@ -208,6 +221,47 @@ public class SubmissionController {
             return ResponseEntity.notFound().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ── Trash Bin Endpoints ────────────────────────────────────────────────
+
+    /** List all soft-deleted submissions for a form (the trash). */
+    @GetMapping("/{id}/submissions/trash")
+    public ResponseEntity<?> getTrashSubmissions(
+            @PathVariable UUID id,
+            Authentication auth) {
+        formService.getOwnedFormById(id, auth.getName());
+        return ResponseEntity.ok(submissionService.getTrashSubmissions(id));
+    }
+
+    /** Restore a submission from trash back to active. */
+    @PostMapping("/{id}/submissions/{submissionId}/restore")
+    public ResponseEntity<?> restoreSubmission(
+            @PathVariable UUID id,
+            @PathVariable UUID submissionId,
+            Authentication auth) {
+        formService.getOwnedFormById(id, auth.getName());
+        try {
+            submissionService.restoreSubmission(id, submissionId);
+            return ResponseEntity.ok(Map.of("message", "Submission restored successfully"));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /** Permanently delete a submission that is in trash. */
+    @DeleteMapping("/{id}/submissions/{submissionId}/permanent")
+    public ResponseEntity<?> permanentDeleteSubmission(
+            @PathVariable UUID id,
+            @PathVariable UUID submissionId,
+            Authentication auth) {
+        formService.getOwnedFormById(id, auth.getName());
+        try {
+            submissionService.permanentDeleteSubmission(id, submissionId);
+            return ResponseEntity.ok(Map.of("message", "Submission permanently deleted"));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
         }
     }
 }

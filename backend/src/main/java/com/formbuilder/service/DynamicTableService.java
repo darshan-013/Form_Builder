@@ -35,7 +35,7 @@ public class DynamicTableService {
             Map.entry("number", "INTEGER"),
             Map.entry("date", "DATE"),
             Map.entry("boolean", "BOOLEAN"),
-            Map.entry("dropdown", "VARCHAR(255)"),
+            Map.entry("dropdown", "TEXT"), // Changed from VARCHAR(255) to TEXT to support JSON arrays
             Map.entry("radio", "VARCHAR(255)"),
             Map.entry("multiple_choice", "TEXT"),
             Map.entry("linear_scale", "INTEGER"),
@@ -77,9 +77,11 @@ public class DynamicTableService {
         // Step 1 — base table structure
         String create = """
                 CREATE TABLE %s (
-                    id         UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+                    id              UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+                    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+                    is_soft_deleted BOOLEAN   NOT NULL DEFAULT FALSE,
+                    deleted_at      TIMESTAMP
                 )
                 """.formatted(q(tableName));
         log.debug("DDL createTable: {}", create.trim());
@@ -90,6 +92,24 @@ public class DynamicTableService {
             if (!"field_group".equals(field.getFieldType())) {
                 addColumn(tableName, field.getFieldKey(), field.getFieldType());
             }
+        }
+    }
+
+    /**
+     * Back-fills is_soft_deleted and deleted_at columns on an existing submission
+     * table
+     * that was created before the soft-delete feature was added.
+     * Safe to call repeatedly — uses ADD COLUMN IF NOT EXISTS.
+     */
+    public void addSoftDeleteColumnIfMissing(String tableName) {
+        try {
+            jdbc.execute("ALTER TABLE " + q(tableName) +
+                    " ADD COLUMN IF NOT EXISTS is_soft_deleted BOOLEAN NOT NULL DEFAULT FALSE");
+            jdbc.execute("ALTER TABLE " + q(tableName) +
+                    " ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP");
+            log.debug("Soft-delete columns ensured for table: {}", tableName);
+        } catch (Exception e) {
+            log.warn("Could not add soft-delete columns to {}: {}", tableName, e.getMessage());
         }
     }
 

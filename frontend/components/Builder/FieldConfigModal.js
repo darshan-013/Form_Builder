@@ -585,6 +585,38 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                             );
                         })()}
 
+                        {/* ── Dropdown Selection Type (Single / Multi) ── */}
+                        {local.fieldType === 'dropdown' && (
+                            <div className="form-group" style={{ marginBottom: 16 }}>
+                                <label className="form-label" style={{ marginBottom: 8, display: 'block' }}>Dropdown Selection Type</label>
+                                <div style={{ display: 'flex', gap: 16 }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                                        <input
+                                            type="radio"
+                                            name="dropdown-type"
+                                            checked={!uiConfig.multiple}
+                                            onChange={() => setUiCfg('multiple', false)}
+                                            style={{ accentColor: 'var(--accent)' }}
+                                        />
+                                        Single Select (Default)
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                                        <input
+                                            type="radio"
+                                            name="dropdown-type"
+                                            checked={!!uiConfig.multiple}
+                                            onChange={() => setUiCfg('multiple', true)}
+                                            style={{ accentColor: 'var(--accent)' }}
+                                        />
+                                        Multi Select
+                                    </label>
+                                </div>
+                                <p className="form-help" style={{ marginTop: 6 }}>
+                                    {uiConfig.multiple ? 'Users can select multiple options (displayed as chips).' : 'Users can select only one option.'}
+                                </p>
+                            </div>
+                        )}
+
                         {/* ── Options Editor (dropdown / radio / multiple_choice only) ── */}
                         {(local.fieldType === 'dropdown' || local.fieldType === 'radio' || local.fieldType === 'multiple_choice') && (
                             <div className="form-group">
@@ -596,7 +628,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                         onClick={() => setPickerOpen(true)}
                                         title="Copy options from an existing form's dropdown or radio field"
                                     >
-                                        📋 Use Existing Dropdown
+                                        📋 Use Existing Options
                                     </button>
                                 </div>
 

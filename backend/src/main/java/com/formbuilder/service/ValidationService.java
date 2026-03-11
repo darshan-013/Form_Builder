@@ -57,7 +57,21 @@ public class ValidationService {
             rules = objectMapper.createObjectNode();
         }
 
-        String strValue = (value != null) ? value.toString().trim() : "";
+        // If value is a List (e.g., multi-select dropdown from JSON array), serialize
+        // it
+        // back to a proper JSON string so downstream validators can parse it correctly.
+        // value.toString() on a List produces [Item1, Item2] (no quotes) which is not
+        // valid JSON.
+        String strValue;
+        if (value instanceof List) {
+            try {
+                strValue = objectMapper.writeValueAsString(value);
+            } catch (JsonProcessingException e) {
+                strValue = value.toString().trim();
+            }
+        } else {
+            strValue = (value != null) ? value.toString().trim() : "";
+        }
         boolean isEmpty = strValue.isEmpty();
 
         // Required check (universal — except boolean, multiple_choice_grid,
@@ -408,12 +422,47 @@ public class ValidationService {
 
         log.debug("validateDropdown '{}' value='{}' hasOptions={}", field.getFieldKey(), value, optionsJson != null);
 
+        // Parse selected values — support both JSON array and single string
+        List<String> selected = new ArrayList<>();
+        if (value != null && !value.isBlank()) {
+            String trimmed = value.trim();
+            if (trimmed.startsWith("[")) {
+                // JSON array format: ["Option 1","Option 2"]
+                try {
+                    JsonNode arr = objectMapper.readTree(trimmed);
+                    if (arr.isArray()) {
+                        for (JsonNode n : arr) {
+                            if (n.isTextual() && !n.asText().isBlank()) {
+                                selected.add(n.asText().trim());
+                            }
+                        }
+                    }
+                } catch (JsonProcessingException e) {
+                    log.warn("Failed to parse dropdown JSON value: {}", value);
+                }
+            } else {
+                // Fallback: single string (legacy or single-select)
+                // Remove quotes if it's stored as a JSON string "\"Option\""
+                if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+                    try {
+                        selected.add(objectMapper.readTree(trimmed).asText().trim());
+                    } catch (Exception e) {
+                        selected.add(trimmed);
+                    }
+                } else {
+                    selected.add(trimmed);
+                }
+            }
+        }
+
         // 1. Reject placeholder / default text FIRST (before option validation)
         if (rules.has("defaultNotAllowed") && !rules.get("defaultNotAllowed").asText("").isBlank()) {
             String placeholder = rules.get("defaultNotAllowed").asText().trim();
-            if (value.trim().equals(placeholder)) {
-                errors.add(label + " — please select a valid option");
-                return;
+            for (String sel : selected) {
+                if (sel.equals(placeholder)) {
+                    errors.add(label + " — please select a valid option");
+                    return;
+                }
             }
         }
 
@@ -421,8 +470,10 @@ public class ValidationService {
         // Only skip validation when admin explicitly sets optionExists = false
         boolean optionExistsEnabled = !rules.has("optionExists") || rules.get("optionExists").asBoolean();
         if (optionExistsEnabled && optionsJson != null && !optionsJson.isBlank()) {
-            if (!isValidOption(optionsJson, value)) {
-                errors.add(label + " has an invalid selection");
+            for (String sel : selected) {
+                if (!isValidOption(optionsJson, sel)) {
+                    errors.add(label + " has an invalid selection");
+                }
             }
         }
     }
