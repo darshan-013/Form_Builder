@@ -1,26 +1,35 @@
-# Ignore everything at root level
+# Ignore everything at root
 /*
 
-# Allow specific directories only
+# Allow important folders
 !frontend/
 !backend/
 !uploads/
 !.idea/
 !.gitignore
 
-# Ignore common build/dependency directories
-**/node_modules/
-**/target/
-**/.gradle/
-**/build/
-**/.next/
-**/dist/
-**/.turbo/
+# Allow files inside allowed folders
+!frontend/**
+!backend/**
+!uploads/**
+!.idea/**
 
-# Ignore OS files
-**/.DS_Store
-**/Thumbs.db
+# Ignore build/dependency folders
+frontend/node_modules/
+backend/target/
+backend/build/
+backend/.gradle/
+frontend/.next/
+frontend/dist/
+frontend/.turbo/
 
-# Ignore IDE files (except .idea since you want it)
-**/.vscode/
-**/*.iml
+# Environment secrets
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.iml
