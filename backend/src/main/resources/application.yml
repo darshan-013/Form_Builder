@@ -5,7 +5,7 @@ spring:
     name: formbuilder
 
   datasource:
-    url: ${DB_URL}
+    url: jdbc:postgresql://localhost:5432/formbuilder
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
