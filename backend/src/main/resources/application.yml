@@ -6,8 +6,8 @@ spring:
 
   datasource:
     url: jdbc:postgresql://localhost:5432/formbuilderdb
-    username: postgres
-    password: admin
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
