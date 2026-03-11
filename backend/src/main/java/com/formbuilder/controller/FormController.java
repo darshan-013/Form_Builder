@@ -2,6 +2,7 @@ package com.formbuilder.controller;
 
 import com.formbuilder.dto.FormDTO;
 import com.formbuilder.entity.FormEntity;
+import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
 import com.formbuilder.service.FormRenderService;
 import com.formbuilder.service.FormService;
@@ -70,6 +71,20 @@ public class FormController {
         response.put("expiresAt", form.getExpiresAt());
         response.put("fields", form.getFields());
         response.put("staticFields", staticList);
+
+        // Groups
+        List<FormGroupEntity> groups = formService.getGroups(id);
+        List<Map<String, Object>> groupList = new ArrayList<>();
+        for (FormGroupEntity g : groups) {
+            Map<String, Object> gm = new LinkedHashMap<>();
+            gm.put("id", g.getId());
+            gm.put("groupTitle", g.getGroupTitle());
+            gm.put("groupDescription", g.getGroupDescription());
+            gm.put("groupOrder", g.getGroupOrder());
+            gm.put("rulesJson", g.getRulesJson());
+            groupList.add(gm);
+        }
+        response.put("groups", groupList);
 
         return ResponseEntity.ok(response);
     }

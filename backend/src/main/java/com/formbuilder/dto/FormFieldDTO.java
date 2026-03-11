@@ -41,4 +41,5 @@ public class FormFieldDTO {
     private Integer precision;
     private Boolean lockAfterCalculation;
     private String parentGroupKey;
+    private UUID groupId;
 }

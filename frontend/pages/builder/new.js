@@ -25,6 +25,7 @@ export default function NewBuilderPage() {
     const [formName, setFormName] = useState('');
     const [formDescription, setFormDescription] = useState('');
     const [fields, setFields] = useState([]);
+    const [groups, setGroups] = useState([]);
     const [saving, setSaving] = useState(false);
     const [allowMultipleSubmissions, setAllowMultipleSubmissions] = useState(true);
     const [expiresAt, setExpiresAt] = useState(''); // ISO string or ''
@@ -41,12 +42,14 @@ export default function NewBuilderPage() {
         fields.forEach((f, i) => {
             if (STATIC_TYPES.has(f.fieldType)) {
                 staticFields.push({
+                    id: f.id,
                     fieldType: f.fieldType,
                     data: f.data || '',
                     fieldOrder: i,
                 });
             } else {
                 dynamicFields.push({
+                    id: f.id,
                     fieldKey: f.fieldKey || `field_${i}`,
                     label: f.label || `Field ${i + 1}`,
                     fieldType: f.fieldType,
@@ -67,6 +70,7 @@ export default function NewBuilderPage() {
                     dependencies: f.dependencies || [],
                     disabled: f.disabled || false,
                     readOnly: f.readOnly || false,
+                    groupId: f.groupId || null,
                 });
             }
         });
@@ -76,6 +80,13 @@ export default function NewBuilderPage() {
             description: formDescription.trim() || null,
             fields: dynamicFields,
             staticFields: staticFields,
+            groups: groups.map((g, i) => ({
+                id: g.id,
+                groupTitle: g.groupTitle || 'Untitled Section',
+                groupDescription: g.groupDescription || '',
+                groupOrder: i,
+                rulesJson: g.rulesJson || null,
+            })),
             allowMultipleSubmissions: allowMultipleSubmissions,
             showTimestamp: true, // always recorded — compulsory
             expiresAt: expiresAt ? expiresAt : null,
@@ -216,7 +227,7 @@ export default function NewBuilderPage() {
                         </div>
                     </div>
 
-                    <Canvas fields={fields} setFields={setFields} />
+                    <Canvas fields={fields} setFields={setFields} groups={groups} setGroups={setGroups} />
                 </main>
             </div>
         </>

@@ -1,6 +1,6 @@
 package com.formbuilder.repository;
 
-import com.formbuilder.entity.StaticFormFieldEntity;
+import com.formbuilder.entity.FormGroupEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -10,11 +10,11 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface StaticFormFieldRepository extends JpaRepository<StaticFormFieldEntity, UUID> {
+public interface FormGroupRepository extends JpaRepository<FormGroupEntity, UUID> {
 
-    List<StaticFormFieldEntity> findByFormIdOrderByFieldOrderAsc(UUID formId);
+    List<FormGroupEntity> findByFormIdOrderByGroupOrderAsc(UUID formId);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("DELETE FROM StaticFormFieldEntity s WHERE s.formId = :formId")
+    @Query("DELETE FROM FormGroupEntity g WHERE g.formId = :formId")
     void deleteByFormId(UUID formId);
 }

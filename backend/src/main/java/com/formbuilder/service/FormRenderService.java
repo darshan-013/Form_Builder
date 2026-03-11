@@ -7,7 +7,9 @@ import com.formbuilder.dto.FormRenderDTO.OptionDTO;
 import com.formbuilder.dto.FormRenderDTO.RenderFieldDTO;
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormFieldEntity;
+import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
+import com.formbuilder.repository.FormGroupRepository;
 import com.formbuilder.repository.FormJpaRepository;
 import com.formbuilder.repository.SharedOptionsRepository;
 import com.formbuilder.repository.StaticFormFieldRepository;
@@ -17,6 +19,12 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.UUID;
+import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 
 /**
  * Builds the FormRenderDTO used by the public form renderer.
@@ -32,6 +40,7 @@ public class FormRenderService {
     private final FormJpaRepository formRepo;
     private final SharedOptionsRepository sharedOptionsRepo;
     private final StaticFormFieldRepository staticRepo;
+    private final FormGroupRepository groupRepo;
     private final ObjectMapper objectMapper;
 
     public FormRenderDTO render(UUID formId) {
@@ -63,11 +72,24 @@ public class FormRenderService {
         // 3. Sort merged list by fieldOrder
         renderFields.sort(Comparator.comparingInt(RenderFieldDTO::getFieldOrder));
 
+        // 4. Groups
+        List<FormGroupEntity> groupEntities = groupRepo.findByFormIdOrderByGroupOrderAsc(formId);
+        List<FormRenderDTO.RenderGroupDTO> groups = groupEntities.stream()
+                .map(g -> FormRenderDTO.RenderGroupDTO.builder()
+                        .id(g.getId())
+                        .groupTitle(g.getGroupTitle())
+                        .groupDescription(g.getGroupDescription())
+                        .groupOrder(g.getGroupOrder())
+                        .rulesJson(g.getRulesJson())
+                        .build())
+                .collect(Collectors.toList());
+
         return FormRenderDTO.builder()
                 .formId(form.getId())
                 .formName(form.getName())
                 .formDescription(form.getDescription())
                 .fields(renderFields)
+                .groups(groups)
                 .allowMultipleSubmissions(form.isAllowMultipleSubmissions())
                 .showTimestamp(form.isShowTimestamp())
                 .expiresAt(form.getExpiresAt())
@@ -114,6 +136,7 @@ public class FormRenderService {
                 .precision(f.getPrecision())
                 .lockAfterCalculation(Boolean.TRUE.equals(f.getLockAfterCalculation()))
                 .parentGroupKey(f.getParentGroupKey())
+                .groupId(f.getGroupId())
                 .build();
     }
 

@@ -4,9 +4,11 @@ import com.formbuilder.dto.FormDTO;
 import com.formbuilder.dto.FormFieldDTO;
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormFieldEntity;
+import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.SharedOptionsEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
 import com.formbuilder.repository.FormFieldJpaRepository;
+import com.formbuilder.repository.FormGroupRepository;
 import com.formbuilder.repository.FormJpaRepository;
 import com.formbuilder.repository.SharedOptionsRepository;
 import com.formbuilder.repository.StaticFormFieldRepository;
@@ -27,6 +29,7 @@ public class FormService {
     private final FormFieldJpaRepository fieldRepo;
     private final SharedOptionsRepository sharedOptionsRepo;
     private final StaticFormFieldRepository staticRepo;
+    private final FormGroupRepository groupRepo;
     private final DynamicTableService dynamicTable;
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -74,17 +77,26 @@ public class FormService {
                 .fields(new ArrayList<>())
                 .build();
 
+        // 1. Initial save of form metadata (to get form.id)
+        FormEntity saved = formRepo.save(form);
+
+        // 2. Save static fields (no FK dependencies)
+        saveStaticFields(saved.getId(), dto.getStaticFields());
+
+        // 3. Save groups (must exist before dynamic fields reference them)
+        saveGroups(saved.getId(), dto.getGroups());
+        groupRepo.flush(); // Force groups to DB before saving fields
+
+        // 4. Map and save dynamic fields
         if (dto.getFields() != null) {
             for (FormFieldDTO f : dto.getFields()) {
-                form.getFields().add(toFieldEntity(f, form));
+                saved.getFields().add(toFieldEntity(f, saved));
             }
+            // Save again to flush fields with correct IDs
+            saved = formRepo.save(saved);
         }
 
-        FormEntity saved = formRepo.save(form);
         dynamicTable.createTable(tableName, saved.getFields());
-
-        // Save static fields
-        saveStaticFields(saved.getId(), dto.getStaticFields());
 
         log.info("Form '{}' created by '{}' with table '{}'", saved.getName(), owner, tableName);
         return saved;
@@ -126,13 +138,21 @@ public class FormService {
             }
         }
 
+        // 1. Replace all static fields
+        staticRepo.deleteByFormId(existing.getId());
+        saveStaticFields(existing.getId(), dto.getStaticFields());
+
+        // 2. Replace all groups (must exist before fields reference them)
+        groupRepo.deleteByFormId(existing.getId());
+        groupRepo.flush(); // Force delete to DB
+        saveGroups(existing.getId(), dto.getGroups());
+        groupRepo.flush(); // Force inserts to DB
+
+        // 3. Update form metadata and fields
         existing.setName(dto.getName());
         existing.setDescription(dto.getDescription());
-        // null → keep whatever was already saved; explicit value → update it
         if (dto.getAllowMultipleSubmissions() != null)
             existing.setAllowMultipleSubmissions(dto.getAllowMultipleSubmissions());
-        existing.setShowTimestamp(true); // always compulsory — timestamp every submission
-        // expiresAt: always update — null means "clear the expiry"
         existing.setExpiresAt(dto.getExpiresAt());
         existing.getFields().removeIf(field -> !newKeys.contains(field.getFieldKey()));
 
@@ -152,27 +172,20 @@ public class FormService {
                     existingField.setFieldOrder(dtoField.getFieldOrder());
                     existingField.setDisabled(dtoField.isDisabled());
                     existingField.setReadOnly(dtoField.isReadOnly());
-
-                    // Calculated fields persistence
                     existingField.setIsCalculated(dtoField.getIsCalculated());
                     existingField.setFormulaExpression(dtoField.getFormulaExpression());
                     existingField.setDependenciesJson(serializeDependencies(dtoField.getDependencies()));
                     existingField.setPrecision(dtoField.getPrecision());
                     existingField.setLockAfterCalculation(dtoField.getLockAfterCalculation());
                     existingField.setParentGroupKey(dtoField.getParentGroupKey());
+                    existingField.setGroupId(dtoField.getGroupId());
                 } else {
                     existing.getFields().add(toFieldEntity(dtoField, existing));
                 }
             }
         }
 
-        FormEntity savedForm = formRepo.save(existing);
-
-        // Replace all static fields for this form
-        staticRepo.deleteByFormId(savedForm.getId());
-        saveStaticFields(savedForm.getId(), dto.getStaticFields());
-
-        return savedForm;
+        return formRepo.save(existing);
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────
@@ -258,6 +271,7 @@ public class FormService {
             return;
         for (FormDTO.StaticFieldDTO sf : staticDTOs) {
             staticRepo.save(StaticFormFieldEntity.builder()
+                    .id(sf.getId() != null ? sf.getId() : UUID.randomUUID())
                     .formId(formId)
                     .fieldType(sf.getFieldType())
                     .data(sf.getData())
@@ -266,10 +280,31 @@ public class FormService {
         }
     }
 
+    /** Returns all groups for a form, ordered by group_order */
+    public List<FormGroupEntity> getGroups(UUID formId) {
+        return groupRepo.findByFormIdOrderByGroupOrderAsc(formId);
+    }
+
+    private void saveGroups(UUID formId, List<FormDTO.GroupDTO> groupDTOs) {
+        if (groupDTOs == null || groupDTOs.isEmpty())
+            return;
+        for (FormDTO.GroupDTO g : groupDTOs) {
+            groupRepo.save(FormGroupEntity.builder()
+                    .id(g.getId() != null ? g.getId() : UUID.randomUUID())
+                    .formId(formId)
+                    .groupTitle(g.getGroupTitle())
+                    .groupDescription(g.getGroupDescription())
+                    .groupOrder(g.getGroupOrder())
+                    .rulesJson(g.getRulesJson())
+                    .build());
+        }
+    }
+
     // ── Helper ────────────────────────────────────────────────────────────────
 
     private FormFieldEntity toFieldEntity(FormFieldDTO dto, FormEntity parent) {
         return FormFieldEntity.builder()
+                .id(dto.getId() != null ? dto.getId() : UUID.randomUUID())
                 .form(parent)
                 .fieldKey(dto.getFieldKey())
                 .label(dto.getLabel())
@@ -291,6 +326,7 @@ public class FormService {
                 .precision(dto.getPrecision())
                 .lockAfterCalculation(dto.getLockAfterCalculation())
                 .parentGroupKey(dto.getParentGroupKey())
+                .groupId(dto.getGroupId())
                 .build();
     }
 

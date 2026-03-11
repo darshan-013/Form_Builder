@@ -4,6 +4,10 @@
  * came from the palette (new field) or from reordering.
  */
 
+const SECTION_TYPES = [
+    { type: 'field_group', label: 'Section Group', icon: '📁', iconClass: 'icon-field-group', desc: 'Visual container to group fields into sections' },
+];
+
 const FIELD_TYPES = [
     { type: 'text', label: 'Text', icon: '𝐓', iconClass: 'icon-text', desc: 'Short or long text input' },
     { type: 'number', label: 'Number', icon: '#', iconClass: 'icon-number', desc: 'Numeric value' },
@@ -20,7 +24,6 @@ const FIELD_TYPES = [
 ];
 
 const STATIC_TYPES = [
-    { type: 'field_group', label: 'Field Group', icon: '📁', iconClass: 'icon-field-group', desc: 'Container to group fields together with optional rules' },
     { type: 'section_header', label: 'Section Header', icon: 'H₁', iconClass: 'icon-section-header', desc: 'Bold section title to divide the form' },
     { type: 'label_text', label: 'Label Text', icon: '¶', iconClass: 'icon-label-text', desc: 'Plain inline label or note' },
     { type: 'description_block', label: 'Description Block', icon: '≡', iconClass: 'icon-description-block', desc: 'Multi-line descriptive paragraph' },
@@ -31,12 +34,29 @@ export default function FieldPalette() {
     const handleDragStart = (e, type) => {
         e.dataTransfer.setData('source', 'palette');
         e.dataTransfer.setData('fieldType', type);
+        e.dataTransfer.setData('application/x-field-type', type);
         e.dataTransfer.effectAllowed = 'copy';
     };
 
     return (
         <aside className="builder-palette">
-            <p className="palette-section-title">Field Types</p>
+            <p className="palette-section-title">📁 Sections</p>
+
+            {SECTION_TYPES.map(({ type, label, icon, iconClass, desc }) => (
+                <div
+                    key={type}
+                    id={`palette-${type}`}
+                    className="palette-field palette-field-section"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, type)}
+                    title={desc}
+                >
+                    <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
+                    <span>{label}</span>
+                </div>
+            ))}
+
+            <p className="palette-section-title" style={{ marginTop: 16 }}>Field Types</p>
 
             {FIELD_TYPES.map(({ type, label, icon, iconClass, desc }) => (
                 <div

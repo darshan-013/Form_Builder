@@ -2,31 +2,88 @@ import { useState, useRef } from 'react';
 import FieldCard from './FieldCard';
 import FieldConfigModal from './FieldConfigModal';
 import StaticFieldModal from './StaticFieldModal';
+import GroupContainer from './GroupContainer';
+import GroupConfigModal from './GroupConfigModal';
 
 const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
 
 /**
- * Canvas — Manages the list of fields on the form.
+ * Canvas — Manages the list of fields AND groups on the form.
  * Handles:
- *   1. Drops from FieldPalette (new field from field type)
- *   2. Reordering via drag between FieldCards
- *   3. Edit modal (FieldConfigModal)
- *   4. Remove field
+ *   1. Drops from FieldPalette (new field / new group)
+ *   2. Reordering via drag between FieldCards + GroupContainers
+ *   3. Nested field placement inside groups
+ *   4. Edit modal (FieldConfigModal / StaticFieldModal)
+ *   5. Remove field / group
  */
-export default function Canvas({ fields, setFields }) {
+export default function Canvas({ fields, setFields, groups = [], setGroups = () => { } }) {
     const [isOverCanvas, setIsOverCanvas] = useState(false);
     const [draggingIndex, setDraggingIndex] = useState(null);
-    const [dropIndex, setDropIndex] = useState(null);   // card index hovered
-    const [dropPos, setDropPos] = useState(null);   // 'top' | 'bottom'
-    const [editField, setEditField] = useState(null);   // field being edited
-    const [editStaticField, setEditStaticField] = useState(null);   // static field being edited
+    const [dropIndex, setDropIndex] = useState(null);
+    const [dropPos, setDropPos] = useState(null);
+    const [editField, setEditField] = useState(null);
+    const [editStaticField, setEditStaticField] = useState(null);
+    const [editGroupConfig, setEditGroupConfig] = useState(null);
     const canvasRef = useRef(null);
 
-    // ── Field operations ─────────────────────────────────────────────────────
+    // ── Group operations ──────────────────────────────────────────────────────
 
-    const addField = (fieldType) => {
-        const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const generateUUID = () => {
+        if (typeof self !== 'undefined' && self.crypto && self.crypto.randomUUID) {
+            return self.crypto.randomUUID();
+        }
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    };
+
+    const addGroup = () => {
+        const id = generateUUID();
+        const maxFieldOrder = fields.length > 0 ? Math.max(...fields.map(f => f.fieldOrder ?? 0)) : -1;
+        const maxGroupOrder = groups.length > 0 ? Math.max(...groups.map(g => g.groupOrder ?? 0)) : -1;
+        const newOrder = Math.max(maxFieldOrder, maxGroupOrder) + 1;
+
+        const newGroup = {
+            id,
+            groupTitle: 'New Section',
+            groupDescription: '',
+            groupOrder: newOrder,
+        };
+        setGroups((prev) => [...prev, newGroup]);
+    };
+
+    const updateGroup = (updated) => {
+        setGroups((prev) =>
+            prev.map((g) => (g.id === updated.id ? { ...updated } : g))
+        );
+    };
+
+    const removeGroup = (groupId) => {
+        // Move child fields to main canvas (clear groupId)
+        setFields((prev) =>
+            prev.map((f) =>
+                f.groupId === groupId ? { ...f, groupId: null, parentGroupKey: null } : f
+            )
+        );
+        setGroups((prev) => prev.filter((g) => g.id !== groupId).map((g, i) => ({ ...g, groupOrder: i })));
+    };
+
+    // ── Field operations ──────────────────────────────────────────────────────
+
+    const addField = (fieldType, groupId = null) => {
+        const id = generateUUID();
         const isStatic = STATIC_TYPES.has(fieldType);
+
+        if (fieldType === 'field_group') {
+            addGroup();
+            return;
+        }
+
+        const maxFieldOrder = fields.length > 0 ? Math.max(...fields.map(f => f.fieldOrder ?? 0)) : -1;
+        const maxGroupOrder = groups.length > 0 ? Math.max(...groups.map(g => g.groupOrder ?? 0)) : -1;
+        const newOrder = Math.max(maxFieldOrder, maxGroupOrder) + 1;
 
         if (isStatic) {
             const newField = {
@@ -34,12 +91,11 @@ export default function Canvas({ fields, setFields }) {
                 fieldType,
                 isStatic: true,
                 data: '',
-                fieldOrder: fields.length,
+                fieldOrder: newOrder,
+                groupId,
             };
             setFields((prev) => {
                 const updated = [...prev, newField];
-                // page_break has no required content — skip modal, add directly.
-                // Other static types auto-open the config modal.
                 if (fieldType !== 'page_break') {
                     setTimeout(() => setEditStaticField({ ...newField, fieldOrder: updated.length - 1 }), 80);
                 }
@@ -56,14 +112,14 @@ export default function Canvas({ fields, setFields }) {
                 required: false,
                 defaultValue: '',
                 validationRegex: '',
-                fieldOrder: fields.length,
+                fieldOrder: newOrder,
                 sharedOptionsId: null,
                 validationJson: null,
                 rulesJson: null,
+                groupId,
             };
             setFields((prev) => {
                 const updated = [...prev, newField];
-                // Auto-open config modal for the new field
                 setTimeout(() => setEditField({ ...newField, fieldOrder: updated.length - 1 }), 80);
                 return updated;
             });
@@ -88,6 +144,36 @@ export default function Canvas({ fields, setFields }) {
         setEditStaticField(null);
     };
 
+    // ── Drop field into group ─────────────────────────────────────────────────
+
+    const handleDropFieldIntoGroup = (e, groupId) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // New field from palette
+        const fieldType = e.dataTransfer.getData('application/x-field-type') || e.dataTransfer.getData('fieldType');
+        if (fieldType) {
+            if (fieldType === 'field_group') return; // can't nest groups
+            addField(fieldType, groupId);
+            return;
+        }
+
+        // Existing field being moved into group
+        const fieldIndex = e.dataTransfer.getData('application/x-field-index') || e.dataTransfer.getData('dragIndex');
+        if (fieldIndex !== '' && fieldIndex !== null) {
+            const idx = parseInt(fieldIndex, 10);
+            if (!isNaN(idx)) {
+                setFields((prev) => {
+                    const copy = [...prev];
+                    if (copy[idx]) {
+                        copy[idx] = { ...copy[idx], groupId, parentGroupKey: null };
+                    }
+                    return copy;
+                });
+            }
+        }
+    };
+
     // ── Canvas drop (NEW field from palette) ─────────────────────────────────
 
     const handleCanvasDragOver = (e) => {
@@ -99,15 +185,19 @@ export default function Canvas({ fields, setFields }) {
     const handleCanvasDrop = (e) => {
         e.preventDefault();
         setIsOverCanvas(false);
+
+        // Check for group drag reorder
+        const groupId = e.dataTransfer.getData('application/x-group-id');
+        if (groupId) return; // group reorder handled elsewhere
+
         const source = e.dataTransfer.getData('source');
         if (source === 'palette') {
-            const fieldType = e.dataTransfer.getData('fieldType');
-            if (fieldType) addField(fieldType);
+            const fieldType = e.dataTransfer.getData('fieldType') || e.dataTransfer.getData('application/x-field-type');
+            if (fieldType) addField(fieldType, null);
         }
     };
 
     const handleCanvasDragLeave = (e) => {
-        // Only clear if actually leaving the canvas element
         if (!canvasRef.current?.contains(e.relatedTarget)) {
             setIsOverCanvas(false);
         }
@@ -115,18 +205,22 @@ export default function Canvas({ fields, setFields }) {
 
     // ── Card drag (REORDER) ───────────────────────────────────────────────────
 
-    const handleCardDragStart = (e, index) => {
+    const handleCardDragStart = (e, fieldOrIndex) => {
+        const index = typeof fieldOrIndex === 'number'
+            ? fieldOrIndex
+            : fields.findIndex((f) => f.id === fieldOrIndex.id || f.fieldKey === fieldOrIndex.fieldKey);
         e.dataTransfer.setData('source', 'canvas');
         e.dataTransfer.setData('dragIndex', String(index));
+        e.dataTransfer.setData('application/x-field-index', String(index));
         e.dataTransfer.effectAllowed = 'move';
         setDraggingIndex(index);
     };
 
     const handleCardDragOver = (e, index) => {
         e.preventDefault();
-        e.stopPropagation(); // prevent canvas handler from firing
+        e.stopPropagation();
         const source = e.dataTransfer.getData('source');
-        if (source === 'palette') return; // let canvas handle palette drops
+        if (source === 'palette') return;
 
         const rect = e.currentTarget.getBoundingClientRect();
         const midY = rect.top + rect.height / 2;
@@ -136,23 +230,25 @@ export default function Canvas({ fields, setFields }) {
         e.dataTransfer.dropEffect = 'move';
     };
 
-    const handleCardDrop = (e, toIndex) => {
+    const handleCardDrop = (e, toIndex, targetGroupId = null) => {
         e.preventDefault();
         e.stopPropagation();
         const source = e.dataTransfer.getData('source');
         const fromIndex = parseInt(e.dataTransfer.getData('dragIndex'), 10);
 
         if (source === 'palette') {
-            // Dropped on a card but came from palette — treat as canvas drop
-            const fieldType = e.dataTransfer.getData('fieldType');
-            if (fieldType) addField(fieldType);
+            const fieldType = e.dataTransfer.getData('fieldType') || e.dataTransfer.getData('application/x-field-type');
+            if (fieldType) addField(fieldType, targetGroupId);
         } else if (source === 'canvas' && !isNaN(fromIndex) && fromIndex !== toIndex) {
-            // Reorder
             setFields((prev) => {
                 const copy = [...prev];
                 const [moved] = copy.splice(fromIndex, 1);
-                const target = dropPos === 'bottom' ? toIndex : toIndex;
                 const insertAt = fromIndex < toIndex && dropPos === 'top' ? toIndex - 1 : toIndex;
+                // If dropping into a group, set the groupId
+                if (targetGroupId !== undefined && targetGroupId !== null) {
+                    moved.groupId = targetGroupId;
+                    moved.parentGroupKey = null;
+                }
                 copy.splice(insertAt, 0, moved);
                 return copy.map((f, i) => ({ ...f, fieldOrder: i }));
             });
@@ -171,6 +267,18 @@ export default function Canvas({ fields, setFields }) {
         setIsOverCanvas(false);
     };
 
+    // ── Build merged top-level items ──────────────────────────────────────────
+    // Ungrouped fields + groups, sorted by fieldOrder/groupOrder for interleaving
+
+    const ungroupedFields = fields.filter((f) => !f.groupId);
+
+    // Build a merged list for ordering: groups and ungrouped fields are interleaved.
+    // They are sorted together based on their respective order properties.
+    const topLevelItems = [
+        ...ungroupedFields.map(f => ({ type: 'field', data: f, order: f.fieldOrder ?? 0 })),
+        ...groups.map(g => ({ type: 'group', data: g, order: g.groupOrder ?? 0 }))
+    ].sort((a, b) => a.order - b.order);
+
     // ── Render ────────────────────────────────────────────────────────────────
 
     return (
@@ -184,28 +292,66 @@ export default function Canvas({ fields, setFields }) {
                 id="form-canvas"
                 aria-label="Form canvas"
             >
-                {fields.length === 0 ? (
+                {topLevelItems.length === 0 ? (
                     <div className="canvas-empty">
                         <div className="canvas-empty-icon">⊕</div>
                         <h3>Drop fields here</h3>
-                        <p>Drag a field type from the left panel to get started</p>
+                        <p>Drag a field type or section from the left panel to get started</p>
                     </div>
                 ) : (
-                    fields.map((field, index) => (
-                        <FieldCard
-                            key={field.id}
-                            field={field}
-                            index={index}
-                            onEdit={(f) => f.isStatic ? setEditStaticField(f) : setEditField(f)}
-                            onRemove={removeField}
-                            onDragStart={handleCardDragStart}
-                            onDragOver={handleCardDragOver}
-                            onDrop={handleCardDrop}
-                            onDragEnd={handleCardDragEnd}
-                            isDragging={draggingIndex === index}
-                            dropPosition={dropIndex === index ? dropPos : null}
-                        />
-                    ))
+                    topLevelItems.map((item, idx) => {
+                        if (item.type === 'group') {
+                            const group = item.data;
+                            const childFields = fields
+                                .filter((f) => f.groupId === group.id)
+                                .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
+
+                            return (
+                                <GroupContainer
+                                    key={group.id}
+                                    group={group}
+                                    fields={childFields}
+                                    onUpdateGroup={updateGroup}
+                                    onRemoveGroup={removeGroup}
+                                    onEditField={(f) => f.isStatic ? setEditStaticField(f) : setEditField(f)}
+                                    onRemoveField={(fieldKey) => {
+                                        setFields((prev) =>
+                                            prev.filter((f) => f.fieldKey !== fieldKey && f.id !== fieldKey)
+                                                .map((f, i) => ({ ...f, fieldOrder: i }))
+                                        );
+                                    }}
+                                    onAddFieldInGroup={(gId) => {
+                                        // Open a mini field type picker — for simplicity, add a text field and open modal
+                                        addField('text', gId);
+                                    }}
+                                    onFieldDragStart={handleCardDragStart}
+                                    onFieldDragOver={handleCardDragOver}
+                                    onFieldDrop={handleCardDrop}
+                                    onDropFieldIntoGroup={handleDropFieldIntoGroup}
+                                    onConfigureRules={(g) => setEditGroupConfig(g)}
+                                />
+                            );
+                        }
+
+                        // Regular field card
+                        const field = item.data;
+                        const fieldIndex = fields.findIndex((f) => f.id === field.id);
+                        return (
+                            <FieldCard
+                                key={field.id}
+                                field={field}
+                                index={fieldIndex}
+                                onEdit={(f) => f.isStatic ? setEditStaticField(f) : setEditField(f)}
+                                onRemove={removeField}
+                                onDragStart={handleCardDragStart}
+                                onDragOver={handleCardDragOver}
+                                onDrop={handleCardDrop}
+                                onDragEnd={handleCardDragEnd}
+                                isDragging={draggingIndex === fieldIndex}
+                                dropPosition={dropIndex === fieldIndex ? dropPos : null}
+                            />
+                        );
+                    })
                 )}
             </div>
 
@@ -225,6 +371,19 @@ export default function Canvas({ fields, setFields }) {
                     field={editStaticField}
                     onSave={updateStaticField}
                     onClose={() => setEditStaticField(null)}
+                />
+            )}
+
+            {/* Group rules configuration modal */}
+            {editGroupConfig && (
+                <GroupConfigModal
+                    group={editGroupConfig}
+                    onSave={(updatedGroup) => {
+                        updateGroup(updatedGroup);
+                        setEditGroupConfig(null);
+                    }}
+                    onClose={() => setEditGroupConfig(null)}
+                    siblingFields={fields}
                 />
             )}
         </>

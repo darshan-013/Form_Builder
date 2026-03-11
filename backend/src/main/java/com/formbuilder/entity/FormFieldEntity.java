@@ -27,7 +27,6 @@ import java.util.UUID;
 public class FormFieldEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false, nullable = false, columnDefinition = "UUID")
     private UUID id;
 
@@ -124,6 +123,10 @@ public class FormFieldEntity {
 
     @Column(name = "parent_group_key", length = 100)
     private String parentGroupKey;
+
+    /** FK → form_groups.id — NULL means field is on main canvas */
+    @Column(name = "group_id", columnDefinition = "UUID")
+    private UUID groupId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

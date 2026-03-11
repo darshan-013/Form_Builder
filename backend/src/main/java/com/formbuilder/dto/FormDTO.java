@@ -13,10 +13,18 @@ public class FormDTO {
     /** Static UI-only elements (section_header, label_text, description_block) */
     private List<StaticFieldDTO> staticFields;
 
-    /** If false — only one submission per session is allowed. Default true = no restriction. */
+    /** Section groups — visual containers for grouped fields */
+    private List<GroupDTO> groups;
+
+    /**
+     * If false — only one submission per session is allowed. Default true = no
+     * restriction.
+     */
     private Boolean allowMultipleSubmissions;
 
-    /** If true — submission timestamp is shown in submissions list. Default false. */
+    /**
+     * If true — submission timestamp is shown in submissions list. Default false.
+     */
     private Boolean showTimestamp;
 
     /**
@@ -27,9 +35,18 @@ public class FormDTO {
 
     @Data
     public static class StaticFieldDTO {
-        private UUID   id;
+        private UUID id;
         private String fieldType;
         private String data;
-        private int    fieldOrder;
+        private int fieldOrder;
+    }
+
+    @Data
+    public static class GroupDTO {
+        private UUID id;
+        private String groupTitle;
+        private String groupDescription;
+        private int groupOrder;
+        private String rulesJson;
     }
 }
