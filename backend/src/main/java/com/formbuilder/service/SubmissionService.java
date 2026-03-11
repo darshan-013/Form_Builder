@@ -11,6 +11,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.UUID;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -21,6 +26,7 @@ public class SubmissionService {
     private final FormJpaRepository formRepo;
     private final ValidationService validationService;
     private final CalculationEngine calculationEngine;
+    private final RuleEvaluator ruleEvaluator;
 
     // ─────────────────────────────────────────────────────────────────────────
     // VALIDATE — direct JDBC, bypasses JPA FetchType.LAZY + open-in-view:false
@@ -29,12 +35,21 @@ public class SubmissionService {
     public void validate(UUID formId, Map<String, Object> data, Map<String, MultipartFile> files) {
         String tableName = getTableName(formId);
 
+        // Fetch ALL groups for this form to check group-level visibility rules
+        List<Map<String, Object>> groupRows = jdbc.queryForList(
+                "SELECT id, rules_json FROM form_groups WHERE form_id = ?", formId);
+        Map<UUID, String> groupRules = new HashMap<>();
+        for (Map<String, Object> grow : groupRows) {
+            groupRules.put((UUID) grow.get("id"), (String) grow.get("rules_json"));
+        }
+
         // JOIN shared_options so options_json is available for dropdown/radio
         // validation
         // without any JPA/repo calls inside the validation path
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
                 "SELECT ff.field_key, ff.label, ff.field_type, ff.required, " +
                         "ff.validation_json, ff.validation_regex, ff.shared_options_id, ff.ui_config_json, " +
+                        "ff.rules_json, ff.group_id, " +
                         "so.options_json " +
                         "FROM form_fields ff " +
                         "LEFT JOIN shared_options so ON ff.shared_options_id = so.id " +
@@ -45,7 +60,33 @@ public class SubmissionService {
                 formId, fieldRows.size(), data != null ? data.keySet() : "none");
 
         Map<String, List<String>> fieldErrors = new LinkedHashMap<>();
+
+        // Cache group visibility results to avoid redundant evaluations
+        Map<UUID, Boolean> groupVisibility = new HashMap<>();
+
         for (Map<String, Object> row : fieldRows) {
+            String fieldKey = (String) row.get("field_key");
+            UUID groupId = (UUID) row.get("group_id");
+
+            // 1. Check if the field belongs to a HIDDEN group
+            if (groupId != null) {
+                boolean isGroupVisible = groupVisibility.computeIfAbsent(groupId, id -> {
+                    String grules = groupRules.get(id);
+                    return ruleEvaluator.isVisible(grules, data);
+                });
+                if (!isGroupVisible) {
+                    log.debug("  SKIPPING field '{}' (parent group {} is hidden)", fieldKey, groupId);
+                    continue;
+                }
+            }
+
+            // 2. Check if the field ITSELF is hidden by its own rules
+            String fieldRules = (String) row.get("rules_json");
+            if (!ruleEvaluator.isVisible(fieldRules, data)) {
+                log.debug("  SKIPPING field '{}' (field itself is hidden)", fieldKey);
+                continue;
+            }
+
             FormFieldEntity field = rowToField(row);
             log.debug("  checking '{}' type={} required={} validationJson={} hasOptions={}",
                     field.getFieldKey(), field.getFieldType(),
@@ -237,6 +278,8 @@ public class SubmissionService {
         f.setValidationJson((String) row.get("validation_json"));
         f.setValidationRegex((String) row.get("validation_regex"));
         f.setUiConfigJson((String) row.get("ui_config_json"));
+        f.setRulesJson((String) row.get("rules_json"));
+        f.setGroupId((UUID) row.get("group_id"));
         // Carry resolved options_json (from shared_options JOIN) into the entity
         f.setOptionsJson((String) row.get("options_json"));
         Object sid = row.get("shared_options_id");

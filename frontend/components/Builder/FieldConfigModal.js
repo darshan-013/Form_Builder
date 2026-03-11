@@ -314,28 +314,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                             <p className="form-help">Snake_case identifier — becomes the database column name. Auto-generated from label.</p>
                         </div>
 
-                        {/* Parent Group Selection */}
-                        {local.fieldType !== 'field_group' && (
-                            <div className="form-group">
-                                <label className="form-label">Parent Group</label>
-                                <select
-                                    className="form-input"
-                                    value={local.parentGroupKey || ''}
-                                    onChange={(e) => set('parentGroupKey', e.target.value || null)}
-                                >
-                                    <option value="">(None - Top Level)</option>
-                                    {siblingFields
-                                        .filter(f => f.fieldType === 'field_group')
-                                        .map(g => (
-                                            <option key={g.fieldKey} value={g.fieldKey}>
-                                                {g.label || g.fieldKey}
-                                            </option>
-                                        ))
-                                    }
-                                </select>
-                                <span className="form-hint">Grouping allows you to show/hide multiple fields at once using the group's rules.</span>
-                            </div>
-                        )}
+
 
                         {/* Default Value */}
                         {local.fieldType !== 'boolean' && local.fieldType !== 'field_group' && (

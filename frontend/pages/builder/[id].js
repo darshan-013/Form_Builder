@@ -21,6 +21,7 @@ export default function EditBuilderPage() {
     const [formName, setFormName] = useState('');
     const [formDescription, setFormDescription] = useState('');
     const [fields, setFields] = useState([]);
+    const [groups, setGroups] = useState([]);
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
     const [allowMultipleSubmissions, setAllowMultipleSubmissions] = useState(true);
@@ -62,6 +63,7 @@ export default function EditBuilderPage() {
                     precision: f.precision ?? 2,
                     lockAfterCalculation: f.lockAfterCalculation || false,
                     parentGroupKey: f.parentGroupKey || null,
+                    groupId: f.groupId || null,
                     dependencies: f.dependencies || [],
                     disabled: f.disabled || false,
                     readOnly: f.readOnly || false,
@@ -80,6 +82,16 @@ export default function EditBuilderPage() {
                 const merged = [...dynFields, ...statFields]
                     .sort((a, b) => a.fieldOrder - b.fieldOrder);
                 setFields(merged);
+
+                // Groups
+                const loadedGroups = (form.groups || []).map((g) => ({
+                    id: g.id,
+                    groupTitle: g.groupTitle || '',
+                    groupDescription: g.groupDescription || '',
+                    groupOrder: g.groupOrder ?? 0,
+                    rulesJson: g.rulesJson || null,
+                }));
+                setGroups(loadedGroups);
             })
             .catch(() => toastError('Failed to load form.'))
             .finally(() => setLoading(false));
@@ -94,12 +106,14 @@ export default function EditBuilderPage() {
         fields.forEach((f, i) => {
             if (STATIC_TYPES.has(f.fieldType)) {
                 staticFields.push({
+                    id: f.id,
                     fieldType: f.fieldType,
                     data: f.data || '',
                     fieldOrder: i,
                 });
             } else {
                 dynamicFields.push({
+                    id: f.id,
                     fieldKey: f.fieldKey || `field_${i}`,
                     label: f.label || `Field ${i + 1}`,
                     fieldType: f.fieldType,
@@ -117,6 +131,7 @@ export default function EditBuilderPage() {
                     precision: f.isCalculated ? (f.precision ?? 2) : 2,
                     lockAfterCalculation: f.isCalculated ? (f.lockAfterCalculation || false) : false,
                     parentGroupKey: f.parentGroupKey || null,
+                    groupId: f.groupId || null,
                     dependencies: f.dependencies || [],
                     disabled: f.disabled || false,
                     readOnly: f.readOnly || false,
@@ -129,6 +144,13 @@ export default function EditBuilderPage() {
             description: formDescription.trim() || null,
             fields: dynamicFields,
             staticFields: staticFields,
+            groups: groups.map((g, i) => ({
+                id: g.id,
+                groupTitle: g.groupTitle || 'Untitled Section',
+                groupDescription: g.groupDescription || '',
+                groupOrder: i,
+                rulesJson: g.rulesJson || null,
+            })),
             allowMultipleSubmissions: allowMultipleSubmissions,
             showTimestamp: true, // always recorded — compulsory
             expiresAt: expiresAt ? expiresAt : null,
@@ -256,7 +278,7 @@ export default function EditBuilderPage() {
                         </div>
                     </div>
 
-                    <Canvas fields={fields} setFields={setFields} />
+                    <Canvas fields={fields} setFields={setFields} groups={groups} setGroups={setGroups} />
                 </main>
             </div>
         </>

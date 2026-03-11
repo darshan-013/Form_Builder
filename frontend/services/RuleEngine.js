@@ -442,10 +442,13 @@ export function applyRules(fields, formValues) {
   // If a parent group is hidden, all its children must also be hidden.
   // We do this in-place on finalState.
   for (const field of ordered) {
-    const parentKey = field.parentGroupKey;
+    const parentKey = field.groupId || field.parentGroupKey;
     if (parentKey && finalState[parentKey]) {
       if (finalState[parentKey].visible === false) {
         finalState[field.fieldKey].visible = false;
+      }
+      if (finalState[parentKey].disabled === true) {
+        finalState[field.fieldKey].disabled = true;
       }
     }
   }

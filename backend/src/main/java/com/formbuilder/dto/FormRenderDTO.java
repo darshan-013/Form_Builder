@@ -19,6 +19,7 @@ public class FormRenderDTO {
     private String formName;
     private String formDescription;
     private List<RenderFieldDTO> fields;
+    private List<RenderGroupDTO> groups;
 
     /** If false — only ONE submission per session is allowed. */
     private boolean allowMultipleSubmissions;
@@ -84,6 +85,7 @@ public class FormRenderDTO {
         private Integer precision;
         private boolean lockAfterCalculation;
         private String parentGroupKey;
+        private UUID groupId;
     }
 
     @Data
@@ -91,5 +93,15 @@ public class FormRenderDTO {
     public static class OptionDTO {
         private String label;
         private String value;
+    }
+
+    @Data
+    @Builder
+    public static class RenderGroupDTO {
+        private UUID id;
+        private String groupTitle;
+        private String groupDescription;
+        private int groupOrder;
+        private String rulesJson;
     }
 }

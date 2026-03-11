@@ -37,7 +37,16 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   );
 
   // Pre-parse rulesJson once — avoids repeated JSON.parse inside evaluation loops
-  const fields = useMemo(() => RuleEngine.withParsedRules(dynamicRawFields), [dynamicRawFields]);
+  const fields = useMemo(() => {
+    const withRules = RuleEngine.withParsedRules(dynamicRawFields);
+    // Map g.id to fieldKey so RuleEngine can track it, and map groupOrder to fieldOrder for priority
+    const groupsWithRules = RuleEngine.withParsedRules((form?.groups || []).map(g => ({
+      ...g,
+      fieldKey: g.id,
+      fieldOrder: g.groupOrder ?? 0
+    })));
+    return [...withRules, ...groupsWithRules];
+  }, [dynamicRawFields, form?.groups]);
 
   // Dependency map: { sourceKey → Set<targetKey> }
   // eslint-disable-next-line no-unused-vars
@@ -75,10 +84,11 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
    * responses where isStatic=true AND builder-preview where field comes through staticFields).
    */
   const pages = useMemo(() => {
-    // Merge dynamic fields + ALL static fields (including page_break), sort by fieldOrder
+    // Merge dynamic fields + ALL static fields (including page_break) + groups, sort by fieldOrder
     const allItems = [
       ...fields.map(f => ({ ...f, _renderType: 'dynamic' })),
       ...staticFields.map(f => ({ ...f, _renderType: 'static' })),
+      ...(form?.groups || []).map(g => ({ ...g, _renderType: 'group', fieldOrder: g.groupOrder }))
     ].sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
 
     const result = [];
@@ -226,8 +236,20 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
 
     // Validate only visible fields on current page
     const visiblePageFields = currentDynamic
-      .filter(f => fieldStates[f.fieldKey]?.visible !== false)
-      .map(f => ({ ...f, required: fieldStates[f.fieldKey]?.required ?? f.required }));
+      .filter(f => {
+        if (fieldStates[f.fieldKey]?.visible === false) return false;
+        if (f.groupId && fieldStates[f.groupId]?.visible === false) return false;
+        return true;
+      })
+      .map(f => {
+        const fieldSt = fieldStates[f.fieldKey] || {};
+        const groupSt = f.groupId ? fieldStates[f.groupId] : null;
+        const effectiveRequired =
+          groupSt?.required === true ? true :
+            groupSt?.required === false ? false :
+              (fieldSt.required ?? f.required);
+        return { ...f, required: effectiveRequired };
+      });
 
     const pageErrors = await ValidationEngine.validateForm(visiblePageFields, valuesRef.current, filesRef.current);
     setErrors(prev => ({ ...prev, ...pageErrors }));
@@ -272,11 +294,20 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     // Hidden field VALUES are preserved in state and sent to backend.
     // Backend validates all required constraints independently of rule state.
     const visibleFields = fields
-      .filter(f => fieldStates[f.fieldKey]?.visible !== false)
-      .map(f => ({
-        ...f,
-        required: fieldStates[f.fieldKey]?.required ?? f.required,
-      }));
+      .filter(f => {
+        if (fieldStates[f.fieldKey]?.visible === false) return false;
+        if (f.groupId && fieldStates[f.groupId]?.visible === false) return false;
+        return true;
+      })
+      .map(f => {
+        const fieldSt = fieldStates[f.fieldKey] || {};
+        const groupSt = f.groupId ? fieldStates[f.groupId] : null;
+        const effectiveRequired =
+          groupSt?.required === true ? true :
+            groupSt?.required === false ? false :
+              (fieldSt.required ?? f.required);
+        return { ...f, required: effectiveRequired };
+      });
 
     const allErrors = await ValidationEngine.validateForm(visibleFields, valuesRef.current, filesRef.current);
     setErrors(allErrors);
@@ -454,17 +485,40 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
             {/* Render fields with group hierarchy support */}
             {(() => {
               const currentItems = pages[currentPage]?.items || [];
-              const topLevelItems = currentItems.filter(f => !f.parentGroupKey);
+              const topLevelItems = currentItems.filter(f => !f.parentGroupKey && !f.groupId);
               const childrenByParent = {};
 
               currentItems.forEach(f => {
-                if (f.parentGroupKey) {
-                  if (!childrenByParent[f.parentGroupKey]) childrenByParent[f.parentGroupKey] = [];
-                  childrenByParent[f.parentGroupKey].push(f);
+                const parentId = f.groupId || f.parentGroupKey;
+                if (parentId) {
+                  if (!childrenByParent[parentId]) childrenByParent[parentId] = [];
+                  childrenByParent[parentId].push(f);
                 }
               });
 
+              // Ensure children are sorted correctly within the group
+              Object.values(childrenByParent).forEach(arr => arr.sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0)));
+
               const renderField = (field) => {
+                // ── Group Container (New Architecture) ───────────────────
+                if (field._renderType === 'group') {
+                  const children = childrenByParent[field.id] || [];
+                  const groupSt = fieldStates[field.id] || {};
+
+                  // If the group itself is hidden by a rule, skip it and all children
+                  if (groupSt.visible === false) return null;
+
+                  return (
+                    <div key={field.id} className="field-group-container">
+                      <h3 className="field-group-title">{field.groupTitle || 'Untitled Section'}</h3>
+                      {field.groupDescription && <p className="field-group-desc">{field.groupDescription}</p>}
+                      <div className="field-group-children">
+                        {children.map(renderField)}
+                      </div>
+                    </div>
+                  );
+                }
+
                 // ── Static elements — display only ───────────────────────
                 if (field._renderType === 'static') {
                   return (
@@ -481,7 +535,12 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                 // Hidden fields — render nothing, value preserved in state
                 if (st.visible === false) return null;
 
-                // ── Field Group Container ────────────────────────────────
+                // Also check if this field belongs to a group that is currently hidden
+                if (field.groupId && fieldStates[field.groupId]?.visible === false) {
+                  return null;
+                }
+
+                // ── Field Group Container (Legacy Support) ───────────────
                 if (field.fieldType === 'field_group') {
                   const children = childrenByParent[field.fieldKey] || [];
                   return (
@@ -494,7 +553,6 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                   );
                 }
 
-                // ── Standard Input Field ─────────────────────────────────
                 // Effective value: copyValue > setValue > user input (priority order)
                 const effectiveValue =
                   st.copyValue !== null && st.copyValue !== undefined
@@ -503,16 +561,29 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                       ? st.setValue
                       : values[field.fieldKey];
 
+                const groupSt = field.groupId ? fieldStates[field.groupId] : null;
+                const effectiveRequired =
+                  groupSt?.required === true ? true :
+                    groupSt?.required === false ? false :
+                      (st.required ?? field.required);
+
                 return (
                   <FieldInput
                     key={field.id || field.fieldKey}
-                    field={{ ...field, required: st.required ?? field.required }}
+                    field={{ ...field, required: effectiveRequired }}
                     value={effectiveValue}
                     errors={errors[field.fieldKey] || []}
                     touched={!!touched[field.fieldKey]}
                     onChange={(val) => handleChange(field, val)}
                     onBlur={(val) => handleBlur(field, val)}
-                    disabled={isPreview || !!st.disabled || !!field.disabled || !!field.readOnly || !!field.lockAfterCalculation}
+                    disabled={
+                      isPreview ||
+                      !!st.disabled ||
+                      !!field.disabled ||
+                      !!field.readOnly ||
+                      !!field.lockAfterCalculation ||
+                      (field.groupId && fieldStates[field.groupId]?.disabled === true)
+                    }
                     filterOptions={st.filterOptions ?? null}
                     min={st.min ?? null}
                     max={st.max ?? null}

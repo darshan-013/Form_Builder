@@ -24,26 +24,26 @@ import { NO_VALUE_OPS, MAX_NEST_DEPTH } from '../../services/RuleEngine';
 
 // ─── Operator definitions per field type ─────────────────────────────────────
 const OPERATORS = {
-  text:     [
+  text: [
     'equals', 'not equals', 'contains', 'not contains', 'starts with', 'ends with',
     'is empty', 'is not empty',
     // NEW (v2)
     'matches regex', 'not matches regex', 'length >', 'length <', 'length =', 'changed',
   ],
-  number:   ['=', '!=', '>', '>=', '<', '<=', 'between',
+  number: ['=', '!=', '>', '>=', '<', '<=', 'between',
     // NEW (v2)
     'changed',
   ],
-  date:     ['equals', 'before', 'after', 'between', 'is today', 'is past', 'is future',
+  date: ['equals', 'before', 'after', 'between', 'is today', 'is past', 'is future',
     // NEW (v2)
     'changed',
   ],
-  boolean:  ['is true', 'is false'],
+  boolean: ['is true', 'is false'],
   dropdown: ['equals', 'not equals', 'in list', 'not in list',
     // NEW (v2)
     'changed',
   ],
-  radio:    ['equals', 'not equals', 'in list', 'not in list',
+  radio: ['equals', 'not equals', 'in list', 'not in list',
     // NEW (v2)
     'changed',
   ],
@@ -54,7 +54,7 @@ const OPERATORS = {
   linear_scale: ['=', '!=', '>', '>=', '<', '<=', 'between', 'changed'],
   // Star Rating: fixed 1-5, use numeric operators
   star_rating: ['=', '!=', '>', '>=', '<', '<=', 'changed'],
-  file:     ['is uploaded', 'is not uploaded'],
+  file: ['is uploaded', 'is not uploaded'],
   // Grid: conditions apply to row-level values stored as JSON {"Row":"Col"}
   // Use 'equals'/'not equals' with value = "Row:Col" or just the column value
   multiple_choice_grid: ['equals', 'not equals', 'is empty', 'is not empty', 'changed'],
@@ -63,20 +63,20 @@ const OPERATORS = {
 };
 
 const ACTION_TYPES = [
-  { value: 'show',           label: '👁 Show Field' },
-  { value: 'hide',           label: '🙈 Hide Field' },
-  { value: 'makeRequired',   label: '* Make Required' },
-  { value: 'makeOptional',   label: '○ Make Optional' },
-  { value: 'enable',         label: '✓ Enable Field' },
-  { value: 'disable',        label: '⊘ Disable Field' },
-  { value: 'setValue',       label: '✏ Set Value' },
-  { value: 'clearValue',     label: '✕ Clear Value' },
+  { value: 'show', label: '👁 Show Field' },
+  { value: 'hide', label: '🙈 Hide Field' },
+  { value: 'makeRequired', label: '* Make Required' },
+  { value: 'makeOptional', label: '○ Make Optional' },
+  { value: 'enable', label: '✓ Enable Field' },
+  { value: 'disable', label: '⊘ Disable Field' },
+  { value: 'setValue', label: '✏ Set Value' },
+  { value: 'clearValue', label: '✕ Clear Value' },
   // NEW (v2)
-  { value: 'copyValue',      label: '📋 Copy Value From Field' },
-  { value: 'filterOptions',  label: '🔽 Filter Options' },
-  { value: 'setMin',         label: '⬇ Set Min Value' },
-  { value: 'setMax',         label: '⬆ Set Max Value' },
-  { value: 'setLabel',       label: '🏷 Set Label' },
+  { value: 'copyValue', label: '📋 Copy Value From Field' },
+  { value: 'filterOptions', label: '🔽 Filter Options' },
+  { value: 'setMin', label: '⬇ Set Min Value' },
+  { value: 'setMax', label: '⬆ Set Max Value' },
+  { value: 'setLabel', label: '🏷 Set Label' },
   { value: 'setPlaceholder', label: '💬 Set Placeholder' },
 ];
 
@@ -146,7 +146,7 @@ function ValueInput({ fieldType, operator, options, value, onChange }) {
 
   // Dropdown/radio/multiple_choice — select from options list (unless in/not-in which needs csv text)
   if ((fieldType === 'dropdown' || fieldType === 'radio' || fieldType === 'multiple_choice') &&
-      operator !== 'in list' && operator !== 'not in list') {
+    operator !== 'in list' && operator !== 'not in list') {
     if (!options || options.length === 0) {
       return (
         <input className="form-input" style={style} value={value}
@@ -194,14 +194,14 @@ function ValueInput({ fieldType, operator, options, value, onChange }) {
 
 // ─── ConditionRow ─────────────────────────────────────────────────────────────
 function ConditionRow({ cond, fields, onChange, onRemove, canRemove }) {
-  const meta  = fields.find(f => f.fieldKey === cond.fieldKey) || fields[0] || {};
+  const meta = fields.find(f => f.fieldKey === cond.fieldKey) || fields[0] || {};
   const fType = meta.fieldType || 'text';
-  const ops   = opsForType(fType);
+  const ops = opsForType(fType);
 
   const handleFieldChange = fk => {
-    const m   = fields.find(f => f.fieldKey === fk) || {};
+    const m = fields.find(f => f.fieldKey === fk) || {};
     const typ = m.fieldType || 'text';
-    const op  = opsForType(typ)[0];
+    const op = opsForType(typ)[0];
     onChange({ fieldKey: fk, operator: op, value: '' });
   };
 
@@ -317,13 +317,13 @@ function ConditionGroup({ group, fields, onChange, onRemove, depth }) {
 }
 
 // ─── ActionRow ────────────────────────────────────────────────────────────────
-function ActionRow({ action, onChange, onRemove, canRemove, allFields }) {
+function ActionRow({ action, onChange, onRemove, canRemove, allFields, typeOptions = ACTION_TYPES }) {
   return (
     <div className="rule-condition-row">
       <select className="form-input" style={{ flex: '0 0 210px' }}
         value={action.type}
         onChange={e => onChange({ ...action, type: e.target.value })}>
-        {ACTION_TYPES.map(a => (
+        {typeOptions.map(a => (
           <option key={a.value} value={a.value}>{a.label}</option>
         ))}
       </select>
@@ -399,9 +399,9 @@ function ActionRow({ action, onChange, onRemove, canRemove, allFields }) {
 }
 
 // ─── RuleBuilder (main export) ────────────────────────────────────────────────
-export default function RuleBuilder({ fields, rulesJson, onChange }) {
+export default function RuleBuilder({ fields, rulesJson, onChange, isGroup = false }) {
   const [enabled, setEnabled] = useState(!!rulesJson);
-  const [rule,    setRule]    = useState(() => safeParseRule(rulesJson, fields));
+  const [rule, setRule] = useState(() => safeParseRule(rulesJson, fields));
 
   // Need at least 2 fields (this field + one source to condition on)
   if (fields.length === 0) {
@@ -445,13 +445,13 @@ export default function RuleBuilder({ fields, rulesJson, onChange }) {
       {/* Enable toggle */}
       <label className="form-checkbox-row compact" style={{ marginBottom: 12 }}>
         <input type="checkbox" checked={enabled} onChange={e => toggle(e.target.checked)} />
-        <span>Enable conditional rules for this field</span>
+        <span>Enable conditional rules for this {isGroup ? 'section' : 'field'}</span>
       </label>
 
       {!enabled && (
         <p className="form-help">
-          When enabled, this field&apos;s visibility and state change automatically based on
-          values entered in other fields.
+          When enabled, this {isGroup ? 'section\'s' : 'field\'s'} visibility and state change automatically based on
+          values entered in other fields. Note: Section rules apply to all nested fields.
         </p>
       )}
 
@@ -471,7 +471,7 @@ export default function RuleBuilder({ fields, rulesJson, onChange }) {
 
           {/* THEN — actions */}
           <div className="rule-section" style={{ marginTop: 10 }}>
-            <div className="rule-section-label">⚡ THEN (actions on this field)</div>
+            <div className="rule-section-label">⚡ THEN (actions on this {isGroup ? 'section' : 'field'})</div>
 
             {(rule.actions || []).map((action, i) => (
               <ActionRow
@@ -481,6 +481,15 @@ export default function RuleBuilder({ fields, rulesJson, onChange }) {
                 onRemove={() => removeAction(i)}
                 canRemove={(rule.actions || []).length > 1}
                 allFields={fields}
+                isGroup={isGroup}
+                typeOptions={isGroup ? [
+                  { value: 'show', label: '👁 Show Section' },
+                  { value: 'hide', label: '🙈 Hide Section' },
+                  { value: 'makeRequired', label: '* Make All Fields Required' },
+                  { value: 'makeOptional', label: '○ Make All Fields Optional' },
+                  { value: 'enable', label: '✓ Enable Section' },
+                  { value: 'disable', label: '⊘ Disable Section' },
+                ] : ACTION_TYPES}
               />
             ))}
 

@@ -7,17 +7,16 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * JPA entity for static_form_fields — UI-only elements that never store
- * submission data.
- * Types: section_header | label_text | description_block
+ * JPA entity for form_groups — visual section containers in the form builder.
+ * Each group can contain multiple form_fields (via group_id FK on form_fields).
  */
 @Entity
-@Table(name = "static_form_fields")
+@Table(name = "form_groups")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class StaticFormFieldEntity {
+public class FormGroupEntity {
 
     @Id
     @Column(name = "id", updatable = false, nullable = false, columnDefinition = "UUID")
@@ -27,17 +26,18 @@ public class StaticFormFieldEntity {
     @Column(name = "form_id", nullable = false, columnDefinition = "UUID")
     private UUID formId;
 
-    /** section_header | label_text | description_block */
-    @Column(name = "field_type", nullable = false, length = 50)
-    private String fieldType;
+    @Column(name = "group_title", nullable = false, length = 200)
+    private String groupTitle;
 
-    /** Display text content */
-    @Column(name = "data", columnDefinition = "TEXT")
-    private String data;
+    @Column(name = "group_description", columnDefinition = "TEXT")
+    private String groupDescription;
 
-    /** Render order — merged with dynamic fields on render */
-    @Column(name = "field_order", nullable = false)
-    private int fieldOrder;
+    /** Render order — determines position on the canvas */
+    @Column(name = "group_order", nullable = false)
+    private int groupOrder;
+
+    @Column(name = "rules_json", columnDefinition = "TEXT")
+    private String rulesJson;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
