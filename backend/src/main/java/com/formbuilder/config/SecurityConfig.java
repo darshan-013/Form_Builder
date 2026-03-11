@@ -66,6 +66,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/forms/**").authenticated()
                 // Shared options — authenticated admin only
                 .requestMatchers("/api/shared-options/**").authenticated()
+
+                    .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .anyRequest().permitAll()
             )
 

@@ -25,10 +25,11 @@ export default function PreviewPage() {
         getFormRenderAdmin(id)
             .then((data) => {
                 setForm({
-                    id:          data.formId,
-                    name:        data.formName,
+                    id: data.formId,
+                    name: data.formName,
                     description: data.formDescription,
-                    fields:      data.fields || [],
+                    fields: data.fields || [],
+                    groups: data.groups || [],
                 });
             })
             .catch(() => toastError('Failed to load form.'))

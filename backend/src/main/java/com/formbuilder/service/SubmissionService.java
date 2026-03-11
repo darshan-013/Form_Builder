@@ -199,8 +199,20 @@ public class SubmissionService {
     // ─────────────────────────────────────────────────────────────────────────
 
     public List<Map<String, Object>> getSubmissions(UUID formId) {
-        return jdbc.queryForList(
-                "SELECT * FROM \"" + getTableName(formId) + "\" ORDER BY created_at DESC");
+        String tableName = getTableName(formId);
+        // Ensure soft-delete column exists (migration for pre-existing tables)
+        try {
+            return jdbc.queryForList(
+                    "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = FALSE ORDER BY created_at DESC");
+        } catch (Exception e) {
+            // Column does not exist yet on old tables — add it and retry
+            log.warn("is_soft_deleted column missing on {}, adding it now", tableName);
+            jdbc.execute("ALTER TABLE \"" + tableName
+                    + "\" ADD COLUMN IF NOT EXISTS is_soft_deleted BOOLEAN NOT NULL DEFAULT FALSE");
+            jdbc.execute("ALTER TABLE \"" + tableName + "\" ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP");
+            return jdbc.queryForList(
+                    "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = FALSE ORDER BY created_at DESC");
+        }
     }
 
     public Map<String, Object> getSubmission(UUID formId, UUID submissionId) {
@@ -212,14 +224,53 @@ public class SubmissionService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // DELETE
+    // DELETE / SOFT DELETE / TRASH
     // ─────────────────────────────────────────────────────────────────────────
 
+    /** Soft-delete: marks submission as trashed, hides from active view. */
     public void deleteSubmission(UUID formId, UUID submissionId) {
+        String tableName = getTableName(formId);
         int affected = jdbc.update(
-                "DELETE FROM \"" + getTableName(formId) + "\" WHERE id = ?", submissionId);
+                "UPDATE \"" + tableName + "\" SET is_soft_deleted = TRUE, deleted_at = NOW() " +
+                        "WHERE id = ? AND is_soft_deleted = FALSE",
+                submissionId);
         if (affected == 0)
-            throw new NoSuchElementException("Submission not found: " + submissionId);
+            throw new NoSuchElementException("Submission not found or already deleted: " + submissionId);
+        log.info("Submission {} soft-deleted from {}", submissionId, tableName);
+    }
+
+    /** Returns all soft-deleted submissions for a form (trash bin). */
+    public List<Map<String, Object>> getTrashSubmissions(UUID formId) {
+        String tableName = getTableName(formId);
+        try {
+            return jdbc.queryForList(
+                    "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = TRUE ORDER BY deleted_at DESC");
+        } catch (Exception e) {
+            log.warn("is_soft_deleted column missing on {}, returning empty trash", tableName);
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    /** Restore a soft-deleted submission back to active. */
+    public void restoreSubmission(UUID formId, UUID submissionId) {
+        String tableName = getTableName(formId);
+        int affected = jdbc.update(
+                "UPDATE \"" + tableName + "\" SET is_soft_deleted = FALSE, deleted_at = NULL " +
+                        "WHERE id = ? AND is_soft_deleted = TRUE",
+                submissionId);
+        if (affected == 0)
+            throw new NoSuchElementException("Submission not found in trash: " + submissionId);
+        log.info("Submission {} restored in {}", submissionId, tableName);
+    }
+
+    /** Permanently delete a submission that is already in trash. */
+    public void permanentDeleteSubmission(UUID formId, UUID submissionId) {
+        String tableName = getTableName(formId);
+        int affected = jdbc.update(
+                "DELETE FROM \"" + tableName + "\" WHERE id = ? AND is_soft_deleted = TRUE", submissionId);
+        if (affected == 0)
+            throw new NoSuchElementException("Submission not found in trash: " + submissionId);
+        log.info("Submission {} permanently deleted from {}", submissionId, tableName);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -294,9 +345,25 @@ public class SubmissionService {
         return f;
     }
 
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
     private Object convertValue(Object value, String fieldType) {
         if (value == null)
             return null;
+
+        // If value is a List (e.g., multi-select dropdown from JSON array deserialized
+        // by Jackson),
+        // serialize it to a proper JSON array string before further processing.
+        // value.toString() on a List produces [Item1, Item2] (no quotes) which is
+        // invalid JSON.
+        if (value instanceof List) {
+            try {
+                value = objectMapper.writeValueAsString(value); // now it's ["Item1","Item2"]
+            } catch (Exception e) {
+                log.warn("convertValue: failed to serialize List to JSON: {}", e.getMessage());
+            }
+        }
+
         String s = value.toString().trim();
         if (s.isEmpty())
             return null;
@@ -325,6 +392,16 @@ public class SubmissionService {
                     case "false", "0", "no", "off" -> false;
                     default -> Boolean.parseBoolean(s);
                 };
+                case "dropdown" -> {
+                    // Could be a JSON array "[\"a\", \"b\"]" or a raw string "India"
+                    if (s.startsWith("[")) {
+                        yield s; // already JSON array string
+                    } else {
+                        // Store single select as a JSON string to keep DB column uniformly JSON
+                        // example: "India" -> "\"India\""
+                        yield "\"" + s.replace("\"", "\\\"") + "\"";
+                    }
+                }
                 default -> s;
             };
         } catch (Exception e) {

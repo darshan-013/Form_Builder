@@ -34,12 +34,13 @@ export default function SubmitPage() {
         getFormRender(id)
             .then((data) => {
                 const formObj = {
-                    id:                       data.formId,
-                    name:                     data.formName,
-                    description:              data.formDescription,
+                    id: data.formId,
+                    name: data.formName,
+                    description: data.formDescription,
                     allowMultipleSubmissions: data.allowMultipleSubmissions ?? true,
-                    showTimestamp:            data.showTimestamp ?? false,
-                    fields:                   (data.fields || []).map(f => ({ ...f })),
+                    showTimestamp: data.showTimestamp ?? false,
+                    fields: (data.fields || []).map(f => ({ ...f })),
+                    groups: data.groups || [],
                 };
                 setForm(formObj);
                 // Client-side expiry check
@@ -90,7 +91,7 @@ export default function SubmitPage() {
             }
             if (err?.errors && Array.isArray(err.errors) && err.errors.length > 0) {
                 const firstErr = err.errors[0];
-                const preview  = typeof firstErr === 'object' ? firstErr.message : String(firstErr);
+                const preview = typeof firstErr === 'object' ? firstErr.message : String(firstErr);
                 toastError(preview || 'Please fix the errors and try again.');
             } else {
                 toastError(err?.message || 'Submission failed.');

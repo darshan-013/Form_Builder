@@ -188,16 +188,50 @@ public class FormService {
         return formRepo.save(existing);
     }
 
-    // ── Delete ────────────────────────────────────────────────────────────────
+    // ── Delete / Soft Delete / Trash ────────────────────────────────────────────
 
+    /**
+     * Soft-delete: mark the form as deleted without removing data.
+     * The form disappears from all active listings and appears in the trash.
+     */
     @Transactional
     public void deleteForm(UUID id, String owner) {
         FormEntity form = formRepo.findByIdAndCreatedBy(id, owner)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
-        // static_form_fields cascade deletes via FK ON DELETE CASCADE
+        form.setSoftDeleted(true);
+        form.setDeletedAt(java.time.LocalDateTime.now());
+        formRepo.save(form);
+        log.info("Form '{}' soft-deleted by '{}'", form.getName(), owner);
+    }
+
+    /** Returns all soft-deleted forms for this owner (the trash bin). */
+    public List<FormEntity> getTrashForms(String owner) {
+        return formRepo.findTrashedByOwner(owner);
+    }
+
+    /** Restore a soft-deleted form back to active. */
+    @Transactional
+    public FormEntity restoreForm(UUID id, String owner) {
+        FormEntity form = formRepo.findByIdAndCreatedByIncludingTrashed(id, owner)
+                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+        form.setSoftDeleted(false);
+        form.setDeletedAt(null);
+        FormEntity saved = formRepo.save(form);
+        log.info("Form '{}' restored by '{}'", form.getName(), owner);
+        return saved;
+    }
+
+    /** Permanently delete a soft-deleted form and drop its submission table. */
+    @Transactional
+    public void permanentDeleteForm(UUID id, String owner) {
+        FormEntity form = formRepo.findByIdAndCreatedByIncludingTrashed(id, owner)
+                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+        if (!form.isSoftDeleted()) {
+            throw new IllegalStateException("Form must be in trash before permanent deletion");
+        }
         dynamicTable.dropTable(form.getTableName());
         formRepo.delete(form);
-        log.info("Form '{}' and table '{}' deleted by '{}'", form.getName(), form.getTableName(), owner);
+        log.info("Form '{}' permanently deleted by '{}'", form.getName(), owner);
     }
 
     // ── Status (Publish / Unpublish) ──────────────────────────────────────────

@@ -25,7 +25,9 @@ import java.util.UUID;
 public class FormEntity {
 
     /** Lifecycle status stored as VARCHAR in DB. */
-    public enum FormStatus { DRAFT, PUBLISHED }
+    public enum FormStatus {
+        DRAFT, PUBLISHED
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -42,7 +44,7 @@ public class FormEntity {
     private String tableName;
 
     /**
-     * DRAFT   = form is being built; submissions are blocked.
+     * DRAFT = form is being built; submissions are blocked.
      * PUBLISHED = form is live; anyone can submit.
      */
     @Enumerated(EnumType.STRING)
@@ -50,7 +52,10 @@ public class FormEntity {
     @Builder.Default
     private FormStatus status = FormStatus.DRAFT;
 
-    /** Username of the user who created this form. Used to scope dashboard visibility. */
+    /**
+     * Username of the user who created this form. Used to scope dashboard
+     * visibility.
+     */
     @Column(name = "created_by", length = 150)
     private String createdBy;
 
@@ -60,7 +65,10 @@ public class FormEntity {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    /** If false — only ONE submission per user session is allowed. Default true = no restriction. */
+    /**
+     * If false — only ONE submission per user session is allowed. Default true = no
+     * restriction.
+     */
     @Column(name = "allow_multiple_submissions", nullable = false)
     @Builder.Default
     private boolean allowMultipleSubmissions = true;
@@ -77,6 +85,15 @@ public class FormEntity {
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
 
+    /** Soft delete flag — true = in trash, false = active. */
+    @Column(name = "is_soft_deleted", nullable = false)
+    @Builder.Default
+    private boolean softDeleted = false;
+
+    /** Timestamp when soft delete occurred. Null when active. */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     // ── Relationship ────────────────────────────────────────────────────────
     // CascadeType.ALL + orphanRemoval = JPA owns field lifecycle.
     // DynamicTableService owns the DDL lifecycle separately.
@@ -92,7 +109,8 @@ public class FormEntity {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
-        if (status == null) status = FormStatus.DRAFT;
+        if (status == null)
+            status = FormStatus.DRAFT;
     }
 
     @PreUpdate

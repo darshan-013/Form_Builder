@@ -85,8 +85,9 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
    */
   const pages = useMemo(() => {
     // Merge dynamic fields + ALL static fields (including page_break) + groups, sort by fieldOrder
+    // Use dynamicRawFields instead of fields to prevent mapping the groups inside fields array
     const allItems = [
-      ...fields.map(f => ({ ...f, _renderType: 'dynamic' })),
+      ...dynamicRawFields.map(f => ({ ...f, _renderType: 'dynamic' })),
       ...staticFields.map(f => ({ ...f, _renderType: 'static' })),
       ...(form?.groups || []).map(g => ({ ...g, _renderType: 'group', fieldOrder: g.groupOrder }))
     ].sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
@@ -499,7 +500,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
               // Ensure children are sorted correctly within the group
               Object.values(childrenByParent).forEach(arr => arr.sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0)));
 
-              const renderField = (field) => {
+              const renderField = (field, index = 0) => {
                 // ── Group Container (New Architecture) ───────────────────
                 if (field._renderType === 'group') {
                   const children = childrenByParent[field.id] || [];
@@ -509,11 +510,11 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                   if (groupSt.visible === false) return null;
 
                   return (
-                    <div key={field.id} className="field-group-container">
+                    <div key={field.id} className="field-group-container" style={{ position: 'relative', zIndex: 100 - index }}>
                       <h3 className="field-group-title">{field.groupTitle || 'Untitled Section'}</h3>
                       {field.groupDescription && <p className="field-group-desc">{field.groupDescription}</p>}
                       <div className="field-group-children">
-                        {children.map(renderField)}
+                        {children.map((f, i) => renderField(f, i))}
                       </div>
                     </div>
                   );
@@ -544,10 +545,10 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                 if (field.fieldType === 'field_group') {
                   const children = childrenByParent[field.fieldKey] || [];
                   return (
-                    <div key={field.id || field.fieldKey} className="field-group-container">
+                    <div key={field.id || field.fieldKey} className="field-group-container" style={{ position: 'relative', zIndex: 100 - index }}>
                       {field.label && <h3 className="field-group-title">{st.label ?? field.label}</h3>}
                       <div className="field-group-children">
-                        {children.map(renderField)}
+                        {children.map((f, i) => renderField(f, i))} // Recursive mapping with descending zIndexes
                       </div>
                     </div>
                   );
@@ -568,32 +569,33 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                       (st.required ?? field.required);
 
                 return (
-                  <FieldInput
-                    key={field.id || field.fieldKey}
-                    field={{ ...field, required: effectiveRequired }}
-                    value={effectiveValue}
-                    errors={errors[field.fieldKey] || []}
-                    touched={!!touched[field.fieldKey]}
-                    onChange={(val) => handleChange(field, val)}
-                    onBlur={(val) => handleBlur(field, val)}
-                    disabled={
-                      isPreview ||
-                      !!st.disabled ||
-                      !!field.disabled ||
-                      !!field.readOnly ||
-                      !!field.lockAfterCalculation ||
-                      (field.groupId && fieldStates[field.groupId]?.disabled === true)
-                    }
-                    filterOptions={st.filterOptions ?? null}
-                    min={st.min ?? null}
-                    max={st.max ?? null}
-                    labelOverride={st.label ?? null}
-                    placeholderOverride={st.placeholder ?? null}
-                  />
+                  <div key={field.id || field.fieldKey} style={{ position: 'relative', zIndex: 100 - index }}>
+                    <FieldInput
+                      field={{ ...field, required: effectiveRequired }}
+                      value={effectiveValue}
+                      errors={errors[field.fieldKey] || []}
+                      touched={!!touched[field.fieldKey]}
+                      onChange={(val) => handleChange(field, val)}
+                      onBlur={(val) => handleBlur(field, val)}
+                      disabled={
+                        isPreview ||
+                        !!st.disabled ||
+                        !!field.disabled ||
+                        !!field.readOnly ||
+                        !!field.lockAfterCalculation ||
+                        (field.groupId && fieldStates[field.groupId]?.disabled === true)
+                      }
+                      filterOptions={st.filterOptions ?? null}
+                      min={st.min ?? null}
+                      max={st.max ?? null}
+                      labelOverride={st.label ?? null}
+                      placeholderOverride={st.placeholder ?? null}
+                    />
+                  </div>
                 );
               };
 
-              return topLevelItems.map(renderField);
+              return topLevelItems.map((f, i) => renderField(f, i));
             })()}
           </div>
         )}
@@ -726,7 +728,11 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
   }
 
   return (
-    <div className="form-field-group" style={{ animationDelay: `${(field.fieldOrder || 0) * 40}ms` }}>
+    <div className="form-field-group" style={{
+      animationDelay: `${(field.fieldOrder || 0) * 40}ms`,
+      position: 'relative',
+      zIndex: 100 - (field.fieldOrder || 0)
+    }}>
 
       {/* Label */}
       {field.fieldType !== 'boolean' && (
@@ -826,24 +832,168 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         </label>
       )}
 
-      {/* ── dropdown (single <select>) ─────────────────────────── */}
-      {field.fieldType === 'dropdown' && (
-        <select
-          id={id}
-          className={`form-select${hasError ? ' input-error' : ''}`}
-          value={value || ''}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={(e) => onBlur(e.target.value)}
-          disabled={disabled}
-          aria-describedby={hasError ? `${id}-err` : undefined}
-          aria-invalid={hasError || undefined}
-        >
-          <option value="">— Select {effectiveLabel} —</option>
-          {filterOpts(parseOptions(field.optionsJson, field.options)).map((opt, i) => (
-            <option key={i} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      )}
+      {/* ── dropdown (single or multi) ─────────────────────────── */}
+      {field.fieldType === 'dropdown' && (() => {
+        let isMulti = false;
+        try {
+          const uiCfg = JSON.parse(field.uiConfigJson || '{}');
+          isMulti = !!uiCfg.multiple;
+        } catch { }
+
+        const options = filterOpts(parseOptions(field.optionsJson, field.options));
+
+        if (!isMulti) {
+          return (
+            <select
+              id={id}
+              className={`form-select${hasError ? ' input-error' : ''}`}
+              value={value || ''}
+              onChange={(e) => onChange(e.target.value)}
+              onBlur={(e) => onBlur(e.target.value)}
+              disabled={disabled}
+              aria-describedby={hasError ? `${id}-err` : undefined}
+              aria-invalid={hasError || undefined}
+            >
+              <option value="">— Select {effectiveLabel} —</option>
+              {options.map((opt, i) => (
+                <option key={i} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          );
+        }
+
+        // ── Custom Multi-Select Dropdown ──
+        // Parse current value string array
+        let selected = [];
+        if (value) {
+          const str = String(value).trim();
+          if (str.startsWith('[')) {
+            try { selected = JSON.parse(str); } catch { selected = []; }
+          } else {
+            selected = str.split(',').map(v => v.trim()).filter(Boolean);
+          }
+        }
+
+        const [isOpen, setIsOpen] = useState(false);
+        const dropdownRef = useRef(null);
+
+        // Handle outside click
+        useEffect(() => {
+          const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+              setIsOpen(false);
+              onBlur(value);
+            }
+          };
+          if (isOpen) {
+            document.addEventListener("mousedown", handleClickOutside);
+          } else {
+            document.removeEventListener("mousedown", handleClickOutside);
+          }
+          return () => document.removeEventListener("mousedown", handleClickOutside);
+        }, [isOpen, onBlur, value]);
+
+        const handleRemove = (e, valToRemove) => {
+          e.stopPropagation();
+          if (disabled) return;
+          const nextSelected = selected.filter(v => v !== valToRemove);
+          onChange(nextSelected); // Pass the array directly, not stringified
+        };
+
+        const handleSelect = (valToAdd) => {
+          if (disabled) return;
+          let nextSelected;
+          if (selected.includes(valToAdd)) {
+            nextSelected = selected.filter(v => v !== valToAdd);
+          } else {
+            nextSelected = [...selected, valToAdd];
+          }
+          onChange(nextSelected); // Pass the array directly
+          // keep open to allow multiple selections
+        };
+
+        return (
+          <div ref={dropdownRef} style={{ position: 'relative', zIndex: isOpen ? 99 : 1 }}>
+            <div
+              className={`form-select${hasError ? ' input-error' : ''}`}
+              style={{
+                display: 'flex', flexWrap: 'wrap', gap: '6px', minHeight: '44px', paddingBottom: '7px', paddingTop: '7px',
+                alignItems: 'center', cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: disabled ? 0.6 : 1
+              }}
+              onClick={() => !disabled && setIsOpen(!isOpen)}
+            >
+              {selected.length === 0 ? (
+                <span style={{ color: 'var(--text-muted)' }}>— Select {effectiveLabel} —</span>
+              ) : (
+                selected.map((val) => {
+                  const optLabel = options.find(o => o.value === val)?.label || val;
+                  return (
+                    <span key={val} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      padding: '2px 8px', borderRadius: '12px', fontSize: '13px',
+                      background: 'rgba(99,102,241,0.15)', color: '#EDE9FF', border: '1px solid rgba(99,102,241,0.3)',
+                    }}>
+                      {optLabel}
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemove(e, val)}
+                        style={{
+                          background: 'none', border: 'none', color: '#9899BA', cursor: 'pointer', fontSize: '12px',
+                          padding: 0, marginLeft: '2px', lineHeight: 1
+                        }}
+                      >✕</button>
+                    </span>
+                  );
+                })
+              )}
+            </div>
+
+            {isOpen && !disabled && (
+              <ul style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999,
+                marginTop: '6px', padding: '6px', background: '#13112b',
+                border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.55)', maxHeight: '250px', overflowY: 'auto', listStyle: 'none'
+              }}>
+                {options.length === 0 ? (
+                  <li style={{ padding: '8px 12px', color: 'var(--text-muted)', fontSize: '14px', fontFamily: "'Inter', sans-serif" }}>No options</li>
+                ) : (
+                  options.map((opt, i) => {
+                    const isSelected = selected.includes(opt.value);
+                    return (
+                      <li
+                        key={i}
+                        onClick={() => handleSelect(opt.value)}
+                        style={{
+                          padding: '8px 12px', cursor: 'pointer', borderRadius: '6px', fontSize: '14px', fontFamily: "'Inter', sans-serif",
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          background: isSelected ? '#2a2060' : 'transparent',
+                          color: isSelected ? '#ffffff' : '#EDE9FF',
+                        }}
+                        onMouseOver={(e) => {
+                          if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                        }}
+                        onMouseOut={(e) => {
+                          if (!isSelected) e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          readOnly
+                          style={{ accentColor: 'var(--accent)', width: '16px', height: '16px', borderRadius: '4px', cursor: 'pointer' }}
+                        />
+                        {opt.label}
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── radio (single-select radio buttons) ────────────────── */}
       {field.fieldType === 'radio' && (

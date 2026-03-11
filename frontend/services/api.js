@@ -106,6 +106,20 @@ export const publishForm = (id) =>
 export const unpublishForm = (id) =>
     request('PATCH', `/forms/${id}/unpublish`);
 
+// ── Forms Trash Bin ────────────────────────────────────────────
+
+/** Get all soft-deleted (trashed) forms for the current user. */
+export const getTrashForms = () =>
+    request('GET', '/forms/trash');
+
+/** Restore a soft-deleted form back to active. */
+export const restoreForm = (id) =>
+    request('POST', `/forms/${id}/restore`);
+
+/** Permanently delete a form from trash (irreversible). */
+export const permanentDeleteForm = (id) =>
+    request('DELETE', `/forms/${id}/permanent`);
+
 // ── Submissions ───────────────────────────────────────────────
 
 export async function submitForm(formId, data) {
@@ -148,6 +162,20 @@ export const deleteSubmission = (formId, submissionId) =>
 
 export const updateSubmission = (formId, submissionId, data) =>
     request('PUT', `/forms/${formId}/submissions/${submissionId}`, data);
+
+// ── Submissions Trash Bin ─────────────────────────────────────
+
+/** Get all soft-deleted submissions for a form. */
+export const getTrashSubmissions = (formId) =>
+    request('GET', `/forms/${formId}/submissions/trash`);
+
+/** Restore a soft-deleted submission back to active. */
+export const restoreSubmission = (formId, submissionId) =>
+    request('POST', `/forms/${formId}/submissions/${submissionId}/restore`);
+
+/** Permanently delete a submission from trash. */
+export const permanentDeleteSubmission = (formId, submissionId) =>
+    request('DELETE', `/forms/${formId}/submissions/${submissionId}/permanent`);
 
 // ── Shared Options ────────────────────────────────────────────
 // Manages the shared_options table — canonical option lists shared across form fields.

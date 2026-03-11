@@ -74,8 +74,8 @@ export default function DashboardPage() {
             setForms((prev) => prev.filter((f) => f.id !== deleteTarget.id));
             setPublishedSelected((p) => { const n = new Set(p); n.delete(deleteTarget.id); return n; });
             setDraftSelected((p) => { const n = new Set(p); n.delete(deleteTarget.id); return n; });
-            toastSuccess(`"${deleteTarget.name}" deleted.`);
-        } catch { toastError('Failed to delete form.'); }
+            toastSuccess(`"${deleteTarget.name}" moved to Trash. Restore it from the Trash page.`);
+        } catch { toastError('Failed to move form to trash.'); }
         finally { setDeleting(false); setDeleteTarget(null); }
     };
 
@@ -247,7 +247,11 @@ export default function DashboardPage() {
                             <h1 className="page-title">My Forms</h1>
                             <p className="page-subtitle">Build, manage &amp; share dynamic forms</p>
                         </div>
-                        <Link href="/builder/new" className="btn btn-primary" id="new-form-btn">+ New Form</Link>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                            <Link href="/forms/trash" className="btn btn-secondary" id="trash-btn"
+                                style={{ display: 'flex', alignItems: 'center', gap: 6 }}>🗑 Trash</Link>
+                            <Link href="/builder/new" className="btn btn-primary" id="new-form-btn">+ New Form</Link>
+                        </div>
                     </div>
 
                     {/* Stats */}
