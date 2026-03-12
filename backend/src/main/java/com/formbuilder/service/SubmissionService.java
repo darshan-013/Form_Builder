@@ -27,6 +27,7 @@ public class SubmissionService {
     private final ValidationService validationService;
     private final CalculationEngine calculationEngine;
     private final RuleEvaluator ruleEvaluator;
+    private final DynamicTableService dynamicTableService;
 
     // ─────────────────────────────────────────────────────────────────────────
     // VALIDATE — direct JDBC, bypasses JPA FetchType.LAZY + open-in-view:false
@@ -140,11 +141,69 @@ public class SubmissionService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // DRAFT
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public Map<String, Object> findDraft(UUID formId, String userId) {
+        String tableName = getTableName(formId);
+        dynamicTableService.addDraftColumnsIfMissing(tableName);
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT * FROM \"" + tableName + "\" WHERE user_id = ? AND status = 'DRAFTED' AND is_soft_deleted = FALSE ORDER BY updated_at DESC LIMIT 1",
+                userId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    public void saveDraft(UUID formId, String userId, Map<String, Object> data) {
+        String tableName = getTableName(formId);
+        dynamicTableService.addDraftColumnsIfMissing(tableName);
+
+        Map<String, Object> existing = findDraft(formId, userId);
+        if (existing != null) {
+            updateDraft(formId, (UUID) existing.get("id"), data);
+        } else {
+            insertInternal(formId, data, userId, "DRAFTED");
+        }
+    }
+
+    private void updateDraft(UUID formId, UUID submissionId, Map<String, Object> data) {
+        String tableName = getTableName(formId);
+        List<Map<String, Object>> fieldRows = jdbc.queryForList(
+                "SELECT field_key, field_type FROM form_fields WHERE form_id = ?", formId);
+
+        List<String> setClauses = new ArrayList<>();
+        List<Object> vals = new ArrayList<>();
+        for (Map<String, Object> row : fieldRows) {
+            String fieldKey = (String) row.get("field_key");
+            String fieldType = (String) row.get("field_type");
+            if ("file".equals(fieldType) || "field_group".equals(fieldType))
+                continue;
+            if (!data.containsKey(fieldKey))
+                continue;
+            setClauses.add("\"" + fieldKey + "\" = ?");
+            vals.add(convertValue(data.get(fieldKey), fieldType));
+        }
+
+        setClauses.add("updated_at = NOW()");
+
+        if (setClauses.size() > 1) { // more than just updated_at
+            vals.add(submissionId);
+            String sql = "UPDATE \"" + tableName + "\" SET "
+                    + String.join(", ", setClauses) + " WHERE id = ?";
+            jdbc.update(sql, vals.toArray());
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // INSERT
     // ─────────────────────────────────────────────────────────────────────────
 
     public void insert(UUID formId, Map<String, Object> data) {
+        insertInternal(formId, data, null, "SUBMITTED");
+    }
+
+    private void insertInternal(UUID formId, Map<String, Object> data, String userId, String status) {
         String tableName = getTableName(formId);
+        dynamicTableService.addDraftColumnsIfMissing(tableName);
 
         // Fetch all field metadata including calculated-field columns
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
@@ -182,15 +241,29 @@ public class SubmissionService {
             vals.add(convertValue(value, fieldType));
         }
 
+        cols.add("status");
+        vals.add(status);
+        if (userId != null) {
+            cols.add("user_id");
+            vals.add(userId);
+        }
+
         String table = '"' + tableName + '"';
-        if (cols.isEmpty()) {
-            jdbc.update("INSERT INTO " + table + " DEFAULT VALUES");
+        String sql = "INSERT INTO " + table
+                + " (" + String.join(", ", cols) + ")"
+                + " VALUES (" + cols.stream().map(c -> "?").collect(Collectors.joining(", ")) + ")";
+        log.debug("INSERT: {}", sql);
+        jdbc.update(sql, vals.toArray());
+    }
+
+    public void finalizeSubmission(UUID formId, String userId, Map<String, Object> data) {
+        Map<String, Object> draft = findDraft(formId, userId);
+        if (draft != null) {
+            UUID submissionId = (UUID) draft.get("id");
+            updateSubmission(formId, submissionId, data);
+            jdbc.update("UPDATE \"" + getTableName(formId) + "\" SET status = 'SUBMITTED', updated_at = NOW() WHERE id = ?", submissionId);
         } else {
-            String sql = "INSERT INTO " + table
-                    + " (" + String.join(", ", cols) + ")"
-                    + " VALUES (" + cols.stream().map(c -> "?").collect(Collectors.joining(", ")) + ")";
-            log.debug("INSERT: {}", sql);
-            jdbc.update(sql, vals.toArray());
+            insertInternal(formId, data, userId, "SUBMITTED");
         }
     }
 
@@ -200,16 +273,15 @@ public class SubmissionService {
 
     public List<Map<String, Object>> getSubmissions(UUID formId) {
         String tableName = getTableName(formId);
-        // Ensure soft-delete column exists (migration for pre-existing tables)
+        // Ensure draft columns exist (migration for pre-existing tables)
+        dynamicTableService.addDraftColumnsIfMissing(tableName);
+
         try {
             return jdbc.queryForList(
                     "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = FALSE ORDER BY created_at DESC");
         } catch (Exception e) {
-            // Column does not exist yet on old tables — add it and retry
-            log.warn("is_soft_deleted column missing on {}, adding it now", tableName);
-            jdbc.execute("ALTER TABLE \"" + tableName
-                    + "\" ADD COLUMN IF NOT EXISTS is_soft_deleted BOOLEAN NOT NULL DEFAULT FALSE");
-            jdbc.execute("ALTER TABLE \"" + tableName + "\" ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP");
+            // Column does not exist yet on old tables — retry after migration
+            log.warn("Columns missing on {}, already called migration", tableName);
             return jdbc.queryForList(
                     "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = FALSE ORDER BY created_at DESC");
         }

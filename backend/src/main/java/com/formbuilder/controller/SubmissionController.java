@@ -64,7 +64,8 @@ public class SubmissionController {
     public ResponseEntity<?> submitJson(
             @PathVariable UUID id,
             @RequestBody(required = false) Map<String, Object> rawBody,
-            HttpSession session) {
+            HttpSession session,
+            Authentication auth) {
 
         ResponseEntity<?> guard = checkPublishedAndSession(id, session);
         if (guard != null)
@@ -86,8 +87,48 @@ public class SubmissionController {
         log.debug("JSON submit data: {}", data);
 
         submissionService.validate(id, data, null);
-        submissionService.insert(id, data);
+        submissionService.finalizeSubmission(id, auth != null ? auth.getName() : null, data);
         return ResponseEntity.ok(Map.of("message", "Form submitted successfully"));
+    }
+
+    /**
+     * GET /api/forms/{id}/draft
+     */
+    @GetMapping("/{id}/draft")
+    public ResponseEntity<?> getDraft(@PathVariable UUID id, Authentication auth) {
+        if (auth == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Map<String, Object> draft = submissionService.findDraft(id, auth.getName());
+        return ResponseEntity.ok(draft != null ? draft : Map.of());
+    }
+
+    /**
+     * POST /api/forms/{id}/draft
+     */
+    @PostMapping("/{id}/draft")
+    public ResponseEntity<?> saveDraft(
+            @PathVariable UUID id,
+            @RequestBody Map<String, Object> rawBody,
+            Authentication auth) {
+        if (auth == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Map<String, Object> data = new HashMap<>();
+        if (rawBody != null) {
+            Object inner = rawBody.get("data");
+            if (rawBody.size() == 1 && inner instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> wrapped = (Map<String, Object>) inner;
+                data.putAll(wrapped);
+            } else {
+                data.putAll(rawBody);
+            }
+        }
+
+        submissionService.saveDraft(id, auth.getName(), data);
+        return ResponseEntity.ok(Map.of("message", "Draft saved successfully", "timestamp", LocalDateTime.now()));
     }
 
     /**
@@ -97,7 +138,8 @@ public class SubmissionController {
     public ResponseEntity<?> submitMultipart(
             @PathVariable UUID id,
             MultipartHttpServletRequest multipart,
-            HttpSession session) {
+            HttpSession session,
+            Authentication auth) {
 
         ResponseEntity<?> guard = checkPublishedAndSession(id, session);
         if (guard != null)
@@ -147,7 +189,7 @@ public class SubmissionController {
                     data.put(e.getKey(), saveFile(e.getValue()));
             }
 
-            submissionService.insert(id, data);
+            submissionService.finalizeSubmission(id, auth != null ? auth.getName() : null, data);
             return ResponseEntity.ok(Map.of("message", "Form submitted successfully"));
 
         } catch (IOException e) {

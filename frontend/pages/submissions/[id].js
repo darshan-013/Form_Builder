@@ -138,6 +138,12 @@ export default function SubmissionsPage() {
         }
     };
 
+    /** Filter out system fields like status and user_id from editing */
+    const editableFields = useMemo(() => {
+        if (!form?.fields) return [];
+        return form.fields.filter(f => !['field_group', 'section_header', 'label_text', 'description_block', 'page_break'].includes(f.fieldType));
+    }, [form?.fields]);
+
     // Confirm delete
     const handleDeleteConfirm = async () => {
         if (!deletingSubmission) return;
@@ -251,10 +257,11 @@ export default function SubmissionsPage() {
             f => !['section_header', 'label_text', 'description_block', 'page_break'].includes(f.fieldType)
         );
         const showTs = form?.showTimestamp ?? true;
-        const headers = ['#', 'Submission ID', ...dynFields.map(f => f.label || f.fieldKey), ...(showTs ? ['Submitted At'] : [])];
+        const headers = ['#', 'Submission ID', 'Status', ...dynFields.map(f => f.label || f.fieldKey), ...(showTs ? ['Submitted At'] : [])];
         const rows = submissions.map((sub, i) => [
             i + 1,
             sub.id || '',
+            sub.status || 'SUBMITTED',
             ...dynFields.map(f => formatCellValue(f, sub[f.fieldKey])),
             ...(showTs ? [sub.created_at ? new Date(sub.created_at).toLocaleString('en-IN') : ''] : []),
         ]);
@@ -626,6 +633,34 @@ export default function SubmissionsPage() {
                     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
                 }) : '—'
             }] : []),
+            {
+                key: 'status',
+                label: 'Status',
+                sortable: true,
+                render: (value) => {
+                    const isDraft = value === 'DRAFTED';
+                    return (
+                        <span className={`badge ${isDraft ? 'badge-warning' : 'badge-number'}`} style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            whiteSpace: 'nowrap',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            padding: '4px 12px',
+                            borderRadius: '99px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                            background: isDraft ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                            color: isDraft ? '#FCD34D' : '#34D399',
+                            border: `1px solid ${isDraft ? 'rgba(245, 158, 11, 0.22)' : 'rgba(16, 185, 129, 0.22)'}`
+                        }}>
+                            <span>{isDraft ? '📝' : '✅'}</span>
+                            <span>{isDraft ? 'Draft' : 'Submitted'}</span>
+                        </span>
+                    );
+                }
+            },
             {
                 key: 'actions',
                 label: 'Actions',
@@ -1297,6 +1332,19 @@ export default function SubmissionsPage() {
                                                 <span className="sub-grid-id" title={sub.id}>
                                                     {sub.id ? sub.id.substring(0, 8) + '…' : '—'}
                                                 </span>
+                                                <div style={{ marginTop: '8px' }}>
+                                                    <span className={`badge ${sub.status === 'DRAFTED' ? 'badge-warning' : 'badge-number'}`} style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        whiteSpace: 'nowrap',
+                                                        fontSize: '10px',
+                                                        padding: '2px 8px'
+                                                    }}>
+                                                        <span>{sub.status === 'DRAFTED' ? '📝' : '✅'}</span>
+                                                        <span>{sub.status === 'DRAFTED' ? 'Draft' : 'Submitted'}</span>
+                                                    </span>
+                                                </div>
                                             </div>
 
                                             {/* Field values */}
@@ -1438,6 +1486,23 @@ export default function SubmissionsPage() {
                             <div className="form-group">
                                 <label className="form-label">Submission ID</label>
                                 <div className="sub-readonly-field sub-mono">{selectedSubmission.id}</div>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Status</label>
+                                <div style={{ display: 'flex' }}>
+                                    <span className={`badge ${selectedSubmission.status === 'DRAFTED' ? 'badge-warning' : 'badge-number'}`} style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        fontSize: '12px',
+                                        padding: '4px 12px',
+                                        fontWeight: 'bold',
+                                        color: selectedSubmission.status === 'DRAFTED' ? '#FCD34D' : '#34D399'
+                                    }}>
+                                        <span>{selectedSubmission.status === 'DRAFTED' ? '📝' : '✅'}</span>
+                                        <span>{selectedSubmission.status === 'DRAFTED' ? 'DRAFTED' : 'SUBMITTED'}</span>
+                                    </span>
+                                </div>
                             </div>
                             {form?.showTimestamp && (
                                 <div className="form-group">
@@ -1613,8 +1678,25 @@ export default function SubmissionsPage() {
                                 <label className="form-label">Submission ID</label>
                                 <div className="sub-readonly-field sub-mono">{editingSubmission.id}</div>
                             </div>
+                            <div className="form-group">
+                                <label className="form-label">Status</label>
+                                <div style={{ display: 'flex' }}>
+                                    <span className={`badge ${editingSubmission.status === 'DRAFTED' ? 'badge-warning' : 'badge-number'}`} style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        fontSize: '12px',
+                                        padding: '4px 12px',
+                                        fontWeight: 'bold',
+                                        color: editingSubmission.status === 'DRAFTED' ? '#FCD34D' : '#34D399'
+                                    }}>
+                                        <span>{editingSubmission.status === 'DRAFTED' ? '📝' : '✅'}</span>
+                                        <span>{editingSubmission.status === 'DRAFTED' ? 'DRAFTED' : 'SUBMITTED'}</span>
+                                    </span>
+                                </div>
+                            </div>
                             <div className="sub-divider" />
-                            {form?.fields?.filter(f => f.fieldType !== 'file').map((field) => (
+                            {editableFields.filter(f => f.fieldType !== 'file').map((field) => (
                                 <div key={field.fieldKey} className="form-group">
                                     <label className="form-label">
                                         {field.label}

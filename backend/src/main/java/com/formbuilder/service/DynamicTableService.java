@@ -81,7 +81,9 @@ public class DynamicTableService {
                     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
                     updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
                     is_soft_deleted BOOLEAN   NOT NULL DEFAULT FALSE,
-                    deleted_at      TIMESTAMP
+                    deleted_at      TIMESTAMP,
+                    status          VARCHAR(20) NOT NULL DEFAULT 'DRAFTED',
+                    user_id         VARCHAR(255)
                 )
                 """.formatted(q(tableName));
         log.debug("DDL createTable: {}", create.trim());
@@ -92,6 +94,21 @@ public class DynamicTableService {
             if (!"field_group".equals(field.getFieldType())) {
                 addColumn(tableName, field.getFieldKey(), field.getFieldType());
             }
+        }
+    }
+
+    /**
+     * Back-fills status and user_id columns on an existing submission table.
+     */
+    public void addDraftColumnsIfMissing(String tableName) {
+        try {
+            jdbc.execute("ALTER TABLE " + q(tableName) +
+                    " ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'DRAFTED'");
+            jdbc.execute("ALTER TABLE " + q(tableName) +
+                    " ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)");
+            log.debug("Draft columns ensured for table: {}", tableName);
+        } catch (Exception e) {
+            log.warn("Could not add draft columns to {}: {}", tableName, e.getMessage());
         }
     }
 
