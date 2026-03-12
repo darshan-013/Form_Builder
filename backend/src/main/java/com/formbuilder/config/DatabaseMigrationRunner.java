@@ -5,7 +5,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * Runs idempotent DB cleanup/migration on every startup.
@@ -22,6 +25,7 @@ import org.springframework.stereotype.Component;
 public class DatabaseMigrationRunner implements ApplicationRunner {
 
     private final JdbcTemplate jdbc;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -79,6 +83,198 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
                 REFERENCES form_groups(id) ON DELETE SET NULL
                 """);
 
+        // ── 7b. Form visibility column ───────────────────────────────────────
+        exec("ALTER TABLE forms ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'PUBLIC'");
+
+        // ── 7c. Per-form allowed roles (JSON array of role names) ────────────
+        exec("ALTER TABLE forms ADD COLUMN IF NOT EXISTS allowed_roles TEXT");
+
+        // ── 8. RBAC — Role Based Access Control ──────────────────────────────
+
+        // 8a. permissions table
+        exec("""
+                CREATE TABLE IF NOT EXISTS permissions (
+                    id              SERIAL       PRIMARY KEY,
+                    permission_key  VARCHAR(100) UNIQUE NOT NULL,
+                    description     TEXT
+                )
+                """);
+
+        // 8b. Seed fixed permissions
+        String[] perms = {
+                "READ",  "Read Access — view forms, submissions, and data",
+                "WRITE", "Write Access — create new forms and submissions",
+                "EDIT",  "Edit Access — modify existing forms and submissions",
+                "DELETE","Delete Access — remove forms and submissions",
+                "APPROVE","Approve Access — approve or reject submissions in workflow",
+                "MANAGE","Manage Access — manage roles, users, and system configuration",
+                "EXPORT","Export Access — export forms and submission data",
+                "VISIBILITY","Visibility Control — control who can see forms and data",
+                "AUDIT", "Audit Access — view audit logs and activity history"
+        };
+        for (int i = 0; i < perms.length; i += 2) {
+            exec("INSERT INTO permissions (permission_key, description) VALUES ('"
+                    + perms[i] + "', '" + perms[i + 1] + "') ON CONFLICT (permission_key) DO NOTHING");
+        }
+
+        // 8c. roles table
+        exec("""
+                CREATE TABLE IF NOT EXISTS roles (
+                    id              SERIAL        PRIMARY KEY,
+                    role_name       VARCHAR(100)  UNIQUE NOT NULL,
+                    is_system_role  BOOLEAN       NOT NULL DEFAULT FALSE,
+                    created_by      INT,
+                    created_at      TIMESTAMP     NOT NULL DEFAULT NOW(),
+                    updated_at      TIMESTAMP     NOT NULL DEFAULT NOW()
+                )
+                """);
+
+        // 8d. Seed system roles
+        for (String role : List.of("Viewer", "Employee", "Manager", "Approver",
+                "Builder", "Role Administrator", "Admin")) {
+            exec("INSERT INTO roles (role_name, is_system_role) VALUES ('"
+                    + role + "', TRUE) ON CONFLICT (role_name) DO NOTHING");
+        }
+
+        // 8e. role_permissions junction table
+        exec("""
+                CREATE TABLE IF NOT EXISTS role_permissions (
+                    id              SERIAL  PRIMARY KEY,
+                    role_id         INT     NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+                    permission_id   INT     NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+                    CONSTRAINT uq_role_permission UNIQUE (role_id, permission_id)
+                )
+                """);
+        exec("CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id)");
+        exec("CREATE INDEX IF NOT EXISTS idx_role_permissions_perm_id ON role_permissions(permission_id)");
+
+        // 8f. rbac_users profile table (standalone — NO FK to Spring Security users table)
+        exec("""
+                CREATE TABLE IF NOT EXISTS rbac_users (
+                    id          SERIAL        PRIMARY KEY,
+                    username    VARCHAR(100)  UNIQUE NOT NULL,
+                    password    VARCHAR(255)  NOT NULL DEFAULT '',
+                    enabled     BOOLEAN       NOT NULL DEFAULT TRUE,
+                    name        VARCHAR(100),
+                    email       VARCHAR(150)  UNIQUE,
+                    created_at  TIMESTAMP     NOT NULL DEFAULT NOW()
+                )
+                """);
+        exec("ALTER TABLE rbac_users ADD COLUMN IF NOT EXISTS password VARCHAR(255) NOT NULL DEFAULT ''");
+        exec("ALTER TABLE rbac_users ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE");
+        exec("CREATE INDEX IF NOT EXISTS idx_rbac_users_email ON rbac_users(email)");
+
+        // 8g. user_roles junction table
+        exec("""
+                CREATE TABLE IF NOT EXISTS user_roles (
+                    id       SERIAL  PRIMARY KEY,
+                    user_id  INT     NOT NULL REFERENCES rbac_users(id) ON DELETE CASCADE,
+                    role_id  INT     NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+                    CONSTRAINT uq_user_role UNIQUE (user_id, role_id)
+                )
+                """);
+        exec("CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id)");
+        exec("CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id)");
+
+        // 8h. Seed role ↔ permission matrix
+        exec("INSERT INTO role_permissions (role_id, permission_id) " +
+                "SELECT r.id, p.id FROM roles r, permissions p " +
+                "WHERE r.role_name = 'Viewer' AND p.permission_key = 'READ' " +
+                "ON CONFLICT (role_id, permission_id) DO NOTHING");
+
+        exec("INSERT INTO role_permissions (role_id, permission_id) " +
+                "SELECT r.id, p.id FROM roles r, permissions p " +
+                "WHERE r.role_name = 'Employee' AND p.permission_key IN ('READ', 'WRITE') " +
+                "ON CONFLICT (role_id, permission_id) DO NOTHING");
+
+        exec("INSERT INTO role_permissions (role_id, permission_id) " +
+                "SELECT r.id, p.id FROM roles r, permissions p " +
+                "WHERE r.role_name = 'Manager' AND p.permission_key IN ('READ', 'APPROVE', 'EXPORT', 'VISIBILITY', 'AUDIT') " +
+                "ON CONFLICT (role_id, permission_id) DO NOTHING");
+
+        exec("INSERT INTO role_permissions (role_id, permission_id) " +
+                "SELECT r.id, p.id FROM roles r, permissions p " +
+                "WHERE r.role_name = 'Approver' AND p.permission_key IN ('READ', 'APPROVE') " +
+                "ON CONFLICT (role_id, permission_id) DO NOTHING");
+
+        exec("INSERT INTO role_permissions (role_id, permission_id) " +
+                "SELECT r.id, p.id FROM roles r, permissions p " +
+                "WHERE r.role_name = 'Builder' AND p.permission_key IN ('READ', 'WRITE', 'EDIT', 'DELETE', 'EXPORT') " +
+                "ON CONFLICT (role_id, permission_id) DO NOTHING");
+
+        exec("INSERT INTO role_permissions (role_id, permission_id) " +
+                "SELECT r.id, p.id FROM roles r, permissions p " +
+                "WHERE r.role_name = 'Role Administrator' AND p.permission_key IN ('READ', 'EDIT', 'MANAGE', 'VISIBILITY', 'AUDIT') " +
+                "ON CONFLICT (role_id, permission_id) DO NOTHING");
+
+        exec("INSERT INTO role_permissions (role_id, permission_id) " +
+                "SELECT r.id, p.id FROM roles r, permissions p " +
+                "WHERE r.role_name = 'Admin' " +
+                "ON CONFLICT (role_id, permission_id) DO NOTHING");
+
+        log.info("=== RBAC tables and seed data ensured ===");
+
+        // ── 9. ONE-TIME RESET — Clean slate + Viewer default ──────────────
+        // Deletes all forms, fields, users, RBAC data.
+        // Uses _migration_flags table to ensure it only runs ONCE.
+        exec("CREATE TABLE IF NOT EXISTS _migration_flags (" +
+                "flag_name VARCHAR(100) PRIMARY KEY, " +
+                "ran_at TIMESTAMP NOT NULL DEFAULT NOW())");
+
+        try {
+            List<Integer> flagCheck = jdbc.queryForList(
+                    "SELECT 1 FROM _migration_flags WHERE flag_name = 'reset_viewer_default_v1'",
+                    Integer.class);
+
+            if (flagCheck.isEmpty()) {
+                log.info("=== Running ONE-TIME data reset ===");
+
+                // Drop dynamic submission tables (form_xxxx_yyyy) but protect schema tables
+                try {
+                    List<String> dynamicTables = jdbc.queryForList(
+                            "SELECT tablename FROM pg_tables " +
+                            "WHERE schemaname = 'public' " +
+                            "AND tablename LIKE 'form\\_%' ESCAPE '\\' " +
+                            "AND tablename NOT IN ('forms', 'form_fields', 'form_groups')",
+                            String.class);
+                    for (String tbl : dynamicTables) {
+                        exec("DROP TABLE IF EXISTS \"" + tbl + "\" CASCADE");
+                    }
+                } catch (Exception e) {
+                    log.warn("Could not drop dynamic tables: {}", e.getMessage());
+                }
+
+                // Clear data in proper FK order
+                exec("DELETE FROM static_form_fields");
+                exec("UPDATE form_fields SET group_id = NULL WHERE group_id IS NOT NULL");
+                exec("DELETE FROM form_groups");
+                exec("DELETE FROM form_fields");
+                exec("DELETE FROM forms");
+                exec("DELETE FROM shared_options");
+                exec("DELETE FROM user_roles");
+                exec("DELETE FROM rbac_users");
+
+                // Mark as completed
+                jdbc.update("INSERT INTO _migration_flags (flag_name) VALUES ('reset_viewer_default_v1')");
+                log.info("=== ONE-TIME data reset complete — system is clean ===");
+            } else {
+                log.info("Reset migration already applied — skipping.");
+            }
+        } catch (Exception e) {
+            log.warn("Reset migration check/run failed: {}", e.getMessage());
+        }
+
+        // ── 10. SEED SYSTEM USERS — Admin + Role Administrator ────────────
+        // Creates default Admin and Role Administrator if they don't exist.
+        // These are the only two elevated users in the system.
+        // All other users register as Viewer and must be promoted.
+        seedSystemUser("admin", "Admin", "admin@formcraft.local", "admin123", "Admin");
+        seedSystemUser("roleadmin", "Role Administrator", "roleadmin@formcraft.local", "roleadmin123", "Role Administrator");
+
+        // Remove Viewer role from admin/roleadmin if it was previously assigned
+        exec("DELETE FROM user_roles WHERE user_id IN (SELECT id FROM rbac_users WHERE username IN ('admin', 'roleadmin')) " +
+             "AND role_id IN (SELECT id FROM roles WHERE role_name = 'Viewer')");
+
         // Log final table structure
         try {
             var cols = jdbc.queryForList(
@@ -96,6 +292,47 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         }
 
         log.info("=== DB migration complete ===");
+    }
+
+    /**
+     * Seeds a system user if not already present.
+     * Creates the rbac_users row with BCrypt password and assigns the given role.
+     * Idempotent — safe to call on every startup.
+     */
+    private void seedSystemUser(String username, String displayName, String email,
+                                String rawPassword, String roleName) {
+        try {
+            List<Integer> existing = jdbc.queryForList(
+                    "SELECT id FROM rbac_users WHERE username = ?",
+                    Integer.class, username);
+
+            if (existing.isEmpty()) {
+                String hashedPassword = passwordEncoder.encode(rawPassword);
+                jdbc.update(
+                        "INSERT INTO rbac_users (username, password, enabled, name, email, created_at) " +
+                        "VALUES (?, ?, TRUE, ?, ?, NOW()) ON CONFLICT (username) DO NOTHING",
+                        username, hashedPassword, displayName, email);
+
+                List<Integer> userIds = jdbc.queryForList(
+                        "SELECT id FROM rbac_users WHERE username = ?",
+                        Integer.class, username);
+
+                if (!userIds.isEmpty()) {
+                    Integer userId = userIds.get(0);
+                    // Assign the specified role only (Admin/Role Admin already have all needed permissions)
+                    jdbc.update(
+                            "INSERT INTO user_roles (user_id, role_id) " +
+                            "SELECT ?, r.id FROM roles r WHERE r.role_name = ? " +
+                            "ON CONFLICT (user_id, role_id) DO NOTHING",
+                            userId, roleName);
+                    log.info("Seeded system user '{}' with role: {}", username, roleName);
+                }
+            } else {
+                log.debug("System user '{}' already exists — skipping seed", username);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to seed system user '{}': {}", username, e.getMessage());
+        }
     }
 
     private void exec(String sql) {

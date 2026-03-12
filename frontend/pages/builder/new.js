@@ -1,24 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import FieldPalette from '../../components/Builder/FieldPalette';
 import Canvas from '../../components/Builder/Canvas';
-import { createForm } from '../../services/api';
+import { createForm, getRoles } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 
 const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
+const HIDDEN_ROLES = new Set(['Admin', 'Role Administrator']);
 
 /**
  * New Form Builder Page — /builder/new
- *
- * State:
- *   formName, formDescription  — top-bar inputs
- *   fields                     — array managed by Canvas
- *
- * On Save:
- *   POST /api/forms → backend creates form rows + physical table
- *   Toast success/error
  */
 export default function NewBuilderPage() {
     const router = useRouter();
@@ -28,7 +21,24 @@ export default function NewBuilderPage() {
     const [groups, setGroups] = useState([]);
     const [saving, setSaving] = useState(false);
     const [allowMultipleSubmissions, setAllowMultipleSubmissions] = useState(true);
-    const [expiresAt, setExpiresAt] = useState(''); // ISO string or ''
+    const [expiresAt, setExpiresAt] = useState('');
+    const [visibility, setVisibility] = useState('PUBLIC');
+    const [showSettings, setShowSettings] = useState(false);
+
+    // ── Role-based form access ──
+    const [availableRoles, setAvailableRoles] = useState([]);
+    const [allowedRoles, setAllowedRoles] = useState([]); // empty = all roles (default)
+
+    useEffect(() => {
+        getRoles()
+            .then(roles => {
+                const filtered = (roles || []).filter(r => !HIDDEN_ROLES.has(r.roleName));
+                setAvailableRoles(filtered);
+                // Default: all roles selected
+                setAllowedRoles(filtered.map(r => r.roleName));
+            })
+            .catch(() => { /* silent — roles optional */ });
+    }, []);
 
     const handleSave = async () => {
         if (!formName.trim()) {
@@ -88,6 +98,8 @@ export default function NewBuilderPage() {
                 rulesJson: g.rulesJson || null,
             })),
             allowMultipleSubmissions: allowMultipleSubmissions,
+            visibility: visibility,
+            allowedRoles: allowedRoles.length === availableRoles.length ? [] : allowedRoles,
             showTimestamp: true, // always recorded — compulsory
             expiresAt: expiresAt ? expiresAt : null,
         };
@@ -151,6 +163,130 @@ export default function NewBuilderPage() {
                             </span>
                         )}
 
+                        {/* Settings button */}
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                className={`btn btn-secondary btn-sm${showSettings ? ' btn-active' : ''}`}
+                                onClick={() => setShowSettings(v => !v)}
+                                title="Form Settings"
+                            >
+                                ⚙️ Settings
+                            </button>
+
+                            {/* Settings dropdown */}
+                            {showSettings && (
+                                <>
+                                    <div className="settings-dropdown-backdrop" onClick={() => setShowSettings(false)} />
+                                    <div className="settings-dropdown">
+                                        <div className="settings-dropdown-header">
+                                            <span>⚙️ Form Settings</span>
+                                            <button className="settings-dropdown-close" onClick={() => setShowSettings(false)}>✕</button>
+                                        </div>
+
+                                        {/* Toggle: Limit to one submission */}
+                                        <div className="form-settings-toggle" onClick={() => setAllowMultipleSubmissions(v => !v)}>
+                                            <div className="form-settings-toggle-info">
+                                                <span className="form-settings-toggle-label">🔒 Limit to one submission</span>
+                                                <span className="form-settings-toggle-desc">Each person can only submit this form once per session</span>
+                                            </div>
+                                            <div className={`toggle-switch${!allowMultipleSubmissions ? ' toggle-on' : ''}`} role="switch" aria-checked={!allowMultipleSubmissions}>
+                                                <div className="toggle-knob" />
+                                            </div>
+                                        </div>
+
+                                        {/* Expiry date-time picker */}
+                                        <div className="form-settings-expiry">
+                                            <div className="form-settings-expiry-info">
+                                                <span className="form-settings-toggle-label">📅 Form expiry</span>
+                                                <span className="form-settings-toggle-desc">
+                                                    {expiresAt
+                                                        ? `Closes on ${new Date(expiresAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                                                        : 'No expiry — form stays open indefinitely'}
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                <input
+                                                    type="datetime-local"
+                                                    className="form-input form-settings-date-input"
+                                                    value={expiresAt}
+                                                    min={new Date().toISOString().slice(0, 16)}
+                                                    onChange={e => setExpiresAt(e.target.value)}
+                                                    title="Set form expiry date and time"
+                                                />
+                                                {expiresAt && (
+                                                    <button
+                                                        className="btn btn-secondary btn-sm"
+                                                        onClick={() => setExpiresAt('')}
+                                                        title="Clear expiry"
+                                                        style={{ whiteSpace: 'nowrap', padding: '6px 10px' }}
+                                                    >
+                                                        ✕ Clear
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Role-based form access */}
+                                        <div className="form-settings-expiry">
+                                            <div className="form-settings-expiry-info">
+                                                <span className="form-settings-toggle-label">👥 Who can see this form?</span>
+                                                <span className="form-settings-toggle-desc">
+                                                    {allowedRoles.length === 0 || allowedRoles.length === availableRoles.length
+                                                        ? 'All roles can see this form (default)'
+                                                        : `${allowedRoles.length} role${allowedRoles.length !== 1 ? 's' : ''} selected — Admin & Role Admin always have access`}
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                                                {availableRoles.map(role => {
+                                                    const checked = allowedRoles.includes(role.roleName);
+                                                    return (
+                                                        <label key={role.id}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: 6,
+                                                                padding: '5px 12px', borderRadius: 6, fontSize: 13,
+                                                                cursor: 'pointer', userSelect: 'none',
+                                                                background: checked ? 'var(--primary-light, #e8f0fe)' : 'var(--bg-card)',
+                                                                border: `1.5px solid ${checked ? 'var(--primary, #4285f4)' : 'var(--border)'}`,
+                                                                color: checked ? 'var(--primary, #4285f4)' : 'var(--text-secondary)',
+                                                                fontWeight: checked ? 600 : 400,
+                                                                transition: 'all .15s ease',
+                                                            }}>
+                                                            <input type="checkbox" checked={checked}
+                                                                style={{ display: 'none' }}
+                                                                onChange={() => {
+                                                                    setAllowedRoles(prev =>
+                                                                        prev.includes(role.roleName)
+                                                                            ? prev.filter(r => r !== role.roleName)
+                                                                            : [...prev, role.roleName]
+                                                                    );
+                                                                }} />
+                                                            <span>{checked ? '☑' : '☐'}</span>
+                                                            {role.roleName}
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                            {availableRoles.length > 0 && (
+                                                <div style={{ marginTop: 6, display: 'flex', gap: 10, fontSize: 11 }}>
+                                                    <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
+                                                        onClick={() => setAllowedRoles(availableRoles.map(r => r.roleName))}>
+                                                        Select All
+                                                    </button>
+                                                    <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
+                                                        onClick={() => setAllowedRoles([])}>
+                                                        Clear All
+                                                    </button>
+                                                    <span style={{ color: 'var(--text-muted)', alignSelf: 'center' }}>
+                                                        🔒 Admin & Role Admin always have access
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
                         {/* Preview (navigates to /preview/:id — only after save) */}
                         <Link href="/dashboard" className="btn btn-secondary btn-sm">
                             ← Cancel
@@ -176,57 +312,6 @@ export default function NewBuilderPage() {
 
                 {/* ── Canvas ───────────────────────────────────────────── */}
                 <main className="builder-canvas-wrap">
-                    {/* ── Form Settings Panel ─────────────────────── */}
-                    <div className="form-settings-panel">
-                        <div className="form-settings-title">
-                            ⚙️ Form Settings
-                            <span style={{ fontWeight: 400, fontSize: 11, textTransform: 'none', letterSpacing: 0, marginLeft: 6, color: 'var(--text-muted)' }}>(all optional)</span>
-                        </div>
-
-                        {/* Toggle: Limit to one submission */}
-                        <div className="form-settings-toggle" onClick={() => setAllowMultipleSubmissions(v => !v)}>
-                            <div className="form-settings-toggle-info">
-                                <span className="form-settings-toggle-label">🔒 Limit to one submission</span>
-                                <span className="form-settings-toggle-desc">Each person can only submit this form once per session</span>
-                            </div>
-                            <div className={`toggle-switch${!allowMultipleSubmissions ? ' toggle-on' : ''}`} role="switch" aria-checked={!allowMultipleSubmissions}>
-                                <div className="toggle-knob" />
-                            </div>
-                        </div>
-
-                        {/* Expiry date-time picker */}
-                        <div className="form-settings-expiry">
-                            <div className="form-settings-expiry-info">
-                                <span className="form-settings-toggle-label">📅 Form expiry</span>
-                                <span className="form-settings-toggle-desc">
-                                    {expiresAt
-                                        ? `Closes on ${new Date(expiresAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-                                        : 'No expiry — form stays open indefinitely'}
-                                </span>
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                <input
-                                    type="datetime-local"
-                                    className="form-input form-settings-date-input"
-                                    value={expiresAt}
-                                    min={new Date().toISOString().slice(0, 16)}
-                                    onChange={e => setExpiresAt(e.target.value)}
-                                    title="Set form expiry date and time"
-                                />
-                                {expiresAt && (
-                                    <button
-                                        className="btn btn-secondary btn-sm"
-                                        onClick={() => setExpiresAt('')}
-                                        title="Clear expiry"
-                                        style={{ whiteSpace: 'nowrap', padding: '6px 10px' }}
-                                    >
-                                        ✕ Clear
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
                     <Canvas fields={fields} setFields={setFields} groups={groups} setGroups={setGroups} />
                 </main>
             </div>

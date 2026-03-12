@@ -168,6 +168,40 @@ public class DynamicTableService {
         jdbc.execute(sql);
     }
 
+    /** Check whether a dynamic submission table exists in the database. */
+    public boolean tableExists(String tableName) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+                Integer.class, tableName);
+        return count != null && count > 0;
+    }
+
+    /**
+     * Ensures the submission table exists. If the table is missing (e.g. DB was
+     * recreated but form metadata survived), it is re-created from the field
+     * definitions stored in form_fields.
+     */
+    public void ensureTableExists(String tableName, UUID formId) {
+        if (tableExists(tableName)) {
+            return;
+        }
+        log.warn("Submission table '{}' missing — recreating from form_fields for formId={}", tableName, formId);
+        // Fetch field definitions via JDBC (no JPA dependency)
+        List<Map<String, Object>> fieldRows = jdbc.queryForList(
+                "SELECT field_key, field_type FROM form_fields WHERE form_id = ? ORDER BY field_order ASC",
+                formId);
+        // Build minimal FormFieldEntity list for createTable()
+        List<FormFieldEntity> fields = new java.util.ArrayList<>();
+        for (Map<String, Object> row : fieldRows) {
+            FormFieldEntity f = new FormFieldEntity();
+            f.setFieldKey((String) row.get("field_key"));
+            f.setFieldType((String) row.get("field_type"));
+            fields.add(f);
+        }
+        createTable(tableName, fields);
+        log.info("Recreated missing table '{}' with {} field columns", tableName, fields.size());
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /** Double-quote an identifier, validating it contains only safe characters. */

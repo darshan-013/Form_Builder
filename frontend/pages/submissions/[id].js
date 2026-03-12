@@ -6,6 +6,7 @@ import Navbar from '../../components/Navbar';
 import DataTable from '../../components/DataTable';
 import { getForm, getSubmissions, downloadFile, deleteSubmission, updateSubmission, getFormRender } from '../../services/api';
 import { toastError, toastSuccess } from '../../services/toast';
+import { useAuth } from '../../context/AuthContext';
 
 /**
  * Submissions View Page — /submissions/[id]
@@ -21,6 +22,7 @@ import { toastError, toastSuccess } from '../../services/toast';
 export default function SubmissionsPage() {
     const router = useRouter();
     const { id } = router.query;
+    const { can } = useAuth();
 
     const [form, setForm] = useState(null);
     const [renderData, setRenderData] = useState(null); // Stores /render response with resolved options
@@ -674,22 +676,35 @@ export default function SubmissionsPage() {
                         >
                             👁 View
                         </button>
-                        <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => openEdit(row)}
-                            title="Edit submission"
-                            style={{ background: '#3b82f6', color: '#fff', border: 'none' }}
-                        >
-                            ✏️ Edit
-                        </button>
-                        <button
-                            className="btn btn-sm"
-                            onClick={() => setDeletingSubmission(row)}
-                            title="Delete submission"
-                            style={{ background: '#ef4444', color: '#fff', border: 'none' }}
-                        >
-                            🗑 Delete
-                        </button>
+                        {can('APPROVE') && (
+                            <button
+                                className="btn btn-sm"
+                                title="Approve submission"
+                                style={{ background: 'rgba(16,185,129,0.2)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.3)' }}
+                            >
+                                ✅ Approve
+                            </button>
+                        )}
+                        {can('EDIT') && (
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => openEdit(row)}
+                                title="Edit submission"
+                                style={{ background: '#3b82f6', color: '#fff', border: 'none' }}
+                            >
+                                ✏️ Edit
+                            </button>
+                        )}
+                        {can('DELETE') && (
+                            <button
+                                className="btn btn-sm"
+                                onClick={() => setDeletingSubmission(row)}
+                                title="Delete submission"
+                                style={{ background: '#ef4444', color: '#fff', border: 'none' }}
+                            >
+                                🗑 Delete
+                            </button>
+                        )}
                     </div>
                 )
             }
@@ -1126,11 +1141,13 @@ export default function SubmissionsPage() {
                             <Link href={`/preview/${id}`} className="btn btn-secondary">
                                 👁 Preview Form
                             </Link>
-                            <Link href={`/submissions/trash/${id}`} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                🗑 Trash
-                            </Link>
-                            {/* Export buttons — only shown when there are submissions */}
-                            {submissions.length > 0 && (
+                            {can('DELETE') && (
+                                <Link href={`/submissions/trash/${id}`} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    🗑 Trash
+                                </Link>
+                            )}
+                            {/* Export buttons — only shown when there are submissions and user has EXPORT perm */}
+                            {submissions.length > 0 && can('EXPORT') && (
                                 <div className="export-btn-group">
                                     <button
                                         className="btn btn-export-csv"
@@ -1277,9 +1294,11 @@ export default function SubmissionsPage() {
                                 <div className="section-sel-row">
                                     <span className="bulk-count">{selectedIds.size} selected</span>
                                     <button className="sb-btn sb-btn-ghost" onClick={clearSelection}>✕ Clear</button>
-                                    <button className="sb-btn sb-btn-danger" onClick={() => setShowBulkConfirm(true)}>
-                                        🗑 Delete {selectedIds.size}
-                                    </button>
+                                    {can('DELETE') && (
+                                        <button className="sb-btn sb-btn-danger" onClick={() => setShowBulkConfirm(true)}>
+                                            🗑 Delete {selectedIds.size}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1391,22 +1410,35 @@ export default function SubmissionsPage() {
                                                 >
                                                     👁 View
                                                 </button>
-                                                <button
-                                                    className="btn btn-sm"
-                                                    style={{ background: '#3b82f6', color: '#fff', border: 'none' }}
-                                                    onClick={() => openEdit(sub)}
-                                                    title="Edit submission"
-                                                >
-                                                    ✏️ Edit
-                                                </button>
-                                                <button
-                                                    className="btn btn-sm"
-                                                    style={{ background: '#ef4444', color: '#fff', border: 'none' }}
-                                                    onClick={() => setDeletingSubmission(sub)}
-                                                    title="Delete submission"
-                                                >
-                                                    🗑 Delete
-                                                </button>
+                                                {can('APPROVE') && (
+                                                    <button
+                                                        className="btn btn-sm"
+                                                        title="Approve submission"
+                                                        style={{ background: 'rgba(16,185,129,0.2)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.3)' }}
+                                                    >
+                                                        ✅ Approve
+                                                    </button>
+                                                )}
+                                                {can('EDIT') && (
+                                                    <button
+                                                        className="btn btn-sm"
+                                                        style={{ background: '#3b82f6', color: '#fff', border: 'none' }}
+                                                        onClick={() => openEdit(sub)}
+                                                        title="Edit submission"
+                                                    >
+                                                        ✏️ Edit
+                                                    </button>
+                                                )}
+                                                {can('DELETE') && (
+                                                    <button
+                                                        className="btn btn-sm"
+                                                        style={{ background: '#ef4444', color: '#fff', border: 'none' }}
+                                                        onClick={() => setDeletingSubmission(sub)}
+                                                        title="Delete submission"
+                                                    >
+                                                        🗑 Delete
+                                                    </button>
+                                                )}
                                             </div>
 
                                             {/* ── Select checkbox (Grid View) ── */}

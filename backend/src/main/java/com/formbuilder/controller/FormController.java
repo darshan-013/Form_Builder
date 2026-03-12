@@ -4,6 +4,7 @@ import com.formbuilder.dto.FormDTO;
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
+import com.formbuilder.rbac.service.UserRoleService;
 import com.formbuilder.service.FormRenderService;
 import com.formbuilder.service.FormService;
 import lombok.RequiredArgsConstructor;
@@ -13,17 +14,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * REST Controller for Form CRUD operations.
- *
- * POST /api/forms → create form + DynamicTableService.createTable()
- * GET /api/forms → list all forms (admin dashboard)
- * GET /api/forms/{id} → single form with fields (public — for preview / submit
- * page)
- * PUT /api/forms/{id} → update metadata + DynamicTableService.updateTable()
- * (add/drop/alter)
- * DELETE /api/forms/{id} → delete metadata + DynamicTableService.dropTable()
+ * Now uses role-based form visibility via UserRoleService.
  */
 @RestController
 @RequestMapping("/api/forms")
@@ -32,11 +27,50 @@ public class FormController {
 
     private final FormService formService;
     private final FormRenderService formRenderService;
+    private final UserRoleService userRoleService;
 
     /** List only the forms that belong to the authenticated user. */
     @GetMapping
-    public ResponseEntity<List<FormEntity>> getAll(Authentication auth) {
-        return ResponseEntity.ok(formService.getAllForms(auth.getName()));
+    public ResponseEntity<List<Map<String, Object>>> getAll(Authentication auth) {
+        String username = auth.getName();
+        Set<String> roleNames = userRoleService.getUserRoleNames(username);
+
+        List<FormEntity> forms = formService.getFormsForRole(username, roleNames);
+
+        // Annotate each form with ownership flag and effective permissions
+        List<Map<String, Object>> response = forms.stream().map(form -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", form.getId());
+            map.put("name", form.getName());
+            map.put("description", form.getDescription());
+            map.put("tableName", form.getTableName());
+            map.put("status", form.getStatus());
+            map.put("visibility", form.getVisibility());
+            map.put("allowedRoles", form.getAllowedRoles());
+            map.put("createdBy", form.getCreatedBy());
+            map.put("createdAt", form.getCreatedAt());
+            map.put("updatedAt", form.getUpdatedAt());
+            map.put("allowMultipleSubmissions", form.isAllowMultipleSubmissions());
+            map.put("showTimestamp", form.isShowTimestamp());
+            map.put("expiresAt", form.getExpiresAt());
+            map.put("fields", form.getFields());
+
+            // Ownership flag — frontend uses this to show/hide edit/delete buttons
+            boolean isOwner = username.equals(form.getCreatedBy());
+            map.put("isOwner", isOwner);
+
+            // Effective actions: what can this user do with this form?
+            boolean isAdmin = roleNames.contains("Admin");
+            boolean isBuilder = roleNames.contains("Builder");
+            map.put("canEdit", isOwner || isAdmin);
+            map.put("canDelete", isOwner || isAdmin);
+            map.put("canPublish", isOwner || isAdmin);
+            map.put("canViewSubmissions", isOwner || isAdmin || isBuilder || roleNames.contains("Manager"));
+
+            return map;
+        }).collect(Collectors.toList());
+
+        return ResponseEntity.ok(response);
     }
 
     /** Single form with static fields bundled — used by builder edit page. */
@@ -63,6 +97,8 @@ public class FormController {
         response.put("description", form.getDescription());
         response.put("tableName", form.getTableName());
         response.put("status", form.getStatus());
+        response.put("visibility", form.getVisibility());
+        response.put("allowedRoles", form.getAllowedRoles());
         response.put("createdBy", form.getCreatedBy());
         response.put("createdAt", form.getCreatedAt());
         response.put("updatedAt", form.getUpdatedAt());
@@ -114,12 +150,12 @@ public class FormController {
 
     /**
      * Admin render — always returns form (for builder preview).
-     * Enforces ownership so users cannot preview other users' forms.
+     * Admin can preview any form; others can only preview their own.
      */
     @GetMapping("/{id}/render/admin")
     public ResponseEntity<?> renderAdmin(@PathVariable UUID id, Authentication auth) {
-        // Owner check via getOwnedFormById (throws 404 if not owner)
-        formService.getOwnedFormById(id, auth.getName());
+        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+        formService.getFormForAction(id, auth.getName(), isAdmin);
         return ResponseEntity.ok(formRenderService.render(id));
     }
 
@@ -130,59 +166,66 @@ public class FormController {
                 .body(formService.createForm(dto, auth.getName()));
     }
 
-    /** Update — only the owner can edit their form. */
+    /** Update — owner or Admin can edit a form. */
     @PutMapping("/{id}")
     public ResponseEntity<FormEntity> update(
             @PathVariable UUID id,
             @RequestBody FormDTO dto,
             Authentication auth) {
-        return ResponseEntity.ok(formService.updateForm(id, dto, auth.getName()));
+        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+        return ResponseEntity.ok(formService.updateForm(id, dto, auth.getName(), isAdmin));
     }
 
-    /** Soft-delete — moves form to trash. Only the owner can do this. */
+    /** Soft-delete — moves form to trash. Owner or Admin. */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id, Authentication auth) {
-        formService.deleteForm(id, auth.getName());
+        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+        formService.deleteForm(id, auth.getName(), isAdmin);
         return ResponseEntity.noContent().build();
     }
 
-    /** List trash — all soft-deleted forms for the authenticated user. */
+    /** List trash — Admin sees all, others see their own. */
     @GetMapping("/trash")
     public ResponseEntity<List<FormEntity>> getTrash(Authentication auth) {
-        return ResponseEntity.ok(formService.getTrashForms(auth.getName()));
+        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+        return ResponseEntity.ok(formService.getTrashForms(auth.getName(), isAdmin));
     }
 
-    /** Restore — move a trashed form back to active. */
+    /** Restore — move a trashed form back to active. Owner or Admin. */
     @PostMapping("/{id}/restore")
     public ResponseEntity<Map<String, Object>> restore(@PathVariable UUID id, Authentication auth) {
-        FormEntity form = formService.restoreForm(id, auth.getName());
+        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+        FormEntity form = formService.restoreForm(id, auth.getName(), isAdmin);
         return ResponseEntity.ok(Map.of(
                 "id", id.toString(),
                 "message", "Form restored successfully",
                 "name", form.getName()));
     }
 
-    /** Permanently delete — only works if form is already in trash. */
+    /** Permanently delete — only works if form is already in trash. Owner or Admin. */
     @DeleteMapping("/{id}/permanent")
     public ResponseEntity<Void> permanentDelete(@PathVariable UUID id, Authentication auth) {
-        formService.permanentDeleteForm(id, auth.getName());
+        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+        formService.permanentDeleteForm(id, auth.getName(), isAdmin);
         return ResponseEntity.noContent().build();
     }
 
-    /** Publish — only the owner can publish their form. */
+    /** Publish — owner or Admin can publish a form. */
     @PatchMapping("/{id}/publish")
     public ResponseEntity<Map<String, Object>> publish(@PathVariable UUID id, Authentication auth) {
-        formService.publishForm(id, auth.getName());
+        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+        formService.publishForm(id, auth.getName(), isAdmin);
         return ResponseEntity.ok(Map.of(
                 "id", id.toString(),
                 "status", "PUBLISHED",
                 "message", "Form published successfully"));
     }
 
-    /** Unpublish — only the owner can unpublish their form. */
+    /** Unpublish — owner or Admin can unpublish a form. */
     @PatchMapping("/{id}/unpublish")
     public ResponseEntity<Map<String, Object>> unpublish(@PathVariable UUID id, Authentication auth) {
-        formService.unpublishForm(id, auth.getName());
+        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+        formService.unpublishForm(id, auth.getName(), isAdmin);
         return ResponseEntity.ok(Map.of(
                 "id", id.toString(),
                 "status", "DRAFT",

@@ -118,9 +118,8 @@ CREATE OR REPLACE TRIGGER trg_forms_updated_at
 
 
 -- ─────────────────────────────────────────────
---  NOTE: users table is managed by Spring
---  Security's JdbcUserDetailsManager and will
---  be initialised by Spring Boot's
---  spring.sql.init on startup.
---  See users_schema.sql for those DDL statements.
+--  NOTE: Authentication and user profiles are
+--  stored in the rbac_users table, created by
+--  migration_add_rbac.sql. The old Spring Security
+--  users/authorities tables have been dropped.
 -- ─────────────────────────────────────────────

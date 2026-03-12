@@ -34,9 +34,84 @@ public class FormService {
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
-    /** Returns only forms owned by the given user. */
+    /** Returns only forms owned by the given user (legacy — kept for backward compatibility). */
     public List<FormEntity> getAllForms(String owner) {
         return formRepo.findAllByCreatedByOrderByCreatedAtDesc(owner);
+    }
+
+    /**
+     * Returns forms visible to the user based on their RBAC roles.
+     *
+     * Role visibility matrix:
+     * - Admin:              ALL non-deleted forms
+     * - Role Administrator: ALL non-deleted PUBLISHED forms
+     * - Builder:            ONLY their own forms (any status) — not other builders' forms
+     * - Others:             PUBLISHED forms filtered by allowed_roles
+     *
+     * allowed_roles filtering:
+     *   If form.allowed_roles is NULL/empty → visible to everyone (default/PUBLIC)
+     *   If form.allowed_roles is set → only users with a matching role can see it
+     *   Admin & Role Administrator always bypass allowed_roles
+     */
+    public List<FormEntity> getFormsForRole(String username, Set<String> roleNames) {
+        // Admin sees everything
+        if (roleNames.contains("Admin")) {
+            return formRepo.findAllByOrderByCreatedAtDesc();
+        }
+
+        // Role Administrator sees all published forms
+        if (roleNames.contains("Role Administrator")) {
+            return formRepo.findPublishedPublicForms();
+        }
+
+        // Builder sees ONLY their own forms (any status) — not other builders' forms
+        if (roleNames.contains("Builder")) {
+            return formRepo.findAllByCreatedByOrderByCreatedAtDesc(username);
+        }
+
+        // All other roles: get published forms, then filter by allowed_roles
+        List<FormEntity> published = formRepo.findPublishedAccessibleForms();
+        return filterByAllowedRoles(published, roleNames);
+    }
+
+    /**
+     * Filters a list of forms by the allowed_roles JSON column.
+     * If allowed_roles is null/empty → form is visible to everyone.
+     * If allowed_roles contains role names → user must have at least one matching role.
+     */
+    private List<FormEntity> filterByAllowedRoles(List<FormEntity> forms, Set<String> userRoles) {
+        return forms.stream().filter(form -> {
+            String json = form.getAllowedRoles();
+            if (json == null || json.isBlank() || json.equals("[]")) {
+                return true; // no restriction → visible to all
+            }
+            List<String> allowed = deserializeRoleList(json);
+            if (allowed.isEmpty()) return true;
+            // User must have at least one of the allowed roles
+            return allowed.stream().anyMatch(userRoles::contains);
+        }).collect(Collectors.toList());
+    }
+
+    /** Deserialize JSON array string to List<String>. */
+    private List<String> deserializeRoleList(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            log.warn("Failed to parse allowed_roles JSON: {}", json);
+            return List.of();
+        }
+    }
+
+    /** Serialize List<String> to JSON array string. */
+    private String serializeRoleList(List<String> roles) {
+        if (roles == null || roles.isEmpty()) return null;
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(roles);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -58,6 +133,37 @@ public class FormService {
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
     }
 
+    /**
+     * Returns a form by ID — allows access if the user is the owner OR has Admin role.
+     * Used by edit, delete, publish, unpublish, render/admin endpoints.
+     */
+    public FormEntity getFormForAction(UUID id, String username, boolean isAdmin) {
+        if (isAdmin) {
+            return formRepo.findByIdWithFields(id)
+                    .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+        }
+        return formRepo.findByIdAndCreatedBy(id, username)
+                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+    }
+
+    /**
+     * Returns a form by ID (including soft-deleted) — allows access if owner OR Admin.
+     * Used by restore and permanent-delete.
+     */
+    public FormEntity getFormForActionIncludingTrashed(UUID id, String username, boolean isAdmin) {
+        if (isAdmin) {
+            return formRepo.findById(id)
+                    .map(f -> {
+                        // Force-load fields for consistency
+                        f.getFields().size();
+                        return f;
+                    })
+                    .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+        }
+        return formRepo.findByIdAndCreatedByIncludingTrashed(id, username)
+                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+    }
+
     // ── Create ────────────────────────────────────────────────────────────────
 
     @Transactional
@@ -70,6 +176,8 @@ public class FormService {
                 .description(dto.getDescription())
                 .tableName(tableName)
                 .createdBy(owner)
+                .visibility(parseVisibility(dto.getVisibility()))
+                .allowedRoles(serializeRoleList(dto.getAllowedRoles()))
                 .allowMultipleSubmissions(
                         dto.getAllowMultipleSubmissions() == null ? true : dto.getAllowMultipleSubmissions())
                 .showTimestamp(true) // always compulsory — timestamp every submission
@@ -105,11 +213,10 @@ public class FormService {
     // ── Update ────────────────────────────────────────────────────────────────
 
     @Transactional
-    public FormEntity updateForm(UUID id, FormDTO dto, String owner) {
+    public FormEntity updateForm(UUID id, FormDTO dto, String owner, boolean isAdmin) {
         validateUniqueFieldKeys(dto.getFields());
 
-        FormEntity existing = formRepo.findByIdAndCreatedBy(id, owner)
-                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+        FormEntity existing = getFormForAction(id, owner, isAdmin);
 
         Map<String, FormFieldEntity> oldByKey = existing.getFields().stream()
                 .collect(Collectors.toMap(FormFieldEntity::getFieldKey, f -> f));
@@ -151,6 +258,12 @@ public class FormService {
         // 3. Update form metadata and fields
         existing.setName(dto.getName());
         existing.setDescription(dto.getDescription());
+        if (dto.getVisibility() != null) {
+            existing.setVisibility(parseVisibility(dto.getVisibility()));
+        }
+        if (dto.getAllowedRoles() != null) {
+            existing.setAllowedRoles(serializeRoleList(dto.getAllowedRoles()));
+        }
         if (dto.getAllowMultipleSubmissions() != null)
             existing.setAllowMultipleSubmissions(dto.getAllowMultipleSubmissions());
         existing.setExpiresAt(dto.getExpiresAt());
@@ -195,25 +308,26 @@ public class FormService {
      * The form disappears from all active listings and appears in the trash.
      */
     @Transactional
-    public void deleteForm(UUID id, String owner) {
-        FormEntity form = formRepo.findByIdAndCreatedBy(id, owner)
-                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+    public void deleteForm(UUID id, String owner, boolean isAdmin) {
+        FormEntity form = getFormForAction(id, owner, isAdmin);
         form.setSoftDeleted(true);
         form.setDeletedAt(java.time.LocalDateTime.now());
         formRepo.save(form);
         log.info("Form '{}' soft-deleted by '{}'", form.getName(), owner);
     }
 
-    /** Returns all soft-deleted forms for this owner (the trash bin). */
-    public List<FormEntity> getTrashForms(String owner) {
+    /** Returns soft-deleted forms — Admin sees all, others see only their own. */
+    public List<FormEntity> getTrashForms(String owner, boolean isAdmin) {
+        if (isAdmin) {
+            return formRepo.findAllTrashed();
+        }
         return formRepo.findTrashedByOwner(owner);
     }
 
     /** Restore a soft-deleted form back to active. */
     @Transactional
-    public FormEntity restoreForm(UUID id, String owner) {
-        FormEntity form = formRepo.findByIdAndCreatedByIncludingTrashed(id, owner)
-                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+    public FormEntity restoreForm(UUID id, String owner, boolean isAdmin) {
+        FormEntity form = getFormForActionIncludingTrashed(id, owner, isAdmin);
         form.setSoftDeleted(false);
         form.setDeletedAt(null);
         FormEntity saved = formRepo.save(form);
@@ -223,9 +337,8 @@ public class FormService {
 
     /** Permanently delete a soft-deleted form and drop its submission table. */
     @Transactional
-    public void permanentDeleteForm(UUID id, String owner) {
-        FormEntity form = formRepo.findByIdAndCreatedByIncludingTrashed(id, owner)
-                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+    public void permanentDeleteForm(UUID id, String owner, boolean isAdmin) {
+        FormEntity form = getFormForActionIncludingTrashed(id, owner, isAdmin);
         if (!form.isSoftDeleted()) {
             throw new IllegalStateException("Form must be in trash before permanent deletion");
         }
@@ -237,9 +350,8 @@ public class FormService {
     // ── Status (Publish / Unpublish) ──────────────────────────────────────────
 
     @Transactional
-    public FormEntity publishForm(UUID id, String owner) {
-        FormEntity form = formRepo.findByIdAndCreatedBy(id, owner)
-                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+    public FormEntity publishForm(UUID id, String owner, boolean isAdmin) {
+        FormEntity form = getFormForAction(id, owner, isAdmin);
         form.setStatus(FormEntity.FormStatus.PUBLISHED);
         FormEntity saved = formRepo.save(form);
         log.info("Form '{}' published by '{}'", form.getName(), owner);
@@ -247,9 +359,8 @@ public class FormService {
     }
 
     @Transactional
-    public FormEntity unpublishForm(UUID id, String owner) {
-        FormEntity form = formRepo.findByIdAndCreatedBy(id, owner)
-                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+    public FormEntity unpublishForm(UUID id, String owner, boolean isAdmin) {
+        FormEntity form = getFormForAction(id, owner, isAdmin);
         form.setStatus(FormEntity.FormStatus.DRAFT);
         FormEntity saved = formRepo.save(form);
         log.info("Form '{}' unpublished by '{}'", form.getName(), owner);
@@ -389,6 +500,18 @@ public class FormService {
             throw new IllegalArgumentException(
                     "Duplicate field keys found: " + String.join(", ", duplicates) +
                             ". Each field must have a unique key.");
+        }
+    }
+
+    /** Safely parse visibility string to enum. Returns PUBLIC if null/invalid. */
+    private FormEntity.FormVisibility parseVisibility(String visibility) {
+        if (visibility == null || visibility.isBlank()) {
+            return FormEntity.FormVisibility.PUBLIC;
+        }
+        try {
+            return FormEntity.FormVisibility.valueOf(visibility.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return FormEntity.FormVisibility.PUBLIC;
         }
     }
 }

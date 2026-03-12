@@ -2006,3 +2006,133 @@
   border-color: rgba(124, 58, 237, 0.2);
   background: rgba(124, 58, 237, 0.05);
 }
+
+/* ══════════════════════════════════════════════════
+   Settings Dropdown (from topbar ⚙️ button)
+   ══════════════════════════════════════════════════ */
+
+.settings-dropdown-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+.settings-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 1000;
+  width: 420px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  background: rgba(15, 15, 35, 0.96);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 0 30px rgba(139, 92, 246, 0.1);
+  animation: settingsDropIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes settingsDropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.settings-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #94a3b8);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.settings-dropdown-close {
+  background: none;
+  border: none;
+  color: var(--text-muted, #64748b);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.settings-dropdown-close:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+/* Active state for the Settings button */
+.btn-active {
+  background: rgba(139, 92, 246, 0.2) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  color: var(--accent, #8b5cf6) !important;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
+}
+
+/* ── Scrollbar for dropdown ─────────────────────── */
+.settings-dropdown::-webkit-scrollbar {
+  width: 5px;
+}
+
+.settings-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+/* ── Light theme overrides ─────────────────────── */
+[data-theme="light"] .settings-dropdown {
+  background: #fff;
+  border-color: rgba(99, 102, 241, 0.2);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.04) inset;
+}
+
+[data-theme="light"] .settings-dropdown-header {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+  color: #64748b;
+}
+
+[data-theme="light"] .settings-dropdown-close:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+[data-theme="light"] .btn-active {
+  background: rgba(99, 102, 241, 0.1) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+  color: #6366f1 !important;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.1);
+}
+
+/* ── Responsive: smaller screens ───────────────── */
+@media (max-width: 600px) {
+  .settings-dropdown {
+    width: calc(100vw - 24px);
+    right: -60px;
+  }
+}

@@ -1,6 +1,7 @@
 package com.formbuilder.controller;
 
 import com.formbuilder.entity.FormEntity;
+import com.formbuilder.rbac.service.UserRoleService;
 import com.formbuilder.service.FormService;
 import com.formbuilder.service.SubmissionService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class SubmissionController {
 
     private final SubmissionService submissionService;
     private final FormService formService;
+    private final UserRoleService userRoleService;
 
     private static final String UPLOAD_DIR = "uploads";
 
@@ -213,11 +215,15 @@ public class SubmissionController {
         return unique;
     }
 
+    /** Check if the authenticated user has Admin role. */
+    private boolean isAdmin(Authentication auth) {
+        return userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+    }
+
     @GetMapping("/{id}/submissions")
     public ResponseEntity<List<Map<String, Object>>> getSubmissions(
             @PathVariable UUID id, Authentication auth) {
-        // Verify the requesting user owns this form
-        formService.getOwnedFormById(id, auth.getName());
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
         return ResponseEntity.ok(submissionService.getSubmissions(id));
     }
 
@@ -226,7 +232,7 @@ public class SubmissionController {
             @PathVariable UUID id,
             @PathVariable UUID submissionId,
             Authentication auth) {
-        formService.getOwnedFormById(id, auth.getName());
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
         try {
             return ResponseEntity.ok(submissionService.getSubmission(id, submissionId));
         } catch (NoSuchElementException e) {
@@ -239,7 +245,7 @@ public class SubmissionController {
             @PathVariable UUID id,
             @PathVariable UUID submissionId,
             Authentication auth) {
-        formService.getOwnedFormById(id, auth.getName());
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
         try {
             submissionService.deleteSubmission(id, submissionId);
             return ResponseEntity.ok(Map.of("message", "Submission deleted successfully"));
@@ -254,7 +260,7 @@ public class SubmissionController {
             @PathVariable UUID submissionId,
             @RequestBody Map<String, Object> data,
             Authentication auth) {
-        formService.getOwnedFormById(id, auth.getName());
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
         submissionService.validateUpdate(id, data);
         try {
             Map<String, Object> updated = submissionService.updateSubmission(id, submissionId, data);
@@ -273,7 +279,7 @@ public class SubmissionController {
     public ResponseEntity<?> getTrashSubmissions(
             @PathVariable UUID id,
             Authentication auth) {
-        formService.getOwnedFormById(id, auth.getName());
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
         return ResponseEntity.ok(submissionService.getTrashSubmissions(id));
     }
 
@@ -283,7 +289,7 @@ public class SubmissionController {
             @PathVariable UUID id,
             @PathVariable UUID submissionId,
             Authentication auth) {
-        formService.getOwnedFormById(id, auth.getName());
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
         try {
             submissionService.restoreSubmission(id, submissionId);
             return ResponseEntity.ok(Map.of("message", "Submission restored successfully"));
@@ -298,7 +304,7 @@ public class SubmissionController {
             @PathVariable UUID id,
             @PathVariable UUID submissionId,
             Authentication auth) {
-        formService.getOwnedFormById(id, auth.getName());
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
         try {
             submissionService.permanentDeleteSubmission(id, submissionId);
             return ResponseEntity.ok(Map.of("message", "Submission permanently deleted"));

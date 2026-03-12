@@ -1,15 +1,21 @@
 package com.formbuilder.config;
 
+import com.formbuilder.rbac.security.PermissionInterceptor;
 import jakarta.servlet.SessionCookieConfig;
 import jakarta.servlet.ServletContext;
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
+@RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
+
+    private final PermissionInterceptor permissionInterceptor;
 
     /**
      * Configure the JSESSIONID cookie so Edge / Chrome tracking prevention
@@ -42,5 +48,26 @@ public class WebConfig implements WebMvcConfigurer {
                 .exposedHeaders("Set-Cookie")          // allow frontend to see Set-Cookie
                 .allowCredentials(true)                // required for session cookies
                 .maxAge(3600);
+    }
+
+    /**
+     * Register the RBAC PermissionInterceptor.
+     * It only acts on handler methods annotated with @RequirePermission —
+     * unannotated endpoints pass through untouched.
+     *
+     * Excluded paths: public auth routes, public form endpoints, Swagger UI.
+     */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(permissionInterceptor)
+                .addPathPatterns("/api/**")
+                .excludePathPatterns(
+                        "/api/auth/login",
+                        "/api/auth/register",
+                        "/api/auth/logout",
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html"
+                );
     }
 }

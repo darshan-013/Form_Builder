@@ -3,11 +3,13 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../components/Navbar';
-import { getForms, deleteForm, getMe, publishForm } from '../services/api';
+import { getForms, deleteForm, publishForm } from '../services/api';
 import { toastSuccess, toastError } from '../services/toast';
+import { useAuth } from '../context/AuthContext';
 
 export default function DashboardPage() {
     const router = useRouter();
+    const { can, user, hasRole, loading: authLoading } = useAuth();
     const [forms, setForms] = useState([]);
     const [loading, setLoading] = useState(true);
     const [deleteTarget, setDeleteTarget] = useState(null);
@@ -32,13 +34,13 @@ export default function DashboardPage() {
     const [bulkDeleting, setBulkDeleting] = useState(false);
 
     useEffect(() => {
-        getMe()
-            .catch(() => router.replace('/login'))
-            .then(() => getForms())
+        if (authLoading) return; // wait for auth context to resolve
+        if (!user) { router.replace('/login'); return; }
+        getForms()
             .then((data) => setForms(Array.isArray(data) ? data : []))
             .catch(() => toastError('Failed to load forms.'))
             .finally(() => setLoading(false));
-    }, [router]);
+    }, [authLoading, user, router]);
 
     // Reset page on search
     useEffect(() => { setPublishedPage(1); }, [publishedSearch]);
@@ -114,6 +116,31 @@ export default function DashboardPage() {
         const isPublished = form.status === 'PUBLISHED';
         const busy = !!statusLoading[form.id];
         const isSelected = selectedSet.has(form.id);
+        const isOwner = form.isOwner;
+        const formCanEdit = form.canEdit;
+        const formCanDelete = form.canDelete;
+        const formCanPublish = form.canPublish;
+        const formCanViewSubs = form.canViewSubmissions;
+
+        // Allowed roles info
+        let allowedRolesList = [];
+        try {
+            if (form.allowedRoles) {
+                allowedRolesList = typeof form.allowedRoles === 'string'
+                    ? JSON.parse(form.allowedRoles)
+                    : form.allowedRoles;
+            }
+        } catch { allowedRolesList = []; }
+        const hasRoleRestriction = Array.isArray(allowedRolesList) && allowedRolesList.length > 0;
+
+        const accessBadge = hasRoleRestriction ? (
+            <span className="status-badge status-badge-draft"
+                  style={{ marginLeft: 6, fontSize: 10 }}
+                  title={`Visible to: ${allowedRolesList.join(', ')}`}>
+                👥 {allowedRolesList.length} role{allowedRolesList.length !== 1 ? 's' : ''}
+            </span>
+        ) : null;
+
         return (
             <div key={form.id}
                 className={`form-card animate-in${isPublished ? ' form-card-published' : ''}${isSelected ? ' form-card-selected' : ''}`}>
@@ -121,16 +148,26 @@ export default function DashboardPage() {
                 <div className="form-card-header">
                     <div className="form-card-icon">{isPublished ? '🌐' : '📋'}</div>
                     <div className="form-card-menu">
-                        <Link href={`/builder/${form.id}`} className="btn btn-secondary btn-sm" title="Edit">✎</Link>
+                        {formCanEdit && (
+                            <Link href={`/builder/${form.id}`} className="btn btn-secondary btn-sm" title="Edit">✎</Link>
+                        )}
                         <Link href={`/preview/${form.id}`} className="btn btn-secondary btn-sm" title="Preview">👁</Link>
-                        <button className="btn btn-danger btn-sm" onClick={() => setDeleteTarget(form)}>✕</button>
+                        {formCanDelete && (
+                            <button className="btn btn-danger btn-sm" onClick={() => setDeleteTarget(form)}>✕</button>
+                        )}
                     </div>
                 </div>
 
-                <div style={{ marginBottom: 8 }}>
+                <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                     <span className={`status-badge status-badge-${isPublished ? 'published' : 'draft'}`}>
                         {isPublished ? '🌐 Published' : '📝 Draft'}
                     </span>
+                    {accessBadge}
+                    {!isOwner && (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4 }}>
+                            by {form.createdBy}
+                        </span>
+                    )}
                 </div>
 
                 <div className="form-card-name">{form.name}</div>
@@ -144,31 +181,37 @@ export default function DashboardPage() {
                     <div className="form-card-actions">
                         {isPublished ? (
                             <>
-                                <Link href={`/submissions/${form.id}`} className="btn btn-primary btn-sm">📊 Submissions</Link>
+                                {formCanViewSubs && (
+                                    <Link href={`/submissions/${form.id}`} className="btn btn-primary btn-sm">📊 Submissions</Link>
+                                )}
                                 <Link href={`/submit/${form.id}`} className="btn btn-secondary btn-sm">↗ Share</Link>
                             </>
                         ) : (
-                            <button className="btn btn-publish btn-sm"
-                                onClick={() => handlePublish(form.id, form.name)} disabled={busy}>
-                                {busy ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : '🚀 Publish'}
-                            </button>
+                            formCanPublish && (
+                                <button className="btn btn-publish btn-sm"
+                                    onClick={() => handlePublish(form.id, form.name)} disabled={busy}>
+                                    {busy ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : '🚀 Publish'}
+                                </button>
+                            )
                         )}
                     </div>
                 </div>
 
                 {/* ── Select checkbox — absolute bottom-right corner ── */}
-                <label
-                    className={`card-select-checkbox${isSelected ? ' card-select-checked' : ''}`}
-                    onClick={(e) => e.stopPropagation()}
-                    title={isSelected ? 'Deselect' : 'Select'}
-                >
-                    <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggle(selectedSet, setSelectedFn, form.id)}
-                    />
-                    <span className="card-select-mark">{isSelected ? '✓' : ''}</span>
-                </label>
+                {formCanDelete && (
+                    <label
+                        className={`card-select-checkbox${isSelected ? ' card-select-checked' : ''}`}
+                        onClick={(e) => e.stopPropagation()}
+                        title={isSelected ? 'Deselect' : 'Select'}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggle(selectedSet, setSelectedFn, form.id)}
+                        />
+                        <span className="card-select-mark">{isSelected ? '✓' : ''}</span>
+                    </label>
+                )}
             </div>
         );
     };
@@ -198,10 +241,12 @@ export default function DashboardPage() {
                         <div className="section-sel-row">
                             <span className="bulk-count">{selectedSet.size} selected</span>
                             <button className="sb-btn sb-btn-ghost" onClick={clearSel}>✕ Clear</button>
-                            <button className="sb-btn sb-btn-danger"
-                                onClick={() => setBulkTarget(section)}>
-                                🗑 Delete {selectedSet.size}
-                            </button>
+                            {can('DELETE') && (
+                                <button className="sb-btn sb-btn-danger"
+                                    onClick={() => setBulkTarget(section)}>
+                                    🗑 Delete {selectedSet.size}
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
@@ -244,13 +289,25 @@ export default function DashboardPage() {
                     {/* Page header */}
                     <div className="page-header">
                         <div>
-                            <h1 className="page-title">My Forms</h1>
-                            <p className="page-subtitle">Build, manage &amp; share dynamic forms</p>
+                            <h1 className="page-title">
+                                {hasRole('Admin') ? 'All Forms' :
+                                 hasRole('Builder') ? 'My Forms & Published' :
+                                 'Forms'}
+                            </h1>
+                            <p className="page-subtitle">
+                                {hasRole('Admin') ? 'Admin view — all forms across the system' :
+                                 hasRole('Builder') ? 'Your forms and published forms you can access' :
+                                 'Published forms available to you'}
+                            </p>
                         </div>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                            <Link href="/forms/trash" className="btn btn-secondary" id="trash-btn"
-                                style={{ display: 'flex', alignItems: 'center', gap: 6 }}>🗑 Trash</Link>
-                            <Link href="/builder/new" className="btn btn-primary" id="new-form-btn">+ New Form</Link>
+                            {can('DELETE') && (
+                                <Link href="/forms/trash" className="btn btn-secondary" id="trash-btn"
+                                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}>🗑 Trash</Link>
+                            )}
+                            {can('WRITE') && (
+                                <Link href="/builder/new" className="btn btn-primary" id="new-form-btn">+ New Form</Link>
+                            )}
                         </div>
                     </div>
 
@@ -280,9 +337,20 @@ export default function DashboardPage() {
                         <div className="empty-state">
                             <div className="empty-state-icon">📋</div>
                             <h3>No forms yet</h3>
-                            <p>Create your first form to get started</p>
-                            <br />
-                            <Link href="/builder/new" className="btn btn-primary">+ Create Form</Link>
+                            {can('WRITE') ? (
+                                <>
+                                    <p>Create your first form to get started</p>
+                                    <br />
+                                    <Link href="/builder/new" className="btn btn-primary">+ Create Form</Link>
+                                </>
+                            ) : (
+                                <>
+                                    <p>You currently have <strong>Viewer</strong> access (read-only).</p>
+                                    <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
+                                        Contact your Admin or Role Administrator to request additional permissions.
+                                    </p>
+                                </>
+                            )}
                         </div>
                     ) : (
                         <>

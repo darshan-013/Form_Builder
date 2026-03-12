@@ -146,6 +146,7 @@ public class SubmissionService {
 
     public Map<String, Object> findDraft(UUID formId, String userId) {
         String tableName = getTableName(formId);
+        dynamicTableService.ensureTableExists(tableName, formId);
         dynamicTableService.addDraftColumnsIfMissing(tableName);
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT * FROM \"" + tableName + "\" WHERE user_id = ? AND status = 'DRAFTED' AND is_soft_deleted = FALSE ORDER BY updated_at DESC LIMIT 1",
@@ -203,6 +204,7 @@ public class SubmissionService {
 
     private void insertInternal(UUID formId, Map<String, Object> data, String userId, String status) {
         String tableName = getTableName(formId);
+        dynamicTableService.ensureTableExists(tableName, formId);
         dynamicTableService.addDraftColumnsIfMissing(tableName);
 
         // Fetch all field metadata including calculated-field columns
@@ -273,23 +275,21 @@ public class SubmissionService {
 
     public List<Map<String, Object>> getSubmissions(UUID formId) {
         String tableName = getTableName(formId);
+        // Ensure the dynamic submission table exists (recreate if missing)
+        dynamicTableService.ensureTableExists(tableName, formId);
         // Ensure draft columns exist (migration for pre-existing tables)
         dynamicTableService.addDraftColumnsIfMissing(tableName);
+        dynamicTableService.addSoftDeleteColumnIfMissing(tableName);
 
-        try {
-            return jdbc.queryForList(
-                    "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = FALSE ORDER BY created_at DESC");
-        } catch (Exception e) {
-            // Column does not exist yet on old tables — retry after migration
-            log.warn("Columns missing on {}, already called migration", tableName);
-            return jdbc.queryForList(
-                    "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = FALSE ORDER BY created_at DESC");
-        }
+        return jdbc.queryForList(
+                "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = FALSE ORDER BY created_at DESC");
     }
 
     public Map<String, Object> getSubmission(UUID formId, UUID submissionId) {
+        String tableName = getTableName(formId);
+        dynamicTableService.ensureTableExists(tableName, formId);
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT * FROM \"" + getTableName(formId) + "\" WHERE id = ?", submissionId);
+                "SELECT * FROM \"" + tableName + "\" WHERE id = ?", submissionId);
         if (rows.isEmpty())
             throw new NoSuchElementException("Submission not found: " + submissionId);
         return rows.get(0);
@@ -302,6 +302,7 @@ public class SubmissionService {
     /** Soft-delete: marks submission as trashed, hides from active view. */
     public void deleteSubmission(UUID formId, UUID submissionId) {
         String tableName = getTableName(formId);
+        dynamicTableService.ensureTableExists(tableName, formId);
         int affected = jdbc.update(
                 "UPDATE \"" + tableName + "\" SET is_soft_deleted = TRUE, deleted_at = NOW() " +
                         "WHERE id = ? AND is_soft_deleted = FALSE",
@@ -314,6 +315,7 @@ public class SubmissionService {
     /** Returns all soft-deleted submissions for a form (trash bin). */
     public List<Map<String, Object>> getTrashSubmissions(UUID formId) {
         String tableName = getTableName(formId);
+        dynamicTableService.ensureTableExists(tableName, formId);
         try {
             return jdbc.queryForList(
                     "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = TRUE ORDER BY deleted_at DESC");
@@ -351,6 +353,7 @@ public class SubmissionService {
 
     public Map<String, Object> updateSubmission(UUID formId, UUID submissionId, Map<String, Object> data) {
         String tableName = getTableName(formId);
+        dynamicTableService.ensureTableExists(tableName, formId);
 
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
                 "SELECT field_key, field_type FROM form_fields WHERE form_id = ?", formId);

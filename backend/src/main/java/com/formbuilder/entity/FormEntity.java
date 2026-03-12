@@ -29,6 +29,13 @@ public class FormEntity {
         DRAFT, PUBLISHED
     }
 
+    /** Visibility level — controls which roles can see this form. */
+    public enum FormVisibility {
+        PUBLIC,      // Visible to all authenticated users
+        RESTRICTED,  // Visible to specific roles (Manager, Approver, Builder, Admin)
+        PRIVATE      // Visible only to the creator and Admin
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false, nullable = false, columnDefinition = "UUID")
@@ -51,6 +58,26 @@ public class FormEntity {
     @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private FormStatus status = FormStatus.DRAFT;
+
+    /**
+     * Form visibility level.
+     * PUBLIC = all authenticated users can see it.
+     * RESTRICTED = only certain elevated roles can see it.
+     * PRIVATE = only the creator and Admin.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility", nullable = false, length = 20)
+    @Builder.Default
+    private FormVisibility visibility = FormVisibility.PUBLIC;
+
+    /**
+     * JSON array of role names that can see this form.
+     * e.g. ["Viewer","Employee","Manager","Approver","Builder"]
+     * If null/empty → all roles can see (PUBLIC equivalent).
+     * Admin and Role Administrator ALWAYS have access regardless of this setting.
+     */
+    @Column(name = "allowed_roles", columnDefinition = "TEXT")
+    private String allowedRoles;
 
     /**
      * Username of the user who created this form. Used to scope dashboard

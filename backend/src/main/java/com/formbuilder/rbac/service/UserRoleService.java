@@ -1,0 +1,290 @@
+package com.formbuilder.rbac.service;
+
+import com.formbuilder.rbac.entity.Permission;
+import com.formbuilder.rbac.entity.Role;
+import com.formbuilder.rbac.entity.User;
+import com.formbuilder.rbac.repository.RoleRepository;
+import com.formbuilder.rbac.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Service for managing RBAC user profiles, user ↔ role assignments,
+ * and querying a user's effective roles and permissions.
+ *
+ * This service works with the RBAC user profile (rbac_users table),
+ * NOT the Spring Security users table directly.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class UserRoleService {
+
+    private final UserRepository userRepo;
+    private final RoleRepository roleRepo;
+    private final JdbcTemplate jdbc;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  USER CRUD
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /** Returns all RBAC users with roles + permissions eagerly loaded. */
+    public List<User> getAllUsers() {
+        return userRepo.findAllWithRolesAndPermissions();
+    }
+
+    /** Returns a single user with roles + permissions eagerly loaded. */
+    public User getUserById(Integer id) {
+        return userRepo.findByIdWithRolesAndPermissions(id)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+    }
+
+    /**
+     * Creates a new RBAC user profile with credentials.
+     * If password is null/empty, a random password is generated
+     * (user must use password reset to set their own).
+     */
+    @Transactional
+    public User createUser(String username, String name, String email) {
+        if (username == null || username.trim().isEmpty()) {
+            throw new IllegalArgumentException("Username is required");
+        }
+        if (userRepo.existsByUsername(username.trim())) {
+            throw new IllegalArgumentException("User profile already exists for username: " + username);
+        }
+        if (email != null && !email.trim().isEmpty() && userRepo.existsByEmail(email.trim())) {
+            throw new IllegalArgumentException("Email already in use: " + email);
+        }
+
+        User user = User.builder()
+                .username(username.trim())
+                .password("")  // No password — admin-created profiles need the user to register or reset
+                .name(name != null ? name.trim() : null)
+                .email(email != null && !email.trim().isEmpty() ? email.trim() : null)
+                .enabled(true)
+                .build();
+
+        User saved = userRepo.save(user);
+        log.info("RBAC user profile created for '{}'", username);
+        return saved;
+    }
+
+    /** Updates an RBAC user's name and/or email. */
+    @Transactional
+    public User updateUser(Integer id, String name, String email) {
+        User user = userRepo.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+
+        if (name != null) {
+            user.setName(name.trim());
+        }
+        if (email != null) {
+            String trimmedEmail = email.trim();
+            if (!trimmedEmail.isEmpty()) {
+                // Check uniqueness only if email changed
+                if (!trimmedEmail.equals(user.getEmail()) && userRepo.existsByEmail(trimmedEmail)) {
+                    throw new IllegalArgumentException("Email already in use: " + trimmedEmail);
+                }
+                user.setEmail(trimmedEmail);
+            } else {
+                user.setEmail(null);
+            }
+        }
+
+        User saved = userRepo.save(user);
+        log.info("RBAC user profile updated for '{}' (id={})", user.getUsername(), id);
+        return saved;
+    }
+
+    /** Deletes an RBAC user profile. CASCADE in DB handles user_roles cleanup. */
+    @Transactional
+    public void deleteUser(Integer id) {
+        User user = userRepo.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+        userRepo.delete(user);
+        log.info("RBAC user profile deleted for '{}' (id={})", user.getUsername(), id);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ASSIGN ROLE TO USER (by user ID)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Assigns a role to a user by user ID.
+     * Uses ON CONFLICT DO NOTHING semantics via the unique constraint.
+     */
+    @Transactional
+    public User assignRoleToUserById(Integer userId, Integer roleId) {
+        User user = userRepo.findByIdWithRolesAndPermissions(userId)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + userId));
+
+        Role role = roleRepo.findById(roleId)
+                .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleId));
+
+        // ON CONFLICT DO NOTHING — idempotent via direct SQL
+        jdbc.update("INSERT INTO user_roles(user_id, role_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                userId, roleId);
+
+        // Reload to get fresh state
+        User reloaded = userRepo.findByIdWithRolesAndPermissions(userId)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + userId));
+
+        log.info("Role '{}' assigned to user '{}' (id={})", role.getRoleName(), user.getUsername(), userId);
+        return reloaded;
+    }
+
+    /**
+     * Removes a role from a user by user ID.
+     */
+    @Transactional
+    public User removeRoleFromUserById(Integer userId, Integer roleId) {
+        User user = userRepo.findByIdWithRolesAndPermissions(userId)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + userId));
+
+        Role role = roleRepo.findById(roleId)
+                .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleId));
+
+        boolean removed = user.getRoles().removeIf(r -> r.getId().equals(roleId));
+
+        if (!removed) {
+            throw new IllegalArgumentException(
+                    "User '" + user.getUsername() + "' does not have role '" + role.getRoleName() + "'");
+        }
+
+        User saved = userRepo.save(user);
+        log.info("Role '{}' removed from user '{}' (id={})", role.getRoleName(), user.getUsername(), userId);
+        return saved;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ASSIGN ROLE TO USER (by username — kept for backward compatibility)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    @Transactional
+    public User assignRoleToUser(String username, Integer roleId) {
+        User user = userRepo.findByUsernameWithRolesAndPermissions(username)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "RBAC user not found: " + username
+                                + ". Ensure the user has a profile in rbac_users."));
+
+        Role role = roleRepo.findById(roleId)
+                .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleId));
+
+        boolean alreadyAssigned = user.getRoles().stream()
+                .anyMatch(r -> r.getId().equals(roleId));
+
+        if (alreadyAssigned) {
+            throw new IllegalArgumentException(
+                    "User '" + username + "' already has role '" + role.getRoleName() + "'");
+        }
+
+        user.getRoles().add(role);
+        User saved = userRepo.save(user);
+
+        log.info("Role '{}' assigned to user '{}'", role.getRoleName(), username);
+        return saved;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  REMOVE ROLE FROM USER (by username — kept for backward compatibility)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    @Transactional
+    public User removeRoleFromUser(String username, Integer roleId) {
+        User user = userRepo.findByUsernameWithRolesAndPermissions(username)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "RBAC user not found: " + username));
+
+        Role role = roleRepo.findById(roleId)
+                .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleId));
+
+        boolean removed = user.getRoles().removeIf(r -> r.getId().equals(roleId));
+
+        if (!removed) {
+            throw new IllegalArgumentException(
+                    "User '" + username + "' does not have role '" + role.getRoleName() + "'");
+        }
+
+        User saved = userRepo.save(user);
+        log.info("Role '{}' removed from user '{}'", role.getRoleName(), username);
+        return saved;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  READ — USER ROLES
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public Set<Role> getUserRoles(String username) {
+        User user = userRepo.findByUsernameWithRolesAndPermissions(username)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "RBAC user not found: " + username));
+        return user.getRoles();
+    }
+
+    public Set<String> getUserRoleNames(String username) {
+        return getUserRoles(username).stream()
+                .map(Role::getRoleName)
+                .collect(Collectors.toSet());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  READ — USER PERMISSIONS (effective, union across all roles)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public Set<Permission> getUserPermissions(String username) {
+        User user = userRepo.findByUsernameWithRolesAndPermissions(username)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "RBAC user not found: " + username));
+
+        return user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .collect(Collectors.toSet());
+    }
+
+    /** Returns effective permissions for a user by ID. */
+    public Set<Permission> getUserPermissionsById(Integer userId) {
+        User user = userRepo.findByIdWithRolesAndPermissions(userId)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + userId));
+
+        return user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .collect(Collectors.toSet());
+    }
+
+    public Set<String> getUserPermissionKeys(String username) {
+        return getUserPermissions(username).stream()
+                .map(Permission::getPermissionKey)
+                .collect(Collectors.toSet());
+    }
+
+    /** Returns effective permission key strings for a user by ID. */
+    public Set<String> getUserPermissionKeysById(Integer userId) {
+        return getUserPermissionsById(userId).stream()
+                .map(Permission::getPermissionKey)
+                .collect(Collectors.toSet());
+    }
+
+    public boolean userHasPermission(String username, String permissionKey) {
+        try {
+            return getUserPermissionKeys(username).contains(permissionKey);
+        } catch (NoSuchElementException e) {
+            log.warn("Permission check for unknown RBAC user '{}' — denied", username);
+            return false;
+        }
+    }
+
+    public boolean userHasRole(String username, String roleName) {
+        try {
+            return getUserRoleNames(username).contains(roleName);
+        } catch (NoSuchElementException e) {
+            return false;
+        }
+    }
+}
+
