@@ -151,6 +151,14 @@ export async function submitForm(formId, data) {
     return res.json();
 }
 
+/** Get existing draft for the user */
+export const getDraft = (formId) =>
+    request('GET', `/forms/${formId}/draft`);
+
+/** Save response as draft */
+export const saveDraft = (formId, data) =>
+    request('POST', `/forms/${formId}/draft`, { data });
+
 export const getSubmissions = (formId) =>
     request('GET', `/forms/${formId}/submissions`);
 

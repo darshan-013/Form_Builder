@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import ValidationEngine from '../services/validation';
 import RuleEngine, { setDefaultValues } from '../services/RuleEngine';
 import CalculationEngine from '../services/CalculationEngine';
+import { getDraft, saveDraft } from '../services/api';
 
 /**
  * FormRenderer — enterprise dynamic form renderer with Conditional Rule Engine.
@@ -71,6 +72,8 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   const [serverError, setServerError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null); // timestamp of last autosave
+  const [saving, setSaving] = useState(false);
 
   // ── Wizard (multi-step) state ──────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(0);
@@ -154,6 +157,84 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     setCurrentPage(0); // reset wizard to first page
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fields]);
+
+  // ── Draft Retrieval ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (isPreview || !form?.id) return;
+
+    async function fetchDraft() {
+      try {
+        const draft = await getDraft(form.id);
+        if (draft && Object.keys(draft).length > 0) {
+          // Merge draft values with initial values (in case form schema changed)
+          const draftValues = { ...valuesRef.current };
+          for (const field of fields) {
+            if (draft[field.fieldKey] !== undefined && draft[field.fieldKey] !== null) {
+              draftValues[field.fieldKey] = draft[field.fieldKey];
+            }
+          }
+
+          // Re-apply rules and calculations based on draft data
+          const states = RuleEngine.applyRules(fields, draftValues);
+          const calculated = CalculationEngine.recalculateCalculatedFields(fields, draftValues);
+          const finalStates = RuleEngine.applyRules(fields, calculated);
+
+          setValues(calculated);
+          valuesRef.current = calculated;
+          setFieldStates(finalStates);
+          setLastSaved(new Date(draft.updated_at || Date.now()));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch draft:', err);
+      }
+    }
+    fetchDraft();
+  }, [form?.id, isPreview]);
+
+  // ── Autosave Logic ───────────────────────────────────────────────────────
+  const lastSavedValuesRef = useRef(values);
+
+  useEffect(() => {
+    if (isPreview || submitted || !form?.id) return;
+
+    const timer = setInterval(async () => {
+      const currentValues = valuesRef.current;
+      // Only save if data has actually changed
+      if (JSON.stringify(currentValues) === JSON.stringify(lastSavedValuesRef.current)) {
+        return;
+      }
+
+      setSaving(true);
+      try {
+        await saveDraft(form.id, currentValues);
+        setLastSaved(new Date());
+        lastSavedValuesRef.current = currentValues;
+      } catch (err) {
+        console.warn('Autosave failed:', err);
+      } finally {
+        setSaving(false);
+      }
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(timer);
+  }, [form?.id, isPreview, submitted]);
+
+  // Handle manual save on page navigate away
+  useEffect(() => {
+    if (isPreview || submitted || !form?.id) return;
+
+    const handleBeforeUnload = () => {
+      const currentValues = valuesRef.current;
+      if (JSON.stringify(currentValues) !== JSON.stringify(lastSavedValuesRef.current)) {
+        // Use sendBeacon for more reliable fire-and-forget save on exit if possible,
+        // but since saveDraft is a regular fetch, we just try our best.
+        saveDraft(form.id, currentValues).catch(() => {});
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [form?.id, isPreview, submitted]);
 
   // ── onChange — live validation + rule re-evaluation on every keystroke ─────
   function handleChange(field, value) {
@@ -443,6 +524,15 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
           {fields.some((f) => f.required) && (
             <span className="form-renderer-meta-item">
               <span className="form-field-required-star">*</span> Required fields marked
+            </span>
+          )}
+          {lastSaved && (
+            <span className="form-renderer-meta-item draft-indicator">
+              {saving ? (
+                <><span className="spinner-micro" /> Saving draft…</>
+              ) : (
+                <>✔ Draft saved at {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+              )}
             </span>
           )}
         </div>
