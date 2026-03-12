@@ -4,9 +4,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { login } from '../services/api';
 import { toastSuccess, toastError } from '../services/toast';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
     const router = useRouter();
+    const { refreshAuth } = useAuth();
     const [form, setForm] = useState({ username: '', password: '' });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -26,6 +28,8 @@ export default function LoginPage() {
         setLoading(true);
         try {
             await login(form.username, form.password);
+            // Refresh auth context to populate permissions globally
+            await refreshAuth();
             toastSuccess('Welcome back!');
             router.push('/dashboard');
         } catch (err) {

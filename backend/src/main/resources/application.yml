@@ -18,7 +18,6 @@ spring:
       mode: always                          # runs schema files on every startup
       separator: "^"                        # custom separator for PostgreSQL functions with $$
       schema-locations:
-        - classpath:users_schema.sql
         - classpath:schema.sql
         - classpath:migration_add_validation_json.sql
         - classpath:migration_add_multiple_choice.sql
@@ -32,6 +31,8 @@ spring:
         - classpath:migration_add_disabled_readonly.sql
         - classpath:migration_add_rules_to_groups.sql
         - classpath:migration_add_soft_delete.sql
+        - classpath:migration_add_rbac.sql
+        - classpath:migration_consolidate_auth.sql
 
   jpa:
     hibernate:

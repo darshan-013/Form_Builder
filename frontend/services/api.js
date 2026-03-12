@@ -60,8 +60,8 @@ export async function login(username, password) {
     return res.json();
 }
 
-export const register = (username, password) =>
-    request('POST', '/auth/register', { username, password });
+export const register = (username, password, email) =>
+    request('POST', '/auth/register', { username, password, email });
 
 export const logout = () =>
     request('POST', '/auth/logout');
@@ -263,3 +263,57 @@ export function getFileViewUrl(filename) {
 export function getFileDownloadUrl(filename) {
     return `${BASE}/files/download/${encodeURIComponent(filename)}`;
 }
+
+// ── RBAC: Roles ───────────────────────────────────────────────
+
+export const getRoles = () =>
+    request('GET', '/roles');
+
+export const getRole = (id) =>
+    request('GET', '/roles').then(roles => {
+        const role = roles.find(r => r.id === Number(id));
+        if (!role) throw Object.assign(new Error('Role not found'), { status: 404 });
+        return role;
+    });
+
+export const createRole = (name, permissions) =>
+    request('POST', '/roles', { name, permissions });
+
+export const updateRole = (id, data) =>
+    request('PUT', `/roles/${id}`, data);
+
+export const deleteRole = (id) =>
+    request('DELETE', `/roles/${id}`);
+
+export const assignPermissionsToRole = (id, permissions) =>
+    request('POST', `/roles/${id}/permissions`, { permissions });
+
+// ── RBAC: Users ───────────────────────────────────────────────
+
+export const getUsers = () =>
+    request('GET', '/users');
+
+export const getUser = (id) =>
+    request('GET', '/users').then(users => {
+        const user = users.find(u => u.id === Number(id));
+        if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
+        return user;
+    });
+
+export const createUser = (username, name, email) =>
+    request('POST', '/users', { username, name, email });
+
+export const updateUser = (id, data) =>
+    request('PUT', `/users/${id}`, data);
+
+export const deleteUser = (id) =>
+    request('DELETE', `/users/${id}`);
+
+export const assignRoleToUser = (userId, roleId) =>
+    request('POST', `/users/${userId}/roles`, { roleId });
+
+export const removeRoleFromUser = (userId, roleId) =>
+    request('DELETE', `/users/${userId}/roles/${roleId}`);
+
+export const getUserPermissions = (userId) =>
+    request('GET', `/users/${userId}/permissions`);

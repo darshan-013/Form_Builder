@@ -7,7 +7,7 @@ import { toastSuccess, toastError } from '../services/toast';
 
 export default function RegisterPage() {
     const router = useRouter();
-    const [form, setForm] = useState({ username: '', password: '', confirm: '' });
+    const [form, setForm] = useState({ username: '', email: '', password: '', confirm: '' });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -18,7 +18,7 @@ export default function RegisterPage() {
         e.preventDefault();
         setError('');
 
-        if (!form.username.trim() || !form.password.trim()) {
+        if (!form.username.trim() || !form.password.trim() || !form.email.trim()) {
             setError('All fields are required.');
             return;
         }
@@ -33,7 +33,7 @@ export default function RegisterPage() {
 
         setLoading(true);
         try {
-            await register(form.username, form.password);
+            await register(form.username, form.password, form.email);
             toastSuccess('Account created! Please sign in.');
             router.push('/login');
         } catch (err) {
@@ -79,6 +79,20 @@ export default function RegisterPage() {
                                 onChange={handleChange}
                                 autoComplete="username"
                                 autoFocus
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="email">Email</label>
+                            <input
+                                id="email"
+                                name="email"
+                                type="email"
+                                className="form-input"
+                                placeholder="your@email.com"
+                                value={form.email}
+                                onChange={handleChange}
+                                autoComplete="email"
                             />
                         </div>
 

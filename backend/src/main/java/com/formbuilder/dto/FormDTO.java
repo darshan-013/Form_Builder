@@ -17,6 +17,20 @@ public class FormDTO {
     private List<GroupDTO> groups;
 
     /**
+     * Form visibility: PUBLIC, RESTRICTED, PRIVATE.
+     * Defaults to PUBLIC if not specified.
+     */
+    private String visibility;
+
+    /**
+     * List of role names allowed to see this form.
+     * e.g. ["Viewer","Employee","Manager"]
+     * If null/empty, defaults to all roles (PUBLIC).
+     * Admin and Role Administrator always have access.
+     */
+    private List<String> allowedRoles;
+
+    /**
      * If false — only one submission per session is allowed. Default true = no
      * restriction.
      */
