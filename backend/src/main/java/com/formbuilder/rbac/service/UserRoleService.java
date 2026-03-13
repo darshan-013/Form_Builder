@@ -5,6 +5,7 @@ import com.formbuilder.rbac.entity.Role;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.repository.RoleRepository;
 import com.formbuilder.rbac.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,6 +30,7 @@ public class UserRoleService {
     private final UserRepository userRepo;
     private final RoleRepository roleRepo;
     private final JdbcTemplate jdbc;
+    private final EntityManager entityManager;
 
     // ═══════════════════════════════════════════════════════════════════════
     //  USER CRUD
@@ -116,8 +118,8 @@ public class UserRoleService {
     // ═══════════════════════════════════════════════════════════════════════
 
     /**
-     * Assigns a role to a user by user ID.
-     * Uses ON CONFLICT DO NOTHING semantics via the unique constraint.
+     * Assigns exactly one role to a user by user ID.
+     * Existing role assignments are replaced so each user has a single role.
      */
     @Transactional
     public User assignRoleToUserById(Integer userId, Integer roleId) {
@@ -127,9 +129,18 @@ public class UserRoleService {
         Role role = roleRepo.findById(roleId)
                 .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleId));
 
-        // ON CONFLICT DO NOTHING — idempotent via direct SQL
-        jdbc.update("INSERT INTO user_roles(user_id, role_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
-                userId, roleId);
+        Role currentRole = user.getRoles().stream().findFirst().orElse(null);
+        if (currentRole != null && currentRole.getId().equals(roleId)) {
+            log.debug("Role '{}' is already assigned to user '{}' (id={}) — skipping", role.getRoleName(), user.getUsername(), userId);
+            return user;
+        }
+
+        // Enforce single-role policy: replace any existing role assignment.
+        jdbc.update("DELETE FROM user_roles WHERE user_id = ?", userId);
+        jdbc.update("INSERT INTO user_roles(user_id, role_id) VALUES (?, ?)", userId, roleId);
+
+        // JDBC writes bypass JPA tracking; clear 1st-level cache so re-query sees latest role.
+        entityManager.clear();
 
         // Reload to get fresh state
         User reloaded = userRepo.findByIdWithRolesAndPermissions(userId)
@@ -141,6 +152,8 @@ public class UserRoleService {
 
     /**
      * Removes a role from a user by user ID.
+     * Single-role policy requires at least one role, so removing the current
+     * role is not allowed via this endpoint.
      */
     @Transactional
     public User removeRoleFromUserById(Integer userId, Integer roleId) {
@@ -149,6 +162,10 @@ public class UserRoleService {
 
         Role role = roleRepo.findById(roleId)
                 .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleId));
+
+        if (user.getRoles().size() <= 1) {
+            throw new IllegalArgumentException("Each user must have exactly one role. Assign a new role instead.");
+        }
 
         boolean removed = user.getRoles().removeIf(r -> r.getId().equals(roleId));
 
@@ -166,6 +183,9 @@ public class UserRoleService {
     //  ASSIGN ROLE TO USER (by username — kept for backward compatibility)
     // ═══════════════════════════════════════════════════════════════════════
 
+    /**
+     * Backward-compatible username path, now enforcing single-role policy.
+     */
     @Transactional
     public User assignRoleToUser(String username, Integer roleId) {
         User user = userRepo.findByUsernameWithRolesAndPermissions(username)
@@ -176,14 +196,13 @@ public class UserRoleService {
         Role role = roleRepo.findById(roleId)
                 .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleId));
 
-        boolean alreadyAssigned = user.getRoles().stream()
-                .anyMatch(r -> r.getId().equals(roleId));
-
-        if (alreadyAssigned) {
-            throw new IllegalArgumentException(
-                    "User '" + username + "' already has role '" + role.getRoleName() + "'");
+        Role currentRole = user.getRoles().stream().findFirst().orElse(null);
+        if (currentRole != null && currentRole.getId().equals(roleId)) {
+            log.debug("Role '{}' is already assigned to user '{}' — skipping", role.getRoleName(), username);
+            return user;
         }
 
+        user.getRoles().clear();
         user.getRoles().add(role);
         User saved = userRepo.save(user);
 
@@ -203,6 +222,10 @@ public class UserRoleService {
 
         Role role = roleRepo.findById(roleId)
                 .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleId));
+
+        if (user.getRoles().size() <= 1) {
+            throw new IllegalArgumentException("Each user must have exactly one role. Assign a new role instead.");
+        }
 
         boolean removed = user.getRoles().removeIf(r -> r.getId().equals(roleId));
 

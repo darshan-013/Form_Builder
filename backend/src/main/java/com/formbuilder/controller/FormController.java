@@ -5,8 +5,10 @@ import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
 import com.formbuilder.rbac.service.UserRoleService;
+import com.formbuilder.service.AuditLogService;
 import com.formbuilder.service.FormRenderService;
 import com.formbuilder.service.FormService;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +30,10 @@ public class FormController {
     private final FormService formService;
     private final FormRenderService formRenderService;
     private final UserRoleService userRoleService;
+    private final AuditLogService auditLogService;
+
+    private static final String ROLE_ADMIN = "Admin";
+    private static final String ROLE_ROLE_ADMIN = "Role Administrator";
 
     /** List only the forms that belong to the authenticated user. */
     @GetMapping
@@ -60,11 +66,12 @@ public class FormController {
             map.put("isOwner", isOwner);
 
             // Effective actions: what can this user do with this form?
-            boolean isAdmin = roleNames.contains("Admin");
+            boolean isAdmin = roleNames.contains(ROLE_ADMIN);
+            boolean isRoleAdmin = roleNames.contains(ROLE_ROLE_ADMIN);
             boolean isBuilder = roleNames.contains("Builder");
-            map.put("canEdit", isOwner || isAdmin);
-            map.put("canDelete", isOwner || isAdmin);
-            map.put("canPublish", isOwner || isAdmin);
+            map.put("canEdit", !isRoleAdmin && (isOwner || isAdmin));
+            map.put("canDelete", !isRoleAdmin && (isOwner || isAdmin));
+            map.put("canPublish", !isRoleAdmin && (isOwner || isAdmin));
             map.put("canViewSubmissions", isOwner || isAdmin || isBuilder || roleNames.contains("Manager"));
 
             return map;
@@ -149,21 +156,44 @@ public class FormController {
     }
 
     /**
-     * Admin render — always returns form (for builder preview).
-     * Admin can preview any form; others can only preview their own.
+     * Admin/Role Administrator render — always returns active form for preview.
+     * Admin and Role Administrator can preview any non-deleted form;
+     * other users can preview only forms they can act on.
      */
     @GetMapping("/{id}/render/admin")
     public ResponseEntity<?> renderAdmin(@PathVariable UUID id, Authentication auth) {
-        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
-        formService.getFormForAction(id, auth.getName(), isAdmin);
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN);
+        boolean isRoleAdmin = roles.contains(ROLE_ROLE_ADMIN);
+
+        if (isAdmin || isRoleAdmin) {
+            // Non-deleted only (findByIdWithFields)
+            formService.getFormById(id);
+        } else {
+            formService.getFormForAction(id, auth.getName(), false);
+        }
+
         return ResponseEntity.ok(formRenderService.render(id));
     }
 
     /** Create a form — owner is set to the authenticated user. */
     @PostMapping
-    public ResponseEntity<FormEntity> create(@RequestBody FormDTO dto, Authentication auth) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(formService.createForm(dto, auth.getName()));
+    public ResponseEntity<FormEntity> create(@RequestBody FormDTO dto, Authentication auth, HttpSession session) {
+        FormEntity created = formService.createForm(dto, auth.getName());
+        auditLogService.logEvent(
+                "CREATE_FORM",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                auth.getName(),
+                "FORM",
+                created.getId().toString(),
+                "User '" + auth.getName() + "' created form '" + created.getName() + "'.",
+                Map.of("formName", created.getName()),
+                null,
+                null,
+                null,
+                null
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     /** Update — owner or Admin can edit a form. */
@@ -171,16 +201,53 @@ public class FormController {
     public ResponseEntity<FormEntity> update(
             @PathVariable UUID id,
             @RequestBody FormDTO dto,
-            Authentication auth) {
-        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
-        return ResponseEntity.ok(formService.updateForm(id, dto, auth.getName(), isAdmin));
+            Authentication auth,
+            HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (roles.contains(ROLE_ROLE_ADMIN)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        boolean isAdmin = roles.contains(ROLE_ADMIN);
+        FormEntity updated = formService.updateForm(id, dto, auth.getName(), isAdmin);
+        auditLogService.logEvent(
+                "UPDATE_FORM",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                auth.getName(),
+                "FORM",
+                updated.getId().toString(),
+                "User '" + auth.getName() + "' updated form '" + updated.getName() + "'.",
+                Map.of("formName", updated.getName()),
+                null,
+                null,
+                null,
+                null
+        );
+        return ResponseEntity.ok(updated);
     }
 
     /** Soft-delete — moves form to trash. Owner or Admin. */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable UUID id, Authentication auth) {
-        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+    public ResponseEntity<Void> delete(@PathVariable UUID id, Authentication auth, HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (roles.contains(ROLE_ROLE_ADMIN)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        boolean isAdmin = roles.contains(ROLE_ADMIN);
+        FormEntity target = formService.getFormForAction(id, auth.getName(), isAdmin);
         formService.deleteForm(id, auth.getName(), isAdmin);
+        auditLogService.logEvent(
+                "DELETE_FORM",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                auth.getName(),
+                "FORM",
+                id.toString(),
+                "User '" + auth.getName() + "' deleted form '" + target.getName() + "'.",
+                Map.of("formName", target.getName()),
+                null,
+                null,
+                null,
+                null
+        );
         return ResponseEntity.noContent().build();
     }
 
@@ -212,9 +279,26 @@ public class FormController {
 
     /** Publish — owner or Admin can publish a form. */
     @PatchMapping("/{id}/publish")
-    public ResponseEntity<Map<String, Object>> publish(@PathVariable UUID id, Authentication auth) {
-        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
-        formService.publishForm(id, auth.getName(), isAdmin);
+    public ResponseEntity<Map<String, Object>> publish(@PathVariable UUID id, Authentication auth, HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (roles.contains(ROLE_ROLE_ADMIN)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        boolean isAdmin = roles.contains(ROLE_ADMIN);
+        FormEntity form = formService.publishForm(id, auth.getName(), isAdmin);
+        auditLogService.logEvent(
+                "PUBLISH_FORM",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                auth.getName(),
+                "FORM",
+                id.toString(),
+                "User '" + auth.getName() + "' published form '" + form.getName() + "'.",
+                Map.of("formName", form.getName()),
+                null,
+                null,
+                null,
+                null
+        );
         return ResponseEntity.ok(Map.of(
                 "id", id.toString(),
                 "status", "PUBLISHED",
@@ -223,9 +307,26 @@ public class FormController {
 
     /** Unpublish — owner or Admin can unpublish a form. */
     @PatchMapping("/{id}/unpublish")
-    public ResponseEntity<Map<String, Object>> unpublish(@PathVariable UUID id, Authentication auth) {
-        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
-        formService.unpublishForm(id, auth.getName(), isAdmin);
+    public ResponseEntity<Map<String, Object>> unpublish(@PathVariable UUID id, Authentication auth, HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (roles.contains(ROLE_ROLE_ADMIN)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        boolean isAdmin = roles.contains(ROLE_ADMIN);
+        FormEntity form = formService.unpublishForm(id, auth.getName(), isAdmin);
+        auditLogService.logEvent(
+                "UNPUBLISH_FORM",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                auth.getName(),
+                "FORM",
+                id.toString(),
+                "User '" + auth.getName() + "' unpublished form '" + form.getName() + "'.",
+                Map.of("formName", form.getName()),
+                null,
+                null,
+                null,
+                null
+        );
         return ResponseEntity.ok(Map.of(
                 "id", id.toString(),
                 "status", "DRAFT",

@@ -6,6 +6,7 @@ import Navbar from '../../components/Navbar';
 import FormRenderer from '../../components/FormRenderer';
 import { getFormRenderAdmin } from '../../services/api';
 import { toastError } from '../../services/toast';
+import { useAuth } from '../../context/AuthContext';
 
 /**
  * Form Preview Page — /preview/[id]
@@ -16,6 +17,9 @@ import { toastError } from '../../services/toast';
 export default function PreviewPage() {
     const router = useRouter();
     const { id } = router.query;
+    const { hasRole } = useAuth();
+
+    const isRoleAdmin = hasRole('Role Administrator');
 
     const [form, setForm] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -56,9 +60,15 @@ export default function PreviewPage() {
                 <div className="form-page">
                     {/* Back + Share nav */}
                     <div className="form-page-nav animate-down">
-                        <Link href={`/builder/${id}`} className="btn btn-secondary btn-sm">
-                            ← Edit Form
-                        </Link>
+                        {!isRoleAdmin ? (
+                            <Link href={`/builder/${id}`} className="btn btn-secondary btn-sm">
+                                ← Edit Form
+                            </Link>
+                        ) : (
+                            <Link href="/dashboard" className="btn btn-secondary btn-sm">
+                                ← Back to Dashboard
+                            </Link>
+                        )}
                         <div style={{ display: 'flex', gap: 10 }}>
                             <span className="badge badge-text" style={{ padding: '6px 14px', fontSize: 12 }}>
                                 👁 Preview Mode

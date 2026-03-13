@@ -4,6 +4,8 @@ import com.formbuilder.rbac.entity.Permission;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.security.RequirePermission;
 import com.formbuilder.rbac.service.UserRoleService;
+import com.formbuilder.service.AuditLogService;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -38,6 +40,7 @@ import java.util.*;
 public class UserController {
 
     private final UserRoleService userRoleService;
+    private final AuditLogService auditLogService;
 
     // ── GET /api/users ───────────────────────────────────────────────────
 
@@ -155,14 +158,46 @@ public class UserController {
      */
     @PostMapping("/{id}/roles")
     public ResponseEntity<?> assignRole(@PathVariable Integer id,
-                                        @RequestBody AssignRoleRequest body) {
+                                        @RequestBody AssignRoleRequest body,
+                                        Authentication auth,
+                                        HttpSession session) {
 
         if (body.roleId == null) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "roleId is required"));
         }
 
+        User before = userRoleService.getUserById(id);
+        Integer oldRoleId = before.getRoles().stream().findFirst().map(r -> r.getId()).orElse(null);
+        String oldRoleName = before.getRoles().stream().findFirst().map(r -> r.getRoleName()).orElse(null);
+
         User updated = userRoleService.assignRoleToUserById(id, body.roleId);
+
+        Integer newRoleId = updated.getRoles().stream().findFirst().map(r -> r.getId()).orElse(null);
+        String newRoleName = updated.getRoles().stream().findFirst().map(r -> r.getRoleName()).orElse("Unknown");
+
+        if (!Objects.equals(oldRoleId, newRoleId)) {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("oldRoleId", oldRoleId);
+            metadata.put("oldRoleName", oldRoleName);
+            metadata.put("newRoleId", newRoleId);
+            metadata.put("newRoleName", newRoleName);
+
+            auditLogService.logEvent(
+                    "ASSIGN_ROLE",
+                    (Integer) session.getAttribute("USER_ID"),
+                    auth.getName(),
+                    "USER",
+                    id.toString(),
+                    "User '" + auth.getName() + "' changed role for user '" + updated.getUsername() +
+                            "' from '" + (oldRoleName == null ? "None" : oldRoleName) + "' to '" + newRoleName + "'.",
+                    metadata,
+                    newRoleId,
+                    newRoleName,
+                    updated.getId(),
+                    updated.getUsername()
+            );
+        }
 
         return ResponseEntity.ok(toUserResponse(updated));
     }
@@ -174,9 +209,25 @@ public class UserController {
      */
     @DeleteMapping("/{id}/roles/{roleId}")
     public ResponseEntity<?> removeRole(@PathVariable Integer id,
-                                        @PathVariable Integer roleId) {
+                                        @PathVariable Integer roleId,
+                                        Authentication auth,
+                                        HttpSession session) {
 
         User updated = userRoleService.removeRoleFromUserById(id, roleId);
+
+        auditLogService.logEvent(
+                "REMOVE_ROLE",
+                (Integer) session.getAttribute("USER_ID"),
+                auth.getName(),
+                "USER",
+                id.toString(),
+                "User '" + auth.getName() + "' removed role id '" + roleId + "' from user '" + updated.getUsername() + "'.",
+                Map.of("roleId", roleId),
+                roleId,
+                null,
+                updated.getId(),
+                updated.getUsername()
+        );
 
         return ResponseEntity.ok(toUserResponse(updated));
     }

@@ -4,6 +4,7 @@ import com.formbuilder.rbac.entity.Permission;
 import com.formbuilder.rbac.entity.Role;
 import com.formbuilder.rbac.security.RequirePermission;
 import com.formbuilder.rbac.service.RoleService;
+import com.formbuilder.service.AuditLogService;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,7 @@ import java.util.*;
 public class RoleController {
 
     private final RoleService roleService;
+    private final AuditLogService auditLogService;
 
     // ── GET /api/roles ───────────────────────────────────────────────────
 
@@ -101,6 +103,20 @@ public class RoleController {
         // Reload with permissions for response
         Role loaded = roleService.getRoleWithPermissions(created.getId());
 
+        auditLogService.logEvent(
+                "CREATE_ROLE",
+                actorUserId,
+                actorUsername,
+                "ROLE",
+                loaded.getId().toString(),
+                "User '" + actorUsername + "' created role '" + loaded.getRoleName() + "'.",
+                Map.of("permissions", loaded.getPermissions().stream().map(Permission::getPermissionKey).sorted().toList()),
+                loaded.getId(),
+                loaded.getRoleName(),
+                null,
+                null
+        );
+
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toRoleResponse(loaded));
     }
@@ -126,7 +142,8 @@ public class RoleController {
     @PutMapping("/{id}")
     public ResponseEntity<?> updateRole(@PathVariable Integer id,
                                         @RequestBody UpdateRoleRequest body,
-                                        Authentication auth) {
+                                        Authentication auth,
+                                        HttpSession session) {
 
         Set<String> permKeys = body.permissions != null
                 ? new LinkedHashSet<>(body.permissions)
@@ -136,6 +153,20 @@ public class RoleController {
 
         // Reload with permissions for response
         Role loaded = roleService.getRoleWithPermissions(updated.getId());
+
+        auditLogService.logEvent(
+                "UPDATE_ROLE",
+                (Integer) session.getAttribute("USER_ID"),
+                auth.getName(),
+                "ROLE",
+                loaded.getId().toString(),
+                "User '" + auth.getName() + "' updated role '" + loaded.getRoleName() + "'.",
+                Map.of("permissions", loaded.getPermissions().stream().map(Permission::getPermissionKey).sorted().toList()),
+                loaded.getId(),
+                loaded.getRoleName(),
+                null,
+                null
+        );
 
         return ResponseEntity.ok(toRoleResponse(loaded));
     }
@@ -150,9 +181,26 @@ public class RoleController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteRole(@PathVariable Integer id,
-                                        Authentication auth) {
+                                        Authentication auth,
+                                        HttpSession session) {
+
+        Role roleBeforeDelete = roleService.getRoleWithPermissions(id);
 
         roleService.deleteRole(id, auth.getName());
+
+        auditLogService.logEvent(
+                "DELETE_ROLE",
+                (Integer) session.getAttribute("USER_ID"),
+                auth.getName(),
+                "ROLE",
+                id.toString(),
+                "User '" + auth.getName() + "' deleted role '" + roleBeforeDelete.getRoleName() + "'.",
+                null,
+                roleBeforeDelete.getId(),
+                roleBeforeDelete.getRoleName(),
+                null,
+                null
+        );
 
         return ResponseEntity.ok(Map.of("message", "Role deleted successfully"));
     }
@@ -177,7 +225,8 @@ public class RoleController {
     @PostMapping("/{id}/permissions")
     public ResponseEntity<?> assignPermissions(@PathVariable Integer id,
                                                @RequestBody PermissionsRequest body,
-                                               Authentication auth) {
+                                               Authentication auth,
+                                               HttpSession session) {
 
         if (body.permissions == null || body.permissions.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -192,6 +241,20 @@ public class RoleController {
 
         // Reload with permissions for response
         Role loaded = roleService.getRoleWithPermissions(updated.getId());
+
+        auditLogService.logEvent(
+                "UPDATE_PERMISSION",
+                (Integer) session.getAttribute("USER_ID"),
+                auth.getName(),
+                "ROLE",
+                loaded.getId().toString(),
+                "User '" + auth.getName() + "' updated permissions for role '" + loaded.getRoleName() + "'.",
+                Map.of("permissions", loaded.getPermissions().stream().map(Permission::getPermissionKey).sorted().toList()),
+                loaded.getId(),
+                loaded.getRoleName(),
+                null,
+                null
+        );
 
         return ResponseEntity.ok(toRoleResponse(loaded));
     }

@@ -27,15 +27,15 @@ export default function NewBuilderPage() {
 
     // ── Role-based form access ──
     const [availableRoles, setAvailableRoles] = useState([]);
-    const [allowedRoles, setAllowedRoles] = useState([]); // empty = all roles (default)
+    const [allowedRoles, setAllowedRoles] = useState([]); // empty = system default visibility rules
 
     useEffect(() => {
         getRoles()
             .then(roles => {
                 const filtered = (roles || []).filter(r => !HIDDEN_ROLES.has(r.roleName));
                 setAvailableRoles(filtered);
-                // Default: all roles selected
-                setAllowedRoles(filtered.map(r => r.roleName));
+                // Keep unchecked by default; selections are explicit overrides only.
+                setAllowedRoles([]);
             })
             .catch(() => { /* silent — roles optional */ });
     }, []);
@@ -99,7 +99,7 @@ export default function NewBuilderPage() {
             })),
             allowMultipleSubmissions: allowMultipleSubmissions,
             visibility: visibility,
-            allowedRoles: allowedRoles.length === availableRoles.length ? [] : allowedRoles,
+            allowedRoles: allowedRoles,
             showTimestamp: true, // always recorded — compulsory
             expiresAt: expiresAt ? expiresAt : null,
         };
@@ -231,9 +231,9 @@ export default function NewBuilderPage() {
                                             <div className="form-settings-expiry-info">
                                                 <span className="form-settings-toggle-label">👥 Who can see this form?</span>
                                                 <span className="form-settings-toggle-desc">
-                                                    {allowedRoles.length === 0 || allowedRoles.length === availableRoles.length
-                                                        ? 'All roles can see this form (default)'
-                                                        : `${allowedRoles.length} role${allowedRoles.length !== 1 ? 's' : ''} selected — Admin & Role Admin always have access`}
+                                                    {allowedRoles.length === 0
+                                                        ? 'No explicit role access selected. System default visibility rules apply.'
+                                                        : `${allowedRoles.length} explicit role${allowedRoles.length !== 1 ? 's' : ''} selected — Admin & Role Admin always have access`}
                                                 </span>
                                             </div>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>

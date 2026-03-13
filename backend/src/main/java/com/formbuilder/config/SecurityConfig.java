@@ -78,6 +78,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/shared-options/**").authenticated()
                 .requestMatchers("/api/roles/**").authenticated()
                 .requestMatchers("/api/users/**").authenticated()
+                .requestMatchers("/api/logs/**").authenticated()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .anyRequest().permitAll()
             )

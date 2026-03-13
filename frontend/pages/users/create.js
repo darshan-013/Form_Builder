@@ -13,7 +13,7 @@ export default function CreateUserPage() {
     const [username, setUsername] = useState('');
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
-    const [selectedRoles, setSelectedRoles] = useState(new Set());
+    const [selectedRoleId, setSelectedRoleId] = useState(null);
     const [allRoles, setAllRoles] = useState([]);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -33,18 +33,6 @@ export default function CreateUserPage() {
         }
     }
 
-    function toggleRole(roleId) {
-        setSelectedRoles(prev => {
-            const next = new Set(prev);
-            if (next.has(roleId)) {
-                next.delete(roleId);
-            } else {
-                next.add(roleId);
-            }
-            return next;
-        });
-    }
-
     async function handleSubmit(e) {
         e.preventDefault();
         setError('');
@@ -54,19 +42,18 @@ export default function CreateUserPage() {
             return;
         }
 
+        if (!selectedRoleId) {
+            setError('Please select one role. A user can have only one role.');
+            return;
+        }
+
         setSaving(true);
         try {
             // Step 1: Create the RBAC user profile
             const createdUser = await createUser(username.trim(), name.trim() || null, email.trim() || null);
 
-            // Step 2: Assign selected roles (one by one — idempotent)
-            for (const roleId of selectedRoles) {
-                try {
-                    await assignRoleToUser(createdUser.id, roleId);
-                } catch (err) {
-                    console.warn(`Failed to assign role ${roleId}:`, err.message);
-                }
-            }
+            // Step 2: Assign exactly one role
+            await assignRoleToUser(createdUser.id, selectedRoleId);
 
             toastSuccess(`User "${name.trim() || username.trim()}" created successfully.`);
             router.push('/users');
@@ -167,20 +154,21 @@ export default function CreateUserPage() {
                         {/* Role Assignment */}
                         {allRoles.length > 0 && (
                             <div className="role-assign-section">
-                                <h3>Assign Roles</h3>
+                                <h3>Assign Role</h3>
                                 <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 12 }}>
-                                    {selectedRoles.size} role{selectedRoles.size !== 1 ? 's' : ''} selected
+                                    {selectedRoleId ? '1 role selected' : 'Select exactly one role'}
                                 </span>
                                 <div className="role-assign-grid">
                                     {allRoles.map(role => (
                                         <label
                                             key={role.id}
-                                            className={`role-assign-item ${selectedRoles.has(role.id) ? 'assigned' : ''}`}
+                                            className={`role-assign-item ${selectedRoleId === role.id ? 'assigned' : ''}`}
                                         >
                                             <input
-                                                type="checkbox"
-                                                checked={selectedRoles.has(role.id)}
-                                                onChange={() => toggleRole(role.id)}
+                                                type="radio"
+                                                name="roleSelection"
+                                                checked={selectedRoleId === role.id}
+                                                onChange={() => setSelectedRoleId(role.id)}
                                             />
                                             <div className="role-assign-label">
                                                 <span className="role-assign-name">
