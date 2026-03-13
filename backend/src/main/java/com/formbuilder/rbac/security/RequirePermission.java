@@ -36,8 +36,8 @@ public @interface RequirePermission {
 
     /**
      * The permission key required to access this endpoint.
-     * Must match one of the 9 fixed permission_key values in the permissions table:
-     * READ, WRITE, EDIT, DELETE, APPROVE, MANAGE, EXPORT, VISIBILITY, AUDIT
+     * Must match one of the fixed permission_key values in the permissions table:
+     * READ, WRITE, EDIT, DELETE, MANAGE, EXPORT, VISIBILITY, AUDIT
      */
     String value();
 }

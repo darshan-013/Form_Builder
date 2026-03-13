@@ -106,7 +106,6 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
                 "WRITE", "Write Access — create new forms and submissions",
                 "EDIT",  "Edit Access — modify existing forms and submissions",
                 "DELETE","Delete Access — remove forms and submissions",
-                "APPROVE","Approve Access — approve or reject submissions in workflow",
                 "MANAGE","Manage Access — manage roles, users, and system configuration",
                 "EXPORT","Export Access — export forms and submission data",
                 "VISIBILITY","Visibility Control — control who can see forms and data",
@@ -116,6 +115,8 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
             exec("INSERT INTO permissions (permission_key, description) VALUES ('"
                     + perms[i] + "', '" + perms[i + 1] + "') ON CONFLICT (permission_key) DO NOTHING");
         }
+        exec("DELETE FROM role_permissions rp USING permissions p WHERE rp.permission_id = p.id AND p.permission_key = 'APPROVE'");
+        exec("DELETE FROM permissions WHERE permission_key = 'APPROVE'");
 
         // 8c. roles table
         exec("""
@@ -227,12 +228,12 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
 
         exec("INSERT INTO role_permissions (role_id, permission_id) " +
                 "SELECT r.id, p.id FROM roles r, permissions p " +
-                "WHERE r.role_name = 'Manager' AND p.permission_key IN ('READ', 'APPROVE', 'EXPORT', 'VISIBILITY', 'AUDIT') " +
+                "WHERE r.role_name = 'Manager' AND p.permission_key IN ('READ', 'EXPORT', 'VISIBILITY', 'AUDIT') " +
                 "ON CONFLICT (role_id, permission_id) DO NOTHING");
 
         exec("INSERT INTO role_permissions (role_id, permission_id) " +
                 "SELECT r.id, p.id FROM roles r, permissions p " +
-                "WHERE r.role_name = 'Approver' AND p.permission_key IN ('READ', 'APPROVE') " +
+                "WHERE r.role_name = 'Approver' AND p.permission_key IN ('READ') " +
                 "ON CONFLICT (role_id, permission_id) DO NOTHING");
 
         exec("INSERT INTO role_permissions (role_id, permission_id) " +

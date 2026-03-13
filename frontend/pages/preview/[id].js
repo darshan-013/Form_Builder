@@ -20,6 +20,7 @@ export default function PreviewPage() {
     const { hasRole } = useAuth();
 
     const isRoleAdmin = hasRole('Role Administrator');
+    const isViewer = hasRole('Viewer');
 
     const [form, setForm] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -60,7 +61,7 @@ export default function PreviewPage() {
                 <div className="form-page">
                     {/* Back + Share nav */}
                     <div className="form-page-nav animate-down">
-                        {!isRoleAdmin ? (
+                        {!isRoleAdmin && !isViewer ? (
                             <Link href={`/builder/${id}`} className="btn btn-secondary btn-sm">
                                 ← Edit Form
                             </Link>

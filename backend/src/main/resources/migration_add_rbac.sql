@@ -3,7 +3,7 @@
 --  Date: 2026-03-12
 --
 --  Adds production-level RBAC system:
---    - permissions        (9 fixed permission types)
+--    - permissions        (8 fixed permission types)
 --    - roles              (7 system roles + custom roles)
 --    - role_permissions   (many-to-many matrix)
 --    - rbac_users         (single auth + profile table)
@@ -19,7 +19,7 @@
 
 -- ─────────────────────────────────────────────
 --  TABLE: permissions
---  Fixed set of 9 access-right types.
+--  Fixed set of 8 access-right types.
 --  Application code references permission_key.
 -- ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS permissions (
@@ -29,9 +29,9 @@ CREATE TABLE IF NOT EXISTS permissions (
 )^
 
 COMMENT ON TABLE  permissions              IS 'Fixed permission types — application references permission_key.'^
-COMMENT ON COLUMN permissions.permission_key IS 'Unique key: READ, WRITE, EDIT, DELETE, APPROVE, MANAGE, EXPORT, VISIBILITY, AUDIT.'^
+COMMENT ON COLUMN permissions.permission_key IS 'Unique key: READ, WRITE, EDIT, DELETE, MANAGE, EXPORT, VISIBILITY, AUDIT.'^
 
--- Seed the 9 fixed permissions (idempotent via ON CONFLICT)
+-- Seed the fixed permissions (idempotent via ON CONFLICT)
 INSERT INTO permissions (permission_key, description) VALUES
     ('READ',       'Read Access — view forms, submissions, and data')
 ON CONFLICT (permission_key) DO NOTHING^
@@ -46,10 +46,6 @@ ON CONFLICT (permission_key) DO NOTHING^
 
 INSERT INTO permissions (permission_key, description) VALUES
     ('DELETE',     'Delete Access — remove forms and submissions')
-ON CONFLICT (permission_key) DO NOTHING^
-
-INSERT INTO permissions (permission_key, description) VALUES
-    ('APPROVE',    'Approve Access — approve or reject submissions in workflow')
 ON CONFLICT (permission_key) DO NOTHING^
 
 INSERT INTO permissions (permission_key, description) VALUES
@@ -188,11 +184,11 @@ COMMENT ON TABLE user_roles IS 'User ↔ Role assignments. A user can hold multi
 --
 --  Viewer:             READ
 --  Employee:           READ, WRITE
---  Manager:            READ, APPROVE, EXPORT, VISIBILITY, AUDIT
---  Approver:           READ, APPROVE
+--  Manager:            READ, EXPORT, VISIBILITY, AUDIT
+--  Approver:           READ
 --  Builder:            READ, WRITE, EDIT, DELETE, EXPORT
 --  Role Administrator: READ, EDIT, MANAGE, VISIBILITY, AUDIT
---  Admin:              ALL (READ, WRITE, EDIT, DELETE, APPROVE,
+--  Admin:              ALL (READ, WRITE, EDIT, DELETE,
 --                           MANAGE, EXPORT, VISIBILITY, AUDIT)
 -- =============================================================
 
@@ -208,16 +204,16 @@ SELECT r.id, p.id FROM roles r, permissions p
 WHERE r.role_name = 'Employee' AND p.permission_key IN ('READ', 'WRITE')
 ON CONFLICT (role_id, permission_id) DO NOTHING^
 
--- Manager → READ, APPROVE, EXPORT, VISIBILITY, AUDIT
+-- Manager → READ, EXPORT, VISIBILITY, AUDIT
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r, permissions p
-WHERE r.role_name = 'Manager' AND p.permission_key IN ('READ', 'APPROVE', 'EXPORT', 'VISIBILITY', 'AUDIT')
+WHERE r.role_name = 'Manager' AND p.permission_key IN ('READ', 'EXPORT', 'VISIBILITY', 'AUDIT')
 ON CONFLICT (role_id, permission_id) DO NOTHING^
 
--- Approver → READ, APPROVE
+-- Approver → READ
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r, permissions p
-WHERE r.role_name = 'Approver' AND p.permission_key IN ('READ', 'APPROVE')
+WHERE r.role_name = 'Approver' AND p.permission_key IN ('READ')
 ON CONFLICT (role_id, permission_id) DO NOTHING^
 
 -- Builder → READ, WRITE, EDIT, DELETE, EXPORT

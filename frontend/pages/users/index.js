@@ -51,9 +51,22 @@ export default function UsersPage() {
         if (!deleteTarget) return;
         setDeleting(true);
         try {
-            await deleteUser(deleteTarget.id);
+            const result = await deleteUser(deleteTarget.id);
             setUsers(prev => prev.filter(u => u.id !== deleteTarget.id));
-            toastSuccess(`User "${deleteTarget.name || deleteTarget.username}" deleted.`);
+
+            const rejected = Number(result?.rejectedWorkflows || 0);
+            const creatorMoved = Number(result?.creatorRefsMoved || 0);
+            const targetMoved = Number(result?.targetRefsMoved || 0);
+            const stepsMoved = Number(result?.stepRefsMoved || 0);
+
+            const impactBits = [];
+            if (rejected > 0) impactBits.push(`${rejected} workflow${rejected !== 1 ? 's' : ''} rejected`);
+            if (creatorMoved > 0) impactBits.push(`${creatorMoved} creator ref${creatorMoved !== 1 ? 's' : ''} moved`);
+            if (targetMoved > 0) impactBits.push(`${targetMoved} target ref${targetMoved !== 1 ? 's' : ''} moved`);
+            if (stepsMoved > 0) impactBits.push(`${stepsMoved} step ref${stepsMoved !== 1 ? 's' : ''} moved`);
+
+            const base = `User "${deleteTarget.name || deleteTarget.username}" deleted.`;
+            toastSuccess(impactBits.length ? `${base} Impact: ${impactBits.join(', ')}.` : base);
         } catch (err) {
             toastError(err.message || 'Failed to delete user.');
         } finally {

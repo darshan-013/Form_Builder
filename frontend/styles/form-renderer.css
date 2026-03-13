@@ -1663,3 +1663,117 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 [data-theme="light"] .wizard-page-title {
   color: #374151;
 }
+
+/* ================================================
+   Phase 2 - Premium Form Renderer Refinement
+   UI-only overrides (no logic changes)
+   ================================================ */
+
+.form-page {
+  padding: 56px 24px 88px;
+}
+
+.form-renderer-card {
+  max-width: 700px;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 32px 86px rgba(0, 0, 0, 0.68), 0 0 0 1px rgba(139, 92, 246, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.form-renderer-header {
+  padding: 34px 38px 22px;
+}
+
+.form-renderer-title {
+  font-size: clamp(28px, 3.1vw, 40px);
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.form-renderer-desc {
+  font-size: 15px;
+  line-height: 1.72;
+}
+
+.preview-banner {
+  padding: 12px 38px;
+  border-bottom-color: rgba(245, 158, 11, 0.28);
+}
+
+.form-renderer-body {
+  padding: 34px 38px;
+  gap: 26px;
+}
+
+.field-group-container {
+  border-radius: 16px;
+  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.form-renderer-body .form-input,
+.form-renderer-body .form-select,
+.form-renderer-body .form-textarea {
+  border-radius: 12px;
+  min-height: 44px;
+}
+
+.form-renderer-footer {
+  padding: 0 38px 34px;
+}
+
+.form-submit-btn {
+  border-radius: 12px;
+  min-height: 50px;
+  box-shadow: 0 8px 30px rgba(139, 92, 246, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: transform 0.24s ease, box-shadow 0.24s ease, background 0.24s ease;
+}
+
+.form-submit-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 40px rgba(139, 92, 246, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.form-page-nav {
+  max-width: 700px;
+  margin-bottom: 22px;
+}
+
+@media (max-width: 1023px) {
+  .form-page {
+    padding: 40px 20px 72px;
+  }
+
+  .form-renderer-header,
+  .form-renderer-body,
+  .form-renderer-footer {
+    padding-left: 26px;
+    padding-right: 26px;
+  }
+}
+
+@media (max-width: 767px) {
+  .form-page {
+    padding: 24px 16px 56px;
+  }
+
+  .form-renderer-card {
+    border-radius: 16px;
+  }
+
+  .form-renderer-header {
+    padding: 22px 18px 14px;
+  }
+
+  .form-renderer-title {
+    font-size: clamp(24px, 8vw, 32px);
+  }
+
+  .form-renderer-body {
+    padding: 20px 18px;
+    gap: 18px;
+  }
+
+  .form-renderer-footer {
+    padding: 0 18px 20px;
+  }
+}

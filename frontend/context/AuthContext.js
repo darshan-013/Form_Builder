@@ -71,7 +71,7 @@ export function AuthProvider({ children }) {
 
     /**
      * Check if the current user has a specific permission.
-     * @param {string} permKey - e.g. 'MANAGE', 'WRITE', 'APPROVE'
+     * @param {string} permKey - e.g. 'MANAGE', 'WRITE', 'READ'
      * @returns {boolean}
      */
     const hasPermission = useCallback((permKey) => {

@@ -676,15 +676,6 @@ export default function SubmissionsPage() {
                         >
                             👁 View
                         </button>
-                        {can('APPROVE') && (
-                            <button
-                                className="btn btn-sm"
-                                title="Approve submission"
-                                style={{ background: 'rgba(16,185,129,0.2)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.3)' }}
-                            >
-                                ✅ Approve
-                            </button>
-                        )}
                         {can('EDIT') && (
                             <button
                                 className="btn btn-secondary btn-sm"
@@ -1410,15 +1401,6 @@ export default function SubmissionsPage() {
                                                 >
                                                     👁 View
                                                 </button>
-                                                {can('APPROVE') && (
-                                                    <button
-                                                        className="btn btn-sm"
-                                                        title="Approve submission"
-                                                        style={{ background: 'rgba(16,185,129,0.2)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.3)' }}
-                                                    >
-                                                        ✅ Approve
-                                                    </button>
-                                                )}
                                                 {can('EDIT') && (
                                                     <button
                                                         className="btn btn-sm"

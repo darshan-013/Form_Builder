@@ -30,6 +30,27 @@
   position: relative;
 }
 
+/* Viewer builder-assignment modal spacing tweaks */
+.builder-assign-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.builder-assign-modal p {
+  margin: 0;
+}
+
+.builder-assign-select {
+  width: 100%;
+  min-width: 320px;
+  margin-top: 2px;
+}
+
+.builder-assign-actions {
+  margin-top: 4px;
+}
+
 /* Gradient line at very bottom of topbar */
 .builder-topbar::after {
   content: '';
@@ -1759,6 +1780,12 @@
   border-color: #cbd5e1;
 }
 
+[data-theme="light"] .toggle-switch.toggle-on {
+  background: linear-gradient(135deg, #7C3AED, #4F46E5);
+  border-color: rgba(124, 58, 237, 0.6);
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.25);
+}
+
 [data-theme="light"] .toggle-knob {
   background: #fff;
 }
@@ -2136,3 +2163,104 @@
     right: -60px;
   }
 }
+
+/* ================================================
+   Phase 2 - Premium Builder Refinement
+   UI-only overrides (no logic changes)
+   ================================================ */
+
+.builder-topbar {
+  min-height: 62px;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+
+.builder-form-name-input {
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.builder-form-name-input:focus {
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+}
+
+.builder-palette {
+  border-right-color: rgba(255, 255, 255, 0.1);
+  background: rgba(9, 8, 24, 0.78);
+}
+
+.palette-field {
+  border-radius: 12px;
+  border-color: rgba(139, 92, 246, 0.22);
+}
+
+.palette-field:hover {
+  transform: translateX(4px) translateY(-1px);
+  box-shadow: 0 8px 22px rgba(139, 92, 246, 0.2);
+}
+
+.builder-canvas-wrap {
+  padding: 26px;
+}
+
+.builder-canvas {
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.field-card {
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease, background 0.24s ease;
+}
+
+.field-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(139, 92, 246, 0.34);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.46), 0 0 0 1px rgba(139, 92, 246, 0.12);
+}
+
+.settings-dropdown {
+  border-radius: 16px;
+  border-color: rgba(139, 92, 246, 0.28);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.56), 0 0 0 1px rgba(255, 255, 255, 0.05) inset, 0 0 36px rgba(139, 92, 246, 0.14);
+}
+
+.form-settings-toggle,
+.form-settings-expiry {
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.form-settings-toggle:hover {
+  border-color: rgba(139, 92, 246, 0.24);
+  background: rgba(139, 92, 246, 0.09);
+}
+
+.toggle-switch.toggle-on {
+  box-shadow: 0 0 14px rgba(124, 58, 237, 0.42);
+}
+
+@media (max-width: 1023px) {
+  .builder-canvas-wrap {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 767px) {
+  .builder-topbar {
+    gap: 10px;
+    padding: 10px 14px;
+  }
+
+  .builder-form-name-input {
+    border-radius: 10px;
+  }
+
+  .field-card {
+    border-radius: 10px;
+  }
+}
+

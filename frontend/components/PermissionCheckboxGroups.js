@@ -1,13 +1,12 @@
 /**
  * PermissionCheckboxGroups — Reusable component for role create/edit forms.
  *
- * Displays the 9 fixed permissions organized into logical groups with
+ * Displays the fixed permissions organized into logical groups with
  * checkboxes. Supports controlled state via `selected` + `onChange`.
  *
  * Permission Groups:
  *   Form Management:  READ, WRITE, EDIT, DELETE
  *   User Management:  MANAGE, VISIBILITY
- *   Workflow:         APPROVE
  *   Data:            EXPORT, AUDIT
  */
 
@@ -29,13 +28,6 @@ const PERMISSION_GROUPS = [
         permissions: [
             { key: 'MANAGE',     label: 'Manage',     desc: 'Manage roles, users, and system config' },
             { key: 'VISIBILITY', label: 'Visibility',  desc: 'Control who can see forms and data' },
-        ],
-    },
-    {
-        title: 'Workflow',
-        icon: '✅',
-        permissions: [
-            { key: 'APPROVE', label: 'Approve', desc: 'Approve or reject submissions' },
         ],
     },
     {

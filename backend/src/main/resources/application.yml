@@ -32,6 +32,8 @@ spring:
         - classpath:migration_add_rules_to_groups.sql
         - classpath:migration_add_soft_delete.sql
         - classpath:migration_add_rbac.sql
+        - classpath:migration_add_workflow_engine.sql
+        - classpath:migration_add_builder_assignment.sql
         - classpath:migration_consolidate_auth.sql
 
   jpa:

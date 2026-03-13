@@ -6,7 +6,7 @@ import lombok.*;
 /**
  * JPA entity for the 'permissions' table.
  *
- * Fixed set of 9 access-right types seeded by migration.
+ * Fixed set of access-right types seeded by migration.
  * Application code references {@code permissionKey} (READ, WRITE, EDIT, etc.)
  * to check access. Rows are NEVER created/deleted at runtime.
  */
@@ -29,7 +29,7 @@ public class Permission {
     private Integer id;
 
     /**
-     * Unique key: READ | WRITE | EDIT | DELETE | APPROVE | MANAGE | EXPORT | VISIBILITY | AUDIT.
+     * Unique key: READ | WRITE | EDIT | DELETE | MANAGE | EXPORT | VISIBILITY | AUDIT.
      * Used by service layer for permission checks — never changes after seed.
      */
     @Column(name = "permission_key", nullable = false, unique = true, length = 100)

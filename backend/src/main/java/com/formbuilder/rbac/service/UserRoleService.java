@@ -5,6 +5,7 @@ import com.formbuilder.rbac.entity.Role;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.repository.RoleRepository;
 import com.formbuilder.rbac.repository.UserRepository;
+import com.formbuilder.workflow.WorkflowService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ public class UserRoleService {
     private final RoleRepository roleRepo;
     private final JdbcTemplate jdbc;
     private final EntityManager entityManager;
+    private final WorkflowService workflowService;
 
     // ═══════════════════════════════════════════════════════════════════════
     //  USER CRUD
@@ -104,13 +106,63 @@ public class UserRoleService {
         return saved;
     }
 
-    /** Deletes an RBAC user profile. CASCADE in DB handles user_roles cleanup. */
+    /** Deletes an RBAC user profile and returns workflow-impact stats. */
     @Transactional
-    public void deleteUser(Integer id) {
+    public DeleteUserImpact deleteUser(Integer id) {
         User user = userRepo.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+
+        if ("admin".equalsIgnoreCase(user.getUsername()) || user.hasRole("Admin")) {
+            throw new IllegalStateException("Core admin accounts cannot be deleted.");
+        }
+
+        Integer fallbackUserId = resolveWorkflowFallbackUserId(id);
+        String reason = "Workflow rejected because user '" + user.getUsername() + "' was removed permanently.";
+        int rejected = workflowService.rejectActiveWorkflowsForUser(id, reason);
+
+        // Preserve workflow history by re-linking references to fallback admin account.
+        int movedCreatorRefs = jdbc.update("UPDATE workflow_instances SET creator_id = ? WHERE creator_id = ?", fallbackUserId, id);
+        int movedTargetRefs = jdbc.update("UPDATE workflow_instances SET target_builder_id = ? WHERE target_builder_id = ?", fallbackUserId, id);
+        int movedStepRefs = jdbc.update("UPDATE workflow_steps SET approver_id = ? WHERE approver_id = ?", fallbackUserId, id);
+
+        // Clean assignment fields for non-started forms owned by deleted builder.
+        jdbc.update("UPDATE forms SET assigned_builder_id = NULL, assigned_builder_username = NULL WHERE assigned_builder_id = ?", id);
+
+        if (rejected > 0 || movedCreatorRefs > 0 || movedTargetRefs > 0 || movedStepRefs > 0) {
+            log.warn("User '{}' (id={}) deletion impact: rejectedWorkflows={}, creatorRefsMoved={}, targetRefsMoved={}, stepRefsMoved={}",
+                    user.getUsername(), id, rejected, movedCreatorRefs, movedTargetRefs, movedStepRefs);
+        }
+
         userRepo.delete(user);
         log.info("RBAC user profile deleted for '{}' (id={})", user.getUsername(), id);
+
+        return DeleteUserImpact.builder()
+                .deletedUserId(id)
+                .deletedUsername(user.getUsername())
+                .rejectedWorkflows(rejected)
+                .creatorRefsMoved(movedCreatorRefs)
+                .targetRefsMoved(movedTargetRefs)
+                .stepRefsMoved(movedStepRefs)
+                .build();
+    }
+
+    private Integer resolveWorkflowFallbackUserId(Integer deletingUserId) {
+        return userRepo.findByUsername("admin")
+                .filter(u -> !Objects.equals(u.getId(), deletingUserId))
+                .map(User::getId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Cannot delete user because fallback admin account is missing."));
+    }
+
+    @lombok.Value
+    @lombok.Builder
+    public static class DeleteUserImpact {
+        Integer deletedUserId;
+        String deletedUsername;
+        int rejectedWorkflows;
+        int creatorRefsMoved;
+        int targetRefsMoved;
+        int stepRefsMoved;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
