@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
-import WorkflowHeader from '../../components/workflows/WorkflowHeader';
 import WorkflowDiagram from '../../components/workflows/WorkflowDiagram';
 import { useAuth } from '../../context/AuthContext';
 import { getMyWorkflowStatus } from '../../services/api';
@@ -12,6 +11,7 @@ export default function WorkflowStatusPage() {
     const { hasRole } = useAuth();
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [category, setCategory] = useState('ALL');
 
     useEffect(() => {
         getMyWorkflowStatus()
@@ -26,6 +26,12 @@ export default function WorkflowStatusPage() {
         if (v === 'rejected') return 'rejected';
         return 'pending';
     }
+
+    const filteredRows = rows.filter((r) => {
+        if (category === 'ALL') return true;
+        const normalized = normalizeDecision(r.finalDecision || r.status).toUpperCase();
+        return normalized === category;
+    });
 
     function buildSteps(row) {
         const totalSteps = Number(row?.totalSteps || 0);
@@ -88,27 +94,38 @@ export default function WorkflowStatusPage() {
             <Head><title>Workflow Status — FormCraft</title></Head>
             <Navbar />
             <div className="container workflow-page-shell">
-                <WorkflowHeader
-                    title="Workflow Process"
-                    subtitle="Track every workflow with a horizontal step diagram and live decision states."
-                />
-
                 <div className="workflow-page-head">
                     <h1>My Workflow Status</h1>
                 </div>
+
+                <div className="workflow-filter-row" role="tablist" aria-label="Workflow category filter">
+                    {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((c) => (
+                        <button
+                            key={c}
+                            type="button"
+                            className={`workflow-filter-chip${category === c ? ' active' : ''}`}
+                            onClick={() => setCategory(c)}
+                            role="tab"
+                            aria-selected={category === c}
+                        >
+                            {c}
+                        </button>
+                    ))}
+                </div>
+
                 {loading ? (
                     <div className="loading-center" style={{ minHeight: 280 }}>
                         <span className="spinner" style={{ width: 34, height: 34 }} />
                     </div>
-                ) : rows.length === 0 ? (
+                ) : filteredRows.length === 0 ? (
                     <div className="empty-state">
                         <div className="empty-state-icon">🧭</div>
-                        <h3>No workflow records</h3>
-                        <p>Start a workflow from a draft form to track approvals here.</p>
+                        <h3>No workflow records in this category</h3>
+                        <p>Try another category or start a workflow from a draft form.</p>
                     </div>
                 ) : (
                     <div className="workflow-status-grid">
-                        {rows.map((r) => {
+                        {filteredRows.map((r) => {
                             const decisionClass = normalizeDecision(r.finalDecision || r.status);
                             return (
                                 <div key={r.workflowId} className={`form-card workflow-status-card ${decisionClass}`}>
