@@ -43,7 +43,7 @@ public class SubmissionController {
         FormEntity form = formService.getFormById(id);
         if (form.getStatus() != FormEntity.FormStatus.PUBLISHED) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "This form is not accepting submissions. It is currently in DRAFT mode."));
+                    .body(Map.of("error", "This form is not accepting submissions right now.", "status", form.getStatus().name()));
         }
         // Expiry check
         if (form.getExpiresAt() != null && LocalDateTime.now().isAfter(form.getExpiresAt())) {

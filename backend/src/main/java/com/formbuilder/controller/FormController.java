@@ -8,6 +8,10 @@ import com.formbuilder.rbac.service.UserRoleService;
 import com.formbuilder.service.AuditLogService;
 import com.formbuilder.service.FormRenderService;
 import com.formbuilder.service.FormService;
+import com.formbuilder.workflow.WorkflowInstance;
+import com.formbuilder.workflow.WorkflowInstanceStatus;
+import com.formbuilder.workflow.WorkflowService;
+import com.formbuilder.workflow.WorkflowStep;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -31,6 +35,7 @@ public class FormController {
     private final FormRenderService formRenderService;
     private final UserRoleService userRoleService;
     private final AuditLogService auditLogService;
+    private final WorkflowService workflowService;
 
     private static final String ROLE_ADMIN = "Admin";
     private static final String ROLE_ROLE_ADMIN = "Role Administrator";
@@ -42,6 +47,8 @@ public class FormController {
         Set<String> roleNames = userRoleService.getUserRoleNames(username);
 
         List<FormEntity> forms = formService.getFormsForRole(username, roleNames);
+        Map<UUID, WorkflowInstance> workflowByFormId = workflowService.getLatestWorkflowsByFormIds(
+                forms.stream().map(FormEntity::getId).toList());
 
         // Annotate each form with ownership flag and effective permissions
         List<Map<String, Object>> response = forms.stream().map(form -> {
@@ -54,12 +61,17 @@ public class FormController {
             map.put("visibility", form.getVisibility());
             map.put("allowedRoles", form.getAllowedRoles());
             map.put("createdBy", form.getCreatedBy());
+            map.put("assignedBuilderId", form.getAssignedBuilderId());
+            map.put("assignedBuilderUsername", form.getAssignedBuilderUsername());
             map.put("createdAt", form.getCreatedAt());
             map.put("updatedAt", form.getUpdatedAt());
             map.put("allowMultipleSubmissions", form.isAllowMultipleSubmissions());
             map.put("showTimestamp", form.isShowTimestamp());
             map.put("expiresAt", form.getExpiresAt());
             map.put("fields", form.getFields());
+
+            WorkflowInstance wf = workflowByFormId.get(form.getId());
+            map.put("workflow", wf != null ? toWorkflowSummary(wf) : null);
 
             // Ownership flag — frontend uses this to show/hide edit/delete buttons
             boolean isOwner = username.equals(form.getCreatedBy());
@@ -69,15 +81,62 @@ public class FormController {
             boolean isAdmin = roleNames.contains(ROLE_ADMIN);
             boolean isRoleAdmin = roleNames.contains(ROLE_ROLE_ADMIN);
             boolean isBuilder = roleNames.contains("Builder");
-            map.put("canEdit", !isRoleAdmin && (isOwner || isAdmin));
+            boolean isViewer = roleNames.contains("Viewer");
+            boolean isAssignedBuilder = username.equals(form.getAssignedBuilderUsername());
+            boolean hasActiveWorkflow = wf != null && wf.getStatus() == WorkflowInstanceStatus.ACTIVE;
+            boolean viewerCanAssign = isViewer && isOwner && form.getAssignedBuilderId() == null;
+            boolean canAssignBuilder = !isRoleAdmin
+                    && !hasActiveWorkflow
+                    && form.getStatus() != FormEntity.FormStatus.PENDING_APPROVAL
+                    && form.getStatus() != FormEntity.FormStatus.PUBLISHED
+                    && (isAdmin || viewerCanAssign);
+            boolean canStartWorkflow = !isRoleAdmin
+                    && !hasActiveWorkflow
+                    && form.getStatus() != FormEntity.FormStatus.PENDING_APPROVAL
+                    && form.getStatus() != FormEntity.FormStatus.PUBLISHED
+                    && (isAdmin || (isBuilder && isAssignedBuilder));
+            map.put("canEdit", !isRoleAdmin && !isViewer && (isOwner || isAdmin));
             map.put("canDelete", !isRoleAdmin && (isOwner || isAdmin));
-            map.put("canPublish", !isRoleAdmin && (isOwner || isAdmin));
+            map.put("canPublish", !isRoleAdmin && isAdmin);
+            map.put("canAssignBuilder", canAssignBuilder);
+            map.put("canStartWorkflow", canStartWorkflow);
+            map.put("canRequestWorkflow", canStartWorkflow);
             map.put("canViewSubmissions", isOwner || isAdmin || isBuilder || roleNames.contains("Manager"));
 
             return map;
         }).collect(Collectors.toList());
 
         return ResponseEntity.ok(response);
+    }
+
+    private Map<String, Object> toWorkflowSummary(WorkflowInstance wf) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", wf.getId());
+        map.put("status", wf.getStatus().name());
+        map.put("currentStepIndex", wf.getCurrentStepIndex());
+        map.put("totalSteps", wf.getTotalSteps());
+
+        List<WorkflowStep> ordered = wf.getSteps().stream()
+                .sorted(Comparator.comparing(WorkflowStep::getStepIndex))
+                .toList();
+
+        List<String> flowChain = ordered.stream().map(step -> {
+            String name = step.getApprover().getName();
+            return (name != null && !name.isBlank()) ? name : step.getApprover().getUsername();
+        }).toList();
+        map.put("flowChain", flowChain);
+
+        String currentFlowView = ordered.stream().map(step -> {
+            String name = step.getApprover().getName();
+            String label = (name != null && !name.isBlank()) ? name : step.getApprover().getUsername();
+            if (wf.getStatus() == WorkflowInstanceStatus.ACTIVE && Objects.equals(step.getStepIndex(), wf.getCurrentStepIndex())) {
+                return "[" + label + "]";
+            }
+            return label;
+        }).collect(Collectors.joining(" -> "));
+        map.put("currentFlowView", currentFlowView);
+
+        return map;
     }
 
     /** Single form with static fields bundled — used by builder edit page. */
@@ -107,6 +166,8 @@ public class FormController {
         response.put("visibility", form.getVisibility());
         response.put("allowedRoles", form.getAllowedRoles());
         response.put("createdBy", form.getCreatedBy());
+        response.put("assignedBuilderId", form.getAssignedBuilderId());
+        response.put("assignedBuilderUsername", form.getAssignedBuilderUsername());
         response.put("createdAt", form.getCreatedAt());
         response.put("updatedAt", form.getUpdatedAt());
         response.put("allowMultipleSubmissions", form.isAllowMultipleSubmissions());
@@ -139,9 +200,9 @@ public class FormController {
     @GetMapping("/{id}/render")
     public ResponseEntity<?> render(@PathVariable UUID id, jakarta.servlet.http.HttpSession session) {
         FormEntity form = formService.getFormById(id);
-        if (form.getStatus() == FormEntity.FormStatus.DRAFT) {
+        if (form.getStatus() != FormEntity.FormStatus.PUBLISHED) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "This form is not published yet.", "status", "DRAFT"));
+                    .body(Map.of("error", "This form is not published yet.", "status", form.getStatus().name()));
         }
 
         if (!form.isAllowMultipleSubmissions()) {
@@ -196,6 +257,49 @@ public class FormController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    /** Assign/Reassign Builder before workflow starts. Viewer owner or Admin only. */
+    @PatchMapping("/{id}/assign-builder")
+    public ResponseEntity<Map<String, Object>> assignBuilder(@PathVariable UUID id,
+                                                             @RequestBody AssignBuilderRequest req,
+                                                             Authentication auth,
+                                                             HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN);
+        boolean isViewer = roles.contains("Viewer");
+        if (!(isAdmin || isViewer)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Only Viewer owner or Admin can assign Builder"));
+        }
+
+        if (req == null || req.builderId == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "builderId is required"));
+        }
+
+        FormEntity form = workflowService.assignBuilder(id, req.builderId, auth.getName());
+
+        auditLogService.logEvent(
+                "ASSIGN_BUILDER",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                auth.getName(),
+                "FORM",
+                form.getId().toString(),
+                "User '" + auth.getName() + "' assigned Builder '" + form.getAssignedBuilderUsername() + "' to form '" + form.getName() + "'.",
+                Map.of("assignedBuilderId", form.getAssignedBuilderId(), "assignedBuilderUsername", form.getAssignedBuilderUsername()),
+                null,
+                null,
+                null,
+                null
+        );
+
+        return ResponseEntity.ok(Map.of(
+                "formId", form.getId(),
+                "status", form.getStatus().name(),
+                "assignedBuilderId", form.getAssignedBuilderId(),
+                "assignedBuilderUsername", form.getAssignedBuilderUsername(),
+                "message", "Builder assigned successfully"
+        ));
+    }
+
     /** Update — owner or Admin can edit a form. */
     @PutMapping("/{id}")
     public ResponseEntity<FormEntity> update(
@@ -205,6 +309,9 @@ public class FormController {
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         if (roles.contains(ROLE_ROLE_ADMIN)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        if (roles.contains("Viewer") && !roles.contains(ROLE_ADMIN)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         boolean isAdmin = roles.contains(ROLE_ADMIN);
@@ -331,5 +438,9 @@ public class FormController {
                 "id", id.toString(),
                 "status", "DRAFT",
                 "message", "Form unpublished successfully"));
+    }
+
+    public static class AssignBuilderRequest {
+        public Integer builderId;
     }
 }

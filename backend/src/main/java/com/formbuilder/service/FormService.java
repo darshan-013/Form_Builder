@@ -7,6 +7,7 @@ import com.formbuilder.entity.FormFieldEntity;
 import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.SharedOptionsEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
+import com.formbuilder.rbac.repository.UserRepository;
 import com.formbuilder.repository.FormFieldJpaRepository;
 import com.formbuilder.repository.FormGroupRepository;
 import com.formbuilder.repository.FormJpaRepository;
@@ -31,6 +32,7 @@ public class FormService {
     private final StaticFormFieldRepository staticRepo;
     private final FormGroupRepository groupRepo;
     private final DynamicTableService dynamicTable;
+    private final UserRepository userRepo;
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
@@ -64,8 +66,34 @@ public class FormService {
             return formRepo.findAllByOrderByCreatedAtDesc();
         }
 
-        // Builder sees ONLY their own forms (any status) — not other builders' forms
+        // Builder sees:
+        // 1) their own forms (any status)
+        // 2) published forms they can access by allowed_roles
+        // 3) forms explicitly assigned to them before workflow start
         if (roleNames.contains("Builder")) {
+            List<FormEntity> all = formRepo.findAllByOrderByCreatedAtDesc();
+
+            List<FormEntity> publishedVisible = filterByAllowedRoles(
+                    all.stream().filter(f -> f.getStatus() == FormEntity.FormStatus.PUBLISHED).toList(),
+                    roleNames);
+            Set<UUID> publishedVisibleIds = publishedVisible.stream().map(FormEntity::getId).collect(Collectors.toSet());
+
+            return all.stream().filter(f -> {
+                if (username.equals(f.getCreatedBy())) {
+                    return true;
+                }
+                if (publishedVisibleIds.contains(f.getId())) {
+                    return true;
+                }
+                if (f.getStatus() != FormEntity.FormStatus.PUBLISHED && f.getAssignedBuilderUsername() != null) {
+                    return username.equals(f.getAssignedBuilderUsername());
+                }
+                return false;
+            }).collect(Collectors.toList());
+        }
+
+        // Viewer sees only forms they created.
+        if (roleNames.contains("Viewer")) {
             return formRepo.findAllByCreatedByOrderByCreatedAtDesc(username);
         }
 
@@ -102,6 +130,12 @@ public class FormService {
             log.warn("Failed to parse allowed_roles JSON: {}", json);
             return List.of();
         }
+    }
+
+    private boolean isViewerUser(String username) {
+        return userRepo.findByUsernameWithRolesAndPermissions(username)
+                .map(user -> user.getRoles().stream().anyMatch(r -> "Viewer".equals(r.getRoleName())))
+                .orElse(false);
     }
 
     /** Serialize List<String> to JSON array string. */
@@ -351,6 +385,9 @@ public class FormService {
 
     @Transactional
     public FormEntity publishForm(UUID id, String owner, boolean isAdmin) {
+        if (!isAdmin) {
+            throw new IllegalStateException("Direct publish is disabled. Start a workflow request from the Builder workflow page.");
+        }
         FormEntity form = getFormForAction(id, owner, isAdmin);
         form.setStatus(FormEntity.FormStatus.PUBLISHED);
         FormEntity saved = formRepo.save(form);

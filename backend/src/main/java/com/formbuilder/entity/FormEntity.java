@@ -26,7 +26,11 @@ public class FormEntity {
 
     /** Lifecycle status stored as VARCHAR in DB. */
     public enum FormStatus {
-        DRAFT, PUBLISHED
+        DRAFT,
+        ASSIGNED,
+        PENDING_APPROVAL,
+        REJECTED,
+        PUBLISHED
     }
 
     /** Visibility level — controls which roles can see this form. */
@@ -52,6 +56,8 @@ public class FormEntity {
 
     /**
      * DRAFT = form is being built; submissions are blocked.
+     * PENDING_APPROVAL = workflow is active and awaiting decisions.
+     * REJECTED = workflow rejected; creator/builder can revise and resubmit.
      * PUBLISHED = form is live; anyone can submit.
      */
     @Enumerated(EnumType.STRING)
@@ -85,6 +91,13 @@ public class FormEntity {
      */
     @Column(name = "created_by", length = 150)
     private String createdBy;
+
+    /** Assigned Builder who is allowed to start workflow for this form. */
+    @Column(name = "assigned_builder_id")
+    private Integer assignedBuilderId;
+
+    @Column(name = "assigned_builder_username", length = 150)
+    private String assignedBuilderUsername;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -74,7 +74,19 @@ export default function Navbar() {
                     </Link>
                 )}
 
-                {can('WRITE') && (
+                {(hasRole('Manager') || hasRole('Approver') || hasRole('Builder')) && (
+                    <Link href="/admin/approvals" className="btn btn-secondary btn-sm">
+                        Approval Inbox
+                    </Link>
+                )}
+
+                {(hasRole('Viewer') || hasRole('Builder')) && (
+                    <Link href="/workflows/status" className="btn btn-secondary btn-sm">
+                        Workflow Status
+                    </Link>
+                )}
+
+                {(can('WRITE') || hasRole('Viewer')) && (
                     <Link href="/builder/new" className="btn btn-primary btn-sm">
                         + New Form
                     </Link>

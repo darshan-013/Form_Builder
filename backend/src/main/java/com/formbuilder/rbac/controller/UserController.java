@@ -134,11 +134,45 @@ public class UserController {
      * Deletes an RBAC user profile. CASCADE in DB handles user_roles cleanup.
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteUser(@PathVariable Integer id) {
+    public ResponseEntity<?> deleteUser(@PathVariable Integer id,
+                                        Authentication auth,
+                                        HttpSession session) {
 
-        userRoleService.deleteUser(id);
+        UserRoleService.DeleteUserImpact impact = userRoleService.deleteUser(id);
 
-        return ResponseEntity.ok(Map.of("message", "User deleted successfully"));
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("rejectedWorkflows", impact.getRejectedWorkflows());
+        metadata.put("creatorRefsMoved", impact.getCreatorRefsMoved());
+        metadata.put("targetRefsMoved", impact.getTargetRefsMoved());
+        metadata.put("stepRefsMoved", impact.getStepRefsMoved());
+
+        String description = "User '" + auth.getName() + "' deleted user '" + impact.getDeletedUsername() +
+                "'. Workflow impact: rejected=" + impact.getRejectedWorkflows() +
+                ", creatorRefsMoved=" + impact.getCreatorRefsMoved() +
+                ", targetRefsMoved=" + impact.getTargetRefsMoved() +
+                ", stepRefsMoved=" + impact.getStepRefsMoved() + ".";
+
+        auditLogService.logEvent(
+                "DELETE_USER",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                auth.getName(),
+                "USER",
+                id.toString(),
+                description,
+                metadata,
+                null,
+                null,
+                impact.getDeletedUserId(),
+                impact.getDeletedUsername()
+        );
+
+        return ResponseEntity.ok(Map.of(
+                "message", "User deleted successfully",
+                "rejectedWorkflows", impact.getRejectedWorkflows(),
+                "creatorRefsMoved", impact.getCreatorRefsMoved(),
+                "targetRefsMoved", impact.getTargetRefsMoved(),
+                "stepRefsMoved", impact.getStepRefsMoved()
+        ));
     }
 
     // ── POST /api/users/{id}/roles ───────────────────────────────────────
@@ -241,7 +275,7 @@ public class UserController {
      * Response:
      * <pre>
      * {
-     *   "permissions": ["APPROVE", "READ", "WRITE"]
+     *   "permissions": ["READ", "WRITE", "EXPORT"]
      * }
      * </pre>
      */

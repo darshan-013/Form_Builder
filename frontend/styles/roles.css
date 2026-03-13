@@ -435,3 +435,98 @@
   .perm-group-items { grid-template-columns: 1fr; }
 }
 
+/* ================================================
+   Phase 3 - Premium Roles Refinement
+   UI-only overrides (no logic changes)
+   ================================================ */
+
+.roles-page {
+  max-width: 1160px;
+  padding: 36px 24px 72px;
+}
+
+.roles-page-header {
+  margin-bottom: 30px;
+}
+
+.roles-page-header h1 {
+  font-size: clamp(30px, 4vw, 42px);
+  letter-spacing: -0.03em;
+}
+
+.roles-table-wrap {
+  border-radius: 16px;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+}
+
+.roles-table thead th {
+  padding: 15px 20px;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+}
+
+.roles-table tbody td {
+  padding: 15px 20px;
+}
+
+.roles-table tbody tr {
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.roles-table tbody tr:hover {
+  background: rgba(139, 92, 246, 0.08);
+  transform: translateY(-1px);
+}
+
+.role-action-btn {
+  border-radius: 10px;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.role-form-card {
+  border-radius: 16px;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.42);
+}
+
+.role-form-card h2 {
+  font-size: clamp(24px, 3vw, 30px);
+  letter-spacing: -0.02em;
+}
+
+.perm-group {
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.perm-group:hover {
+  border-color: rgba(139, 92, 246, 0.28);
+  background: rgba(139, 92, 246, 0.05);
+  box-shadow: 0 8px 20px rgba(20, 15, 50, 0.25);
+}
+
+@media (max-width: 1023px) {
+  .roles-page {
+    padding: 30px 20px 60px;
+  }
+
+  .roles-table thead th,
+  .roles-table tbody td {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+
+@media (max-width: 767px) {
+  .roles-page {
+    padding: 24px 16px 52px;
+  }
+
+  .role-form-card {
+    padding: 24px 18px;
+    border-radius: 14px;
+  }
+}
+

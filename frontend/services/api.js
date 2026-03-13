@@ -92,6 +92,9 @@ export const getFormRenderAdmin = (id) =>
 export const createForm = (dto) =>
     request('POST', '/forms', dto);
 
+export const assignBuilder = (id, builderId) =>
+    request('PATCH', `/forms/${id}/assign-builder`, { builderId });
+
 export const updateForm = (id, dto) =>
     request('PUT', `/forms/${id}`, dto);
 
@@ -339,4 +342,24 @@ export const getRoleAssignmentLogs = (filters = {}) => {
     const qs = params.toString();
     return request('GET', `/logs/role-assignments${qs ? `?${qs}` : ''}`);
 };
+
+// ── Workflow Engine ───────────────────────────────────────────
+
+export const getWorkflowCandidates = () =>
+    request('GET', '/workflows/candidates');
+
+export const initiateWorkflow = (formId, targetBuilderId, intermediateAuthorityIds = []) =>
+    request('POST', '/workflows/initiate', { formId, targetBuilderId, intermediateAuthorityIds });
+
+export const getMyPendingWorkflowSteps = () =>
+    request('GET', '/workflows/my-pending');
+
+export const approveWorkflowStep = (stepId, comments) =>
+    request('POST', `/workflows/steps/${stepId}/approve`, { comments: comments || null });
+
+export const rejectWorkflowStep = (stepId, comments) =>
+    request('POST', `/workflows/steps/${stepId}/reject`, { comments: comments || null });
+
+export const getMyWorkflowStatus = () =>
+    request('GET', '/workflows/my-status');
 

@@ -48,7 +48,7 @@ export default function DashboardPage() {
 
     // ── Base sections ──────────────────────────────────────
     const allPublished = forms.filter((f) => f.status === 'PUBLISHED');
-    const allDraft = forms.filter((f) => !f.status || f.status === 'DRAFT');
+    const allDraft = forms.filter((f) => f.status !== 'PUBLISHED');
 
     // ── Filtered by search ─────────────────────────────────
     const match = (f, q) =>
@@ -114,12 +114,18 @@ export default function DashboardPage() {
     // ── Card ───────────────────────────────────────────────
     const renderCard = (form, selectedSet, setSelectedFn) => {
         const isPublished = form.status === 'PUBLISHED';
+        const isPending = form.status === 'PENDING_APPROVAL';
+        const isRejected = form.status === 'REJECTED';
+        const isAssigned = form.status === 'ASSIGNED';
         const busy = !!statusLoading[form.id];
         const isSelected = selectedSet.has(form.id);
         const isOwner = form.isOwner;
+        const workflow = form.workflow;
         const formCanEdit = form.canEdit;
         const formCanDelete = form.canDelete;
         const formCanPublish = form.canPublish;
+        const formCanStartWorkflow = !!(form.canStartWorkflow ?? form.canRequestWorkflow);
+        const formCanAssignBuilder = !!form.canAssignBuilder;
         const formCanViewSubs = form.canViewSubmissions;
 
         // Allowed roles info
@@ -148,7 +154,7 @@ export default function DashboardPage() {
                 <div className="form-card-header">
                     <div className="form-card-icon">{isPublished ? '🌐' : '📋'}</div>
                     <div className="form-card-menu">
-                        {formCanEdit && (
+                        {formCanEdit && !hasRole('Viewer') && (
                             <Link href={`/builder/${form.id}`} className="btn btn-secondary btn-sm" title="Edit">✎</Link>
                         )}
                         <Link href={`/preview/${form.id}`} className="btn btn-secondary btn-sm" title="Preview">👁</Link>
@@ -159,8 +165,12 @@ export default function DashboardPage() {
                 </div>
 
                 <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                    <span className={`status-badge status-badge-${isPublished ? 'published' : 'draft'}`}>
-                        {isPublished ? '🌐 Published' : '📝 Draft'}
+                    <span className={`status-badge status-badge-${isPublished ? 'published' : 'draft'}`} style={
+                        isPending ? { background: 'rgba(245,158,11,0.18)', color: '#FCD34D', borderColor: 'rgba(245,158,11,0.35)' } :
+                        isRejected ? { background: 'rgba(239,68,68,0.18)', color: '#FCA5A5', borderColor: 'rgba(239,68,68,0.35)' } :
+                        undefined
+                    }>
+                        {isPublished ? '🌐 Published' : isPending ? '⏳ Pending Approval' : isRejected ? '⛔ Rejected' : isAssigned ? '🧭 Assigned' : '📝 Draft'}
                     </span>
                     {accessBadge}
                     {!isOwner && (
@@ -172,6 +182,27 @@ export default function DashboardPage() {
 
                 <div className="form-card-name">{form.name}</div>
                 <div className="form-card-desc">{form.description || 'No description'}</div>
+
+                <div style={{
+                    marginBottom: 10,
+                    padding: '8px 10px',
+                    borderRadius: 10,
+                    border: '1px solid rgba(99,102,241,0.22)',
+                    background: 'rgba(99,102,241,0.08)'
+                }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#C7D2FE' }}>
+                        {workflow
+                            ? `Workflow ${workflow.currentStepIndex}/${workflow.totalSteps} · ${workflow.status}`
+                            : 'Workflow · NOT_STARTED'}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        {workflow
+                            ? (workflow.currentFlowView || (workflow.flowChain || []).join(' -> ') || '—')
+                            : (form.assignedBuilderUsername
+                                ? `Assigned to ${form.assignedBuilderUsername}. Workflow not started yet.`
+                                : 'No approval chain started yet.')}
+                    </div>
+                </div>
 
                 <div className="form-card-footer">
                     <div className="form-card-meta">
@@ -187,12 +218,29 @@ export default function DashboardPage() {
                                 <Link href={`/submit/${form.id}`} className="btn btn-secondary btn-sm">↗ Share</Link>
                             </>
                         ) : (
-                            formCanPublish && (
-                                <button className="btn btn-publish btn-sm"
-                                    onClick={() => handlePublish(form.id, form.name)} disabled={busy}>
-                                    {busy ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : '🚀 Publish'}
-                                </button>
-                            )
+                            <>
+                                {formCanPublish && (
+                                    <button className="btn btn-publish btn-sm"
+                                        onClick={() => handlePublish(form.id, form.name)} disabled={busy}>
+                                        {busy ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : '🚀 Publish'}
+                                    </button>
+                                )}
+                                {formCanAssignBuilder && !isPending && (
+                                    <Link href={`/workflows/create/${form.id}`} className="btn btn-secondary btn-sm">
+                                        👤 Assign Builder
+                                    </Link>
+                                )}
+                                {formCanStartWorkflow && !isPending && (
+                                    <Link href={`/workflows/create/${form.id}`} className="btn btn-secondary btn-sm">
+                                        🧭 Start Workflow
+                                    </Link>
+                                )}
+                                {isPending && (
+                                    <Link href="/workflows/status" className="btn btn-secondary btn-sm">
+                                        📍 Track Status
+                                    </Link>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
@@ -305,7 +353,7 @@ export default function DashboardPage() {
                                 <Link href="/forms/trash" className="btn btn-secondary" id="trash-btn"
                                     style={{ display: 'flex', alignItems: 'center', gap: 6 }}>🗑 Trash</Link>
                             )}
-                            {can('WRITE') && (
+                            {(can('WRITE') || hasRole('Viewer')) && (
                                 <Link href="/builder/new" className="btn btn-primary" id="new-form-btn">+ New Form</Link>
                             )}
                         </div>
@@ -337,7 +385,7 @@ export default function DashboardPage() {
                         <div className="empty-state">
                             <div className="empty-state-icon">📋</div>
                             <h3>No forms yet</h3>
-                            {can('WRITE') ? (
+                            {(can('WRITE') || hasRole('Viewer')) ? (
                                 <>
                                     <p>Create your first form to get started</p>
                                     <br />
@@ -345,7 +393,7 @@ export default function DashboardPage() {
                                 </>
                             ) : (
                                 <>
-                                    <p>You currently have <strong>Viewer</strong> access (read-only).</p>
+                                    <p>Your account does not currently have form creation access.</p>
                                     <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
                                         Contact your Admin or Role Administrator to request additional permissions.
                                     </p>

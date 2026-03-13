@@ -381,8 +381,9 @@
 .user-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.7);
-  backdrop-filter: blur(6px);
+  background: rgba(0,0,0,0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -399,6 +400,18 @@
   width: 90%;
   box-shadow: var(--shadow-lg);
   animation: slideUp 0.25s ease;
+}
+
+[data-theme="light"] .user-modal-overlay {
+  background: rgba(15, 23, 42, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+[data-theme="light"] .user-modal {
+  background: #FFFFFF;
+  border-color: rgba(239, 68, 68, 0.28);
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(239, 68, 68, 0.08);
 }
 
 .user-modal h3 {
@@ -500,5 +513,109 @@
   }
   .user-form-card { padding: 24px 18px; }
   .role-assign-grid { grid-template-columns: 1fr; }
+}
+
+/* ================================================
+   Phase 3 - Premium Users Refinement
+   UI-only overrides (no logic changes)
+   ================================================ */
+
+.users-page {
+  max-width: 1160px;
+  padding: 36px 24px 72px;
+}
+
+.users-page-header {
+  margin-bottom: 30px;
+}
+
+.users-page-header h1 {
+  font-size: clamp(30px, 4vw, 42px);
+  letter-spacing: -0.03em;
+}
+
+.users-table-wrap {
+  border-radius: 16px;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+}
+
+.users-table thead th {
+  padding: 15px 20px;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+}
+
+.users-table tbody td {
+  padding: 15px 20px;
+}
+
+.users-table tbody tr {
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.users-table tbody tr:hover {
+  background: rgba(139, 92, 246, 0.08);
+  transform: translateY(-1px);
+}
+
+.user-avatar {
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.24);
+}
+
+.user-action-btn {
+  border-radius: 10px;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.user-form-card {
+  border-radius: 16px;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.42);
+}
+
+.user-form-card h2 {
+  font-size: clamp(24px, 3vw, 30px);
+  letter-spacing: -0.02em;
+}
+
+.role-assign-item {
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.role-assign-item:hover {
+  border-color: rgba(139, 92, 246, 0.3);
+  background: rgba(139, 92, 246, 0.07);
+  box-shadow: 0 8px 20px rgba(20, 15, 50, 0.22);
+}
+
+.role-assign-item.assigned {
+  border-color: rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.11);
+}
+
+@media (max-width: 1023px) {
+  .users-page {
+    padding: 30px 20px 60px;
+  }
+
+  .users-table thead th,
+  .users-table tbody td {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+
+@media (max-width: 767px) {
+  .users-page {
+    padding: 24px 16px 52px;
+  }
+
+  .user-form-card {
+    padding: 24px 18px;
+    border-radius: 14px;
+  }
 }
 
