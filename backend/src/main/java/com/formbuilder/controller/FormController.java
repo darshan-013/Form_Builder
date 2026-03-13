@@ -49,6 +49,7 @@ public class FormController {
         List<FormEntity> forms = formService.getFormsForRole(username, roleNames);
         Map<UUID, WorkflowInstance> workflowByFormId = workflowService.getLatestWorkflowsByFormIds(
                 forms.stream().map(FormEntity::getId).toList());
+        Map<String, Boolean> creatorIsBuilderCache = new HashMap<>();
 
         // Annotate each form with ownership flag and effective permissions
         List<Map<String, Object>> response = forms.stream().map(form -> {
@@ -83,6 +84,15 @@ public class FormController {
             boolean isBuilder = roleNames.contains("Builder");
             boolean isViewer = roleNames.contains("Viewer");
             boolean isAssignedBuilder = username.equals(form.getAssignedBuilderUsername());
+            boolean isDraft = form.getStatus() == FormEntity.FormStatus.DRAFT;
+            boolean isBuilderCreated = form.getCreatedBy() != null
+                    && creatorIsBuilderCache.computeIfAbsent(form.getCreatedBy(), creator -> {
+                        try {
+                            return userRoleService.getUserRoleNames(creator).contains("Builder");
+                        } catch (Exception ex) {
+                            return false;
+                        }
+                    });
             boolean hasActiveWorkflow = wf != null && wf.getStatus() == WorkflowInstanceStatus.ACTIVE;
             boolean viewerCanAssign = isViewer && isOwner && form.getAssignedBuilderId() == null;
             boolean canAssignBuilder = !isRoleAdmin
@@ -97,7 +107,7 @@ public class FormController {
                     && (isAdmin || (isBuilder && isAssignedBuilder));
             map.put("canEdit", !isRoleAdmin && !isViewer && (isOwner || isAdmin));
             map.put("canDelete", !isRoleAdmin && (isOwner || isAdmin));
-            map.put("canPublish", !isRoleAdmin && isAdmin);
+            map.put("canPublish", !isRoleAdmin && isDraft && isBuilderCreated && (isAdmin || (isBuilder && isOwner)));
             map.put("canAssignBuilder", canAssignBuilder);
             map.put("canStartWorkflow", canStartWorkflow);
             map.put("canRequestWorkflow", canStartWorkflow);
@@ -392,7 +402,8 @@ public class FormController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         boolean isAdmin = roles.contains(ROLE_ADMIN);
-        FormEntity form = formService.publishForm(id, auth.getName(), isAdmin);
+        boolean isBuilder = roles.contains("Builder");
+        FormEntity form = formService.publishForm(id, auth.getName(), isAdmin, isBuilder);
         auditLogService.logEvent(
                 "PUBLISH_FORM",
                 auditLogService.getSessionUserId(session.getAttribute("USER_ID")),

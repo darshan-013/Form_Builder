@@ -384,11 +384,29 @@ public class FormService {
     // ── Status (Publish / Unpublish) ──────────────────────────────────────────
 
     @Transactional
-    public FormEntity publishForm(UUID id, String owner, boolean isAdmin) {
-        if (!isAdmin) {
-            throw new IllegalStateException("Direct publish is disabled. Start a workflow request from the Builder workflow page.");
-        }
+    public FormEntity publishForm(UUID id, String owner, boolean isAdmin, boolean isBuilder) {
         FormEntity form = getFormForAction(id, owner, isAdmin);
+
+        if (form.getStatus() != FormEntity.FormStatus.DRAFT) {
+            throw new IllegalStateException("Only drafted forms can be published.");
+        }
+
+        boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
+                .map(user -> user.getRoles().stream().anyMatch(role -> "Builder".equals(role.getRoleName())))
+                .orElse(false);
+        if (!creatorIsBuilder) {
+            throw new IllegalStateException("Only draft forms created by Builder can be published.");
+        }
+
+        if (!isAdmin) {
+            if (!isBuilder) {
+                throw new IllegalStateException("Only Admin or Builder owner can publish this form.");
+            }
+            if (!owner.equals(form.getCreatedBy())) {
+                throw new IllegalStateException("Builder can publish only own draft forms.");
+            }
+        }
+
         form.setStatus(FormEntity.FormStatus.PUBLISHED);
         FormEntity saved = formRepo.save(form);
         log.info("Form '{}' published by '{}'", form.getName(), owner);

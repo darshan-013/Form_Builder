@@ -1323,6 +1323,37 @@
   color: var(--text-muted);
 }
 
+.workflow-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.workflow-filter-chip {
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.workflow-filter-chip:hover {
+  border-color: rgba(139, 92, 246, 0.55);
+  color: var(--text-primary);
+}
+
+.workflow-filter-chip.active {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.72);
+  color: #ddd6fe;
+}
+
 .workflow-header-banner {
   background: linear-gradient(135deg, #4c1d95, #5b21b6);
   border-radius: 16px;
@@ -1908,6 +1939,18 @@
 
 [data-theme="light"] .workflow-header-banner {
   background: linear-gradient(135deg, #5b21b6, #6d28d9);
+}
+
+[data-theme="light"] .workflow-filter-chip {
+  background: #ffffff;
+  border-color: rgba(139, 92, 246, 0.32);
+  color: #4b5563;
+}
+
+[data-theme="light"] .workflow-filter-chip.active {
+  background: #ede9fe;
+  border-color: #7c3aed;
+  color: #5b21b6;
 }
 
 [data-theme="light"] .workflow-step-node {
