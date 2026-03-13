@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Navbar from '../../components/Navbar';
-import { getUsers, deleteUser, removeRoleFromUser } from '../../services/api';
+import { getUsers, deleteUser } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
 
@@ -59,16 +59,6 @@ export default function UsersPage() {
         } finally {
             setDeleting(false);
             setDeleteTarget(null);
-        }
-    }
-
-    async function handleRemoveRole(userId, roleId, roleName) {
-        try {
-            const updated = await removeRoleFromUser(userId, roleId);
-            setUsers(prev => prev.map(u => u.id === userId ? updated : u));
-            toastSuccess(`Role "${roleName}" removed.`);
-        } catch (err) {
-            toastError(err.message || 'Failed to remove role.');
         }
     }
 
@@ -157,19 +147,12 @@ export default function UsersPage() {
                                             </td>
                                             <td data-label="Roles">
                                                 <div className="role-tags">
-                                                    {(user.roles || []).map(role => (
+                                                    {(user.roles || []).slice(0, 1).map(role => (
                                                         <span
                                                             key={role.id}
                                                             className={`role-tag ${role.isSystemRole ? 'system-tag' : 'custom-tag'}`}
                                                         >
                                                             {role.isSystemRole ? '🔒' : '⚙️'} {role.roleName}
-                                                            <span
-                                                                className="tag-remove"
-                                                                title={`Remove ${role.roleName}`}
-                                                                onClick={() => handleRemoveRole(user.id, role.id, role.roleName)}
-                                                            >
-                                                                ✕
-                                                            </span>
                                                         </span>
                                                     ))}
                                                     {(!user.roles || user.roles.length === 0) && (

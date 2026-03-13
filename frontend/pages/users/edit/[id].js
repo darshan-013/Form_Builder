@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Navbar from '../../../components/Navbar';
 import {
     getUser, updateUser, getRoles,
-    assignRoleToUser, removeRoleFromUser
+    assignRoleToUser
 } from '../../../services/api';
 import { toastSuccess, toastError } from '../../../services/toast';
 import { useAuth } from '../../../context/AuthContext';
@@ -19,7 +19,8 @@ export default function EditUserPage() {
     const [email, setEmail] = useState('');
     const [originalUser, setOriginalUser] = useState(null);
     const [allRoles, setAllRoles] = useState([]);
-    const [userRoleIds, setUserRoleIds] = useState(new Set());
+    const [userRoleId, setUserRoleId] = useState(null);
+    const [selectedRoleId, setSelectedRoleId] = useState(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [roleLoading, setRoleLoading] = useState(null); // roleId being toggled
@@ -39,7 +40,9 @@ export default function EditUserPage() {
             setOriginalUser(user);
             setName(user.name || '');
             setEmail(user.email || '');
-            setUserRoleIds(new Set((user.roles || []).map(r => r.id)));
+            const currentRoleId = (user.roles && user.roles.length > 0) ? Number(user.roles[0].id) : null;
+            setUserRoleId(currentRoleId);
+            setSelectedRoleId(currentRoleId);
         } catch (err) {
             if (err.status === 403) {
                 toastError('You do not have permission to edit users.');
@@ -84,21 +87,20 @@ export default function EditUserPage() {
         }
     }
 
-    // Toggle role assignment (instant — no form submit needed)
-    async function handleToggleRole(roleId) {
-        setRoleLoading(roleId);
+    async function handleApplyRoleChange() {
+        if (roleLoading !== null) return;
+        const nextRoleId = Number(selectedRoleId);
+        if (!nextRoleId || userRoleId === nextRoleId) return;
+
+        setRoleLoading(nextRoleId);
         try {
-            let updated;
-            if (userRoleIds.has(roleId)) {
-                updated = await removeRoleFromUser(id, roleId);
-                toastSuccess('Role removed.');
-            } else {
-                updated = await assignRoleToUser(id, roleId);
-                toastSuccess('Role assigned.');
-            }
+            const updated = await assignRoleToUser(id, nextRoleId);
+            toastSuccess('Role updated.');
             // Refresh user state from response
             setOriginalUser(updated);
-            setUserRoleIds(new Set((updated.roles || []).map(r => r.id)));
+            const updatedRoleId = (updated.roles && updated.roles.length > 0) ? Number(updated.roles[0].id) : null;
+            setUserRoleId(updatedRoleId);
+            setSelectedRoleId(updatedRoleId);
         } catch (err) {
             toastError(err.message || 'Failed to update role.');
         } finally {
@@ -110,6 +112,7 @@ export default function EditUserPage() {
         (name.trim() || '') !== (originalUser.name || '') ||
         (email.trim() || '') !== (originalUser.email || '')
     );
+    const roleChanged = selectedRoleId !== userRoleId;
 
     if (loading) {
         return (
@@ -232,34 +235,27 @@ export default function EditUserPage() {
                     {/* ── Role Assignment Section ────────────── */}
                     {allRoles.length > 0 && (
                         <div className="role-assign-section">
-                            <h3>Role Assignments</h3>
+                            <h3>Role Assignment</h3>
                             <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                                Click to assign or remove roles instantly. Changes are saved automatically.
+                                Select one role and click Apply Changes.
                             </span>
                             <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 16 }}>
-                                {userRoleIds.size} role{userRoleIds.size !== 1 ? 's' : ''} assigned
+                                {userRoleId ? '1 role assigned' : 'No role assigned'}
                             </span>
 
                             {/* Current roles as chips */}
-                            {userRoleIds.size > 0 && (
+                            {userRoleId && (
                                 <div style={{ marginBottom: 16 }}>
                                     <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
-                                        Current Roles
+                                        Current Role
                                     </span>
                                     <div className="current-roles-list">
-                                        {(originalUser.roles || []).map(role => (
+                                        {(originalUser.roles || []).slice(0, 1).map(role => (
                                             <span
                                                 key={role.id}
                                                 className={`current-role-chip ${role.isSystemRole ? 'system-chip' : 'custom-chip'}`}
                                             >
                                                 {role.isSystemRole ? '🔒' : '⚙️'} {role.roleName}
-                                                <span
-                                                    className="chip-remove"
-                                                    title={`Remove ${role.roleName}`}
-                                                    onClick={() => handleToggleRole(role.id)}
-                                                >
-                                                    ✕
-                                                </span>
                                             </span>
                                         ))}
                                     </div>
@@ -269,8 +265,9 @@ export default function EditUserPage() {
                             {/* All roles grid with checkboxes */}
                             <div className="role-assign-grid">
                                 {allRoles.map(role => {
-                                    const isAssigned = userRoleIds.has(role.id);
-                                    const isToggling = roleLoading === role.id;
+                                    const roleId = Number(role.id);
+                                    const isAssigned = selectedRoleId === roleId;
+                                    const isToggling = roleLoading === roleId;
 
                                     return (
                                         <label
@@ -279,9 +276,10 @@ export default function EditUserPage() {
                                             style={isToggling ? { opacity: 0.5, pointerEvents: 'none' } : {}}
                                         >
                                             <input
-                                                type="checkbox"
+                                                type="radio"
+                                                name="roleSelection"
                                                 checked={isAssigned}
-                                                onChange={() => handleToggleRole(role.id)}
+                                                onChange={() => setSelectedRoleId(roleId)}
                                                 disabled={isToggling}
                                             />
                                             <div className="role-assign-label">
@@ -296,6 +294,22 @@ export default function EditUserPage() {
                                         </label>
                                     );
                                 })}
+                            </div>
+
+                            <div className="user-form-actions" style={{ borderTop: 'none', marginTop: 12, paddingTop: 0 }}>
+                                <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    onClick={handleApplyRoleChange}
+                                    disabled={roleLoading !== null || !roleChanged || !selectedRoleId}
+                                >
+                                    {roleLoading !== null ? 'Applying...' : 'Apply Changes'}
+                                </button>
+                                {!roleChanged && roleLoading === null && (
+                                    <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
+                                        No role changes to apply
+                                    </span>
+                                )}
                             </div>
 
                             {/* Effective permissions display */}

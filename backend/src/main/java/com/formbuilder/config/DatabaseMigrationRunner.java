@@ -176,7 +176,45 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         exec("CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id)");
         exec("CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id)");
 
-        // 8h. Seed role ↔ permission matrix
+        // 8h. immutable audit logs table
+        exec("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id                     BIGSERIAL PRIMARY KEY,
+                    action                 VARCHAR(60)  NOT NULL,
+                    performed_by_user_id   INT,
+                    performed_by_username  VARCHAR(100) NOT NULL,
+                    target_entity          VARCHAR(30)  NOT NULL,
+                    target_entity_id       VARCHAR(100),
+                    description            TEXT         NOT NULL,
+                    created_at             TIMESTAMP    NOT NULL DEFAULT NOW(),
+                    metadata               JSONB,
+                    related_role_id        INT,
+                    related_role_name      VARCHAR(100),
+                    related_user_id        INT,
+                    related_username       VARCHAR(100)
+                )
+                """);
+        exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)");
+        exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)");
+        exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_performed_by ON audit_logs(performed_by_username)");
+        exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_role ON audit_logs(related_role_id)");
+        exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(related_user_id)");
+
+        // Block UPDATE/DELETE so audit logs remain immutable.
+        exec("""
+                CREATE OR REPLACE FUNCTION fn_prevent_audit_logs_change()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    RAISE EXCEPTION 'audit_logs are immutable';
+                END;
+                $$ LANGUAGE plpgsql
+                """);
+        exec("DROP TRIGGER IF EXISTS trg_audit_logs_no_update ON audit_logs");
+        exec("DROP TRIGGER IF EXISTS trg_audit_logs_no_delete ON audit_logs");
+        exec("CREATE TRIGGER trg_audit_logs_no_update BEFORE UPDATE ON audit_logs FOR EACH ROW EXECUTE FUNCTION fn_prevent_audit_logs_change()");
+        exec("CREATE TRIGGER trg_audit_logs_no_delete BEFORE DELETE ON audit_logs FOR EACH ROW EXECUTE FUNCTION fn_prevent_audit_logs_change()");
+
+        // 8i. Seed role ↔ permission matrix
         exec("INSERT INTO role_permissions (role_id, permission_id) " +
                 "SELECT r.id, p.id FROM roles r, permissions p " +
                 "WHERE r.role_name = 'Viewer' AND p.permission_key = 'READ' " +

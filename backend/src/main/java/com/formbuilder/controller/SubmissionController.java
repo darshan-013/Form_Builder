@@ -2,6 +2,7 @@ package com.formbuilder.controller;
 
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.rbac.service.UserRoleService;
+import com.formbuilder.service.AuditLogService;
 import com.formbuilder.service.FormService;
 import com.formbuilder.service.SubmissionService;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class SubmissionController {
     private final SubmissionService submissionService;
     private final FormService formService;
     private final UserRoleService userRoleService;
+    private final AuditLogService auditLogService;
 
     private static final String UPLOAD_DIR = "uploads";
 
@@ -90,6 +92,23 @@ public class SubmissionController {
 
         submissionService.validate(id, data, null);
         submissionService.finalizeSubmission(id, auth != null ? auth.getName() : null, data);
+
+        FormEntity form = formService.getFormById(id);
+        String username = auth != null ? auth.getName() : "anonymous";
+        auditLogService.logEvent(
+                "SUBMIT_FORM",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                username,
+                "FORM",
+                id.toString(),
+                "User '" + username + "' submitted form '" + form.getName() + "'.",
+                Map.of("formName", form.getName()),
+                null,
+                null,
+                null,
+                null
+        );
+
         return ResponseEntity.ok(Map.of("message", "Form submitted successfully"));
     }
 
@@ -192,6 +211,23 @@ public class SubmissionController {
             }
 
             submissionService.finalizeSubmission(id, auth != null ? auth.getName() : null, data);
+
+            FormEntity form = formService.getFormById(id);
+            String username = auth != null ? auth.getName() : "anonymous";
+            auditLogService.logEvent(
+                    "SUBMIT_FORM",
+                    auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                    username,
+                    "FORM",
+                    id.toString(),
+                    "User '" + username + "' submitted form '" + form.getName() + "'.",
+                    Map.of("formName", form.getName()),
+                    null,
+                    null,
+                    null,
+                    null
+            );
+
             return ResponseEntity.ok(Map.of("message", "Form submitted successfully"));
 
         } catch (IOException e) {

@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 export default function Navbar() {
     const router = useRouter();
     const { theme, toggleTheme } = useTheme();
-    const { can, clearAuth, user, roles } = useAuth();
+    const { can, clearAuth, user, roles, hasRole } = useAuth();
 
     const handleLogout = async () => {
         try {
@@ -59,6 +59,18 @@ export default function Navbar() {
                 {can('MANAGE') && (
                     <Link href="/users" className="btn btn-secondary btn-sm">
                         👤 Users
+                    </Link>
+                )}
+
+                {hasRole('Admin') && (
+                    <Link href="/logs/admin" className="btn btn-secondary btn-sm">
+                        Audit Logs
+                    </Link>
+                )}
+
+                {hasRole('Role Administrator') && (
+                    <Link href="/logs/role-assignments" className="btn btn-secondary btn-sm">
+                        Role Logs
                     </Link>
                 )}
 

@@ -33,7 +33,6 @@ export default function EditBuilderPage() {
     // ── Role-based form access ──
     const [availableRoles, setAvailableRoles] = useState([]);
     const [allowedRoles, setAllowedRoles] = useState([]);
-    const [formHasCustomRoles, setFormHasCustomRoles] = useState(false); // tracks if form had saved roles
 
     // Load available roles
     useEffect(() => {
@@ -63,15 +62,12 @@ export default function EditBuilderPage() {
                             : form.allowedRoles;
                         if (Array.isArray(parsed) && parsed.length > 0) {
                             setAllowedRoles(parsed);
-                            setFormHasCustomRoles(true);
                         } else {
                             setAllowedRoles([]);
-                            setFormHasCustomRoles(false);
                         }
-                    } catch { setAllowedRoles([]); setFormHasCustomRoles(false); }
+                    } catch { setAllowedRoles([]); }
                 } else {
                     setAllowedRoles([]);
-                    setFormHasCustomRoles(false);
                 }
 
                 // Load expiry — convert from ISO to datetime-local format (YYYY-MM-DDTHH:mm)
@@ -136,13 +132,6 @@ export default function EditBuilderPage() {
             .finally(() => setLoading(false));
     }, [id]);
 
-    // Once both form and roles are loaded, set default if form had no custom roles
-    useEffect(() => {
-        if (availableRoles.length > 0 && !formHasCustomRoles && allowedRoles.length === 0 && !loading) {
-            setAllowedRoles(availableRoles.map(r => r.roleName));
-        }
-    }, [availableRoles, loading, formHasCustomRoles]);
-
     const handleSave = async () => {
         if (!formName.trim()) { toastError('Form name is required.'); return; }
 
@@ -199,7 +188,7 @@ export default function EditBuilderPage() {
             })),
             allowMultipleSubmissions: allowMultipleSubmissions,
             visibility: visibility,
-            allowedRoles: allowedRoles.length === availableRoles.length ? [] : allowedRoles,
+            allowedRoles: allowedRoles,
             showTimestamp: true, // always recorded — compulsory
             expiresAt: expiresAt ? expiresAt : null,
         };
@@ -328,9 +317,9 @@ export default function EditBuilderPage() {
                                             <div className="form-settings-expiry-info">
                                                 <span className="form-settings-toggle-label">👥 Who can see this form?</span>
                                                 <span className="form-settings-toggle-desc">
-                                                    {allowedRoles.length === 0 || allowedRoles.length === availableRoles.length
-                                                        ? 'All roles can see this form (default)'
-                                                        : `${allowedRoles.length} role${allowedRoles.length !== 1 ? 's' : ''} selected — Admin & Role Admin always have access`}
+                                                    {allowedRoles.length === 0
+                                                        ? 'No explicit role access selected. System default visibility rules apply.'
+                                                        : `${allowedRoles.length} explicit role${allowedRoles.length !== 1 ? 's' : ''} selected — Admin & Role Admin always have access`}
                                                 </span>
                                             </div>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>

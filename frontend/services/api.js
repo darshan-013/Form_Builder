@@ -317,3 +317,26 @@ export const removeRoleFromUser = (userId, roleId) =>
 
 export const getUserPermissions = (userId) =>
     request('GET', `/users/${userId}/permissions`);
+
+// ── Audit Logs ───────────────────────────────────────────────
+
+export const getAdminLogs = (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.action) params.set('action', filters.action);
+    if (filters.user) params.set('user', filters.user);
+    if (filters.fromDate) params.set('fromDate', filters.fromDate);
+    if (filters.toDate) params.set('toDate', filters.toDate);
+    const qs = params.toString();
+    return request('GET', `/logs/admin${qs ? `?${qs}` : ''}`);
+};
+
+export const getRoleAssignmentLogs = (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.roleId) params.set('roleId', String(filters.roleId));
+    if (filters.user) params.set('user', filters.user);
+    if (filters.fromDate) params.set('fromDate', filters.fromDate);
+    if (filters.toDate) params.set('toDate', filters.toDate);
+    const qs = params.toString();
+    return request('GET', `/logs/role-assignments${qs ? `?${qs}` : ''}`);
+};
+

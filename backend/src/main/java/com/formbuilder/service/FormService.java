@@ -44,7 +44,7 @@ public class FormService {
      *
      * Role visibility matrix:
      * - Admin:              ALL non-deleted forms
-     * - Role Administrator: ALL non-deleted PUBLISHED forms
+     * - Role Administrator: ALL non-deleted forms (draft + published), preview-only
      * - Builder:            ONLY their own forms (any status) — not other builders' forms
      * - Others:             PUBLISHED forms filtered by allowed_roles
      *
@@ -59,9 +59,9 @@ public class FormService {
             return formRepo.findAllByOrderByCreatedAtDesc();
         }
 
-        // Role Administrator sees all published forms
+        // Role Administrator sees all active forms (including drafts)
         if (roleNames.contains("Role Administrator")) {
-            return formRepo.findPublishedPublicForms();
+            return formRepo.findAllByOrderByCreatedAtDesc();
         }
 
         // Builder sees ONLY their own forms (any status) — not other builders' forms
