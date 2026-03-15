@@ -4,9 +4,6 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { register } from '../services/api';
 import { toastSuccess, toastError } from '../services/toast';
-import Card from '../components/ui/Card';
-import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
 
 export default function RegisterPage() {
     const router = useRouter();
@@ -55,103 +52,98 @@ export default function RegisterPage() {
                 <meta name="description" content="Create your FormCraft account" />
             </Head>
 
-            <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden bg-slate-50 dark:bg-[#020617]">
-                {/* Background Glows */}
-                <div className="fixed inset-0 pointer-events-none z-0">
-                    <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-500/10 blur-[120px] rounded-full" />
-                    <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-500/10 blur-[120px] rounded-full" />
-                </div>
+            <div className="auth-page">
+                <div className="auth-card animate-in">
+                    <div className="auth-logo">
+                        <div className="auth-logo-icon">✦</div>
+                        <h1 className="auth-title">Create Account</h1>
+                        <p className="auth-subtitle">Join FormCraft to start building forms</p>
+                    </div>
 
-                <div className="relative z-10 w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <Card className="p-8 md:p-10 border-indigo-500/10 dark:border-white/5">
-                        <div className="text-center mb-8">
-                            <div className="w-16 h-16 bg-purple-500/10 text-purple-500 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-purple-500/20">
-                                ✦
-                            </div>
-                            <h1 className="text-3xl font-black tracking-tight text-gray-900 dark:text-white mb-2 font-display">
-                                Create Account
-                            </h1>
-                            <p className="text-gray-500 dark:text-gray-400">Join FormCraft to start building forms</p>
+                    {error && (
+                        <div className="auth-error">
+                            <span>⚠</span> {error}
                         </div>
+                    )}
 
-                        {error && (
-                            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm flex items-center gap-3">
-                                <span>⚠</span> {error}
-                            </div>
-                        )}
-
-                        <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-                            <Input
-                                label="Username"
+                    <form className="auth-form" onSubmit={handleSubmit} noValidate>
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="username">Username</label>
+                            <input
                                 id="username"
                                 name="username"
+                                type="text"
+                                className="form-input"
                                 placeholder="Choose a username"
                                 value={form.username}
                                 onChange={handleChange}
                                 autoComplete="username"
                                 autoFocus
-                                required
                             />
+                        </div>
 
-                            <Input
-                                label="Email"
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="email">Email</label>
+                            <input
                                 id="email"
                                 name="email"
                                 type="email"
+                                className="form-input"
                                 placeholder="your@email.com"
                                 value={form.email}
                                 onChange={handleChange}
                                 autoComplete="email"
-                                required
                             />
+                        </div>
 
-                            <Input
-                                label="Password"
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="password">Password</label>
+                            <input
                                 id="password"
                                 name="password"
                                 type="password"
+                                className="form-input"
                                 placeholder="Min. 6 characters"
                                 value={form.password}
                                 onChange={handleChange}
                                 autoComplete="new-password"
-                                required
                             />
+                        </div>
 
-                            <Input
-                                label="Confirm Password"
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="confirm">Confirm Password</label>
+                            <input
                                 id="confirm"
                                 name="confirm"
                                 type="password"
+                                className="form-input"
                                 placeholder="Re-enter your password"
                                 value={form.confirm}
                                 onChange={handleChange}
                                 autoComplete="new-password"
-                                required
                             />
-
-                            <Button
-                                type="submit"
-                                id="register-submit-btn"
-                                variant="primary"
-                                className="w-full py-3 mt-4"
-                                isLoading={loading}
-                            >
-                                Create Account →
-                            </Button>
-                        </form>
-
-                        <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                            Already have an account?{' '}
-                            <Link href="/login" className="text-indigo-500 hover:text-indigo-600 font-semibold transition-colors">
-                                Sign in
-                            </Link>
                         </div>
-                    </Card>
-                    
-                    <div className="mt-8 text-center">
-                        <Link href="/" className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors uppercase tracking-widest font-bold">
-                            ← Back to Home
-                        </Link>
+
+                        <button
+                            type="submit"
+                            id="register-submit-btn"
+                            className="btn btn-primary auth-submit"
+                            disabled={loading}
+                        >
+                            {loading ? (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span className="spinner" style={{ borderTopColor: '#fff' }} />
+                                    Creating account…
+                                </span>
+                            ) : (
+                                <span>Create Account →</span>
+                            )}
+                        </button>
+                    </form>
+
+                    <div className="auth-footer">
+                        Already have an account?{' '}
+                        <Link href="/login">Sign in</Link>
                     </div>
                 </div>
             </div>

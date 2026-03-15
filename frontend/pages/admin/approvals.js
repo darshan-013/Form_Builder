@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import Navbar from '../../components/Navbar';
 import WorkflowDiagram from '../../components/workflows/WorkflowDiagram';
 import {
     approveWorkflowStep,
@@ -9,16 +9,8 @@ import {
     rejectWorkflowStep,
 } from '../../services/api';
 import { toastError, toastSuccess } from '../../services/toast';
-import PageContainer from '../../components/layout/PageContainer';
-import SectionHeader from '../../components/layout/SectionHeader';
-import Button from '../../components/ui/Button';
-import Card from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
-import Spinner from '../../components/ui/Spinner';
-import Modal from '../../components/ui/Modal';
 
 export default function ApprovalsInboxPage() {
-    const router = useRouter();
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState(null);
@@ -102,75 +94,54 @@ export default function ApprovalsInboxPage() {
     return (
         <>
             <Head><title>Approval Inbox — FormCraft</title></Head>
-            
-            <PageContainer>
-                <SectionHeader 
-                    title="📥 Approval Inbox"
-                    subtitle="Decide on workflow steps assigned specifically to your role"
-                    actions={
-                        <Button variant="secondary" size="sm" onClick={loadRows}>
-                            Refresh
-                        </Button>
-                    }
-                />
+            <Navbar />
+            <div className="container workflow-page-shell">
+                <div className="workflow-page-head">
+                    <h1>Approval Inbox</h1>
+                    <p>
+                        Steps assigned to you. Only the active step in each workflow can be decided.
+                    </p>
+                </div>
 
                 {loading ? (
-                    <div className="py-20 flex flex-col items-center justify-center gap-4">
-                        <Spinner size="lg" />
-                        <p className="text-gray-500 animate-pulse">Checking for pending approvals...</p>
+                    <div className="loading-center" style={{ minHeight: 280 }}>
+                        <span className="spinner" style={{ width: 34, height: 34 }} />
                     </div>
                 ) : rows.length === 0 ? (
-                    <div className="py-20 text-center border-2 border-dashed border-gray-100 dark:border-white/5 rounded-3xl">
-                        <div className="text-5xl mb-4 opacity-20">📥</div>
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white">You're all caught up!</h3>
-                        <p className="text-gray-500">No pending workflow steps require your attention right now.</p>
-                        <Button variant="secondary" size="sm" className="mt-6" onClick={() => router.push('/dashboard')}>
-                            Back to Dashboard
-                        </Button>
+                    <div className="empty-state">
+                        <div className="empty-state-icon">📥</div>
+                        <h3>No pending approvals</h3>
+                        <p>You are all clear for now.</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div className="workflow-inbox-grid">
                         {rows.map((row) => {
                             const busy = busyId === row.stepId;
                             return (
-                                <Card key={row.stepId} className="flex flex-col border-white/5 overflow-hidden">
-                                    <div className="p-5 flex justify-between items-start border-b border-white/5">
+                                <div key={row.stepId} className="form-card workflow-inbox-card pending">
+                                    <div className="workflow-card-head">
                                         <div>
-                                            <h3 className="font-bold text-gray-900 dark:text-white">{row.formName}</h3>
-                                            <span className="text-xs text-gray-500 font-mono">Workflow #{row.workflowId}</span>
+                                            <div className="form-card-name">{row.formName}</div>
+                                            <div className="form-card-desc">Workflow #{row.workflowId}</div>
                                         </div>
-                                        <Badge variant="warning" pulse>PENDING DECISION</Badge>
+                                        <span className="status-badge status-badge-draft workflow-decision-badge pending">
+                                            PENDING
+                                        </span>
                                     </div>
 
-                                    <div className="p-5 flex gap-4 text-xs bg-white/5">
-                                        <div className="flex-1">
-                                            <span className="text-gray-500 block">Current Step</span>
-                                            <span className="font-semibold text-gray-900 dark:text-white">{row.currentStepIndex} of {row.totalSteps}</span>
-                                        </div>
-                                        <div className="flex-1">
-                                            <span className="text-gray-500 block">Target Builder</span>
-                                            <span className="font-semibold text-gray-900 dark:text-white">{row.targetBuilder?.name || row.targetBuilder?.username || '—'}</span>
-                                        </div>
+                                    <div className="workflow-quick-meta">
+                                        <span>Current Step <strong>{row.currentStepIndex}/{row.totalSteps}</strong></span>
+                                        <span>Target <strong>{row.targetBuilder?.name || row.targetBuilder?.username || '—'}</strong></span>
                                     </div>
 
-                                    <div className="p-5 flex-1 min-h-[160px]">
-                                        <WorkflowDiagram steps={buildSteps(row)} />
-                                    </div>
+                                    <WorkflowDiagram steps={buildSteps(row)} />
 
-                                    <div className="p-4 bg-white/5 flex gap-2 border-t border-white/5">
-                                        <Button 
-                                            variant="primary" 
-                                            size="sm" 
-                                            className="flex-1" 
-                                            onClick={() => handleApprove(row)} 
-                                            disabled={busy}
-                                        >
-                                            {busy ? <Spinner size="sm" /> : 'Approve'}
-                                        </Button>
-                                        <Button 
-                                            variant="secondary" 
-                                            size="sm" 
-                                            className="flex-1 border-red-500/20 text-red-500 hover:bg-red-500/10"
+                                    <div className="workflow-inbox-actions">
+                                        <button className="btn btn-primary btn-sm" onClick={() => handleApprove(row)} disabled={busy}>
+                                            {busy ? 'Working...' : 'Approve'}
+                                        </button>
+                                        <button
+                                            className="btn btn-danger btn-sm"
                                             onClick={() => {
                                                 setRejectTarget(row);
                                                 setRejectReason('');
@@ -178,56 +149,54 @@ export default function ApprovalsInboxPage() {
                                             disabled={busy}
                                         >
                                             Reject
-                                        </Button>
-                                        <Button 
-                                            variant="secondary" 
-                                            size="sm"
-                                            onClick={() => router.push(`/preview/${row.formId}`)}
-                                        >
-                                            Preview
-                                        </Button>
+                                        </button>
+                                        <Link href={`/preview/${row.formId}`} className="btn btn-secondary btn-sm">Preview</Link>
                                     </div>
-                                </Card>
+                                </div>
                             );
                         })}
                     </div>
                 )}
-            </PageContainer>
 
-            {/* Reject Modal */}
-            <Modal
-                isOpen={!!rejectTarget}
-                onClose={() => setRejectTarget(null)}
-                title="Reject Workflow Step"
-                footer={
-                    <div className="flex justify-end gap-2 w-full">
-                        <Button variant="secondary" onClick={() => setRejectTarget(null)} disabled={busyId === rejectTarget?.stepId}>
-                            Cancel
-                        </Button>
-                        <Button 
-                            variant="primary" 
-                            className="bg-red-600 hover:bg-red-700 text-white" 
-                            onClick={handleRejectConfirm} 
-                            disabled={busyId === rejectTarget?.stepId}
-                        >
-                            {busyId === rejectTarget?.stepId ? <Spinner size="sm" /> : 'Confirm Reject'}
-                        </Button>
+                {rejectTarget && (
+                    <div className="workflow-reject-modal-overlay" onClick={() => setRejectTarget(null)}>
+                        <div className="workflow-reject-modal" onClick={(e) => e.stopPropagation()}>
+                            <h3>Reject Step</h3>
+                            <p>
+                                Rejecting <strong>{rejectTarget.formName}</strong>. Add an optional reason.
+                            </p>
+                            <textarea
+                                className="form-input workflow-reject-textarea"
+                                value={rejectReason}
+                                onChange={(e) => setRejectReason(e.target.value)}
+                                placeholder="Enter rejection reason (optional)"
+                                rows={3}
+                            />
+                            <div className="workflow-reject-actions">
+                                <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => {
+                                        setRejectTarget(null);
+                                        setRejectReason('');
+                                    }}
+                                    disabled={busyId === rejectTarget.stepId}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    className="btn btn-danger btn-sm"
+                                    onClick={handleRejectConfirm}
+                                    disabled={busyId === rejectTarget.stepId}
+                                >
+                                    {busyId === rejectTarget.stepId ? 'Rejecting...' : 'Confirm Reject'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                }
-            >
-                <div>
-                    <p className="text-gray-600 dark:text-gray-400 mb-4">
-                        Please provide a reason for rejecting the workflow for <strong className="text-gray-900 dark:text-white">{rejectTarget?.formName}</strong>. This help the requester understand what to fix.
-                    </p>
-                    <textarea
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all dark:text-white"
-                        value={rejectReason}
-                        onChange={(e) => setRejectReason(e.target.value)}
-                        placeholder="Explain why this step is being rejected..."
-                        rows={4}
-                    />
-                </div>
-            </Modal>
+                )}
+            </div>
         </>
     );
 }
+
+

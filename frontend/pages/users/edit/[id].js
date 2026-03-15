@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-
+import Navbar from '../../../components/Navbar';
 import {
     getUser, updateUser, getRoles,
     assignRoleToUser
@@ -30,7 +30,7 @@ export default function EditUserPage() {
         if (!id || authLoading) return;
         if (!authUser) { router.replace('/login'); return; }
         Promise.all([loadUser(), loadRoles()])
-            .catch(() => {})
+            .catch(() => { })
             .finally(() => setLoading(false));
     }, [id, authLoading, authUser, router]);
 
@@ -118,7 +118,7 @@ export default function EditUserPage() {
         return (
             <>
                 <Head><title>Edit User — FormCraft</title></Head>
-
+                <Navbar />
                 <div className="users-page">
                     <div className="users-skeleton">
                         {[...Array(4)].map((_, i) => (
@@ -137,7 +137,7 @@ export default function EditUserPage() {
             <Head>
                 <title>Edit {originalUser.name || originalUser.username} — FormCraft</title>
             </Head>
-
+            <Navbar />
 
             <div className="users-page">
                 <div className="users-page-header">

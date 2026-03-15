@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-
+import Navbar from '../../components/Navbar';
 import FormRenderer from '../../components/FormRenderer';
 import { getFormRenderAdmin } from '../../services/api';
 import { toastError } from '../../services/toast';
@@ -56,7 +56,7 @@ export default function PreviewPage() {
             </Head>
 
             <div className="page">
-
+                <Navbar />
 
                 <div className="form-page">
                     {/* Back + Share nav */}

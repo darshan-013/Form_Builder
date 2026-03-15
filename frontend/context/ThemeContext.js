@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 
-const ThemeContext = createContext({ theme: 'dark', toggleTheme: () => {} });
+const ThemeContext = createContext({ theme: 'dark', toggleTheme: () => { } });
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState('dark');
@@ -13,9 +13,8 @@ export function ThemeProvider({ children }) {
       const saved = localStorage.getItem('fc-theme') || 'dark';
       setTheme(saved);
       document.documentElement.setAttribute('data-theme', saved);
-      document.documentElement.classList.toggle('dark', saved === 'dark');
       document.documentElement.style.colorScheme = saved === 'light' ? 'light' : 'dark';
-    } catch (e) {}
+    } catch (e) { }
     setMounted(true);
   }, []);
 
@@ -44,9 +43,8 @@ export function ThemeProvider({ children }) {
     if (document.startViewTransition) {
       const transition = document.startViewTransition(() => {
         setTheme(next);
-        try { localStorage.setItem('fc-theme', next); } catch (e) {}
+        try { localStorage.setItem('fc-theme', next); } catch (e) { }
         document.documentElement.setAttribute('data-theme', next);
-        document.documentElement.classList.toggle('dark', next === 'dark');
         document.documentElement.style.colorScheme = next === 'light' ? 'light' : 'dark';
       });
 
@@ -99,9 +97,8 @@ export function ThemeProvider({ children }) {
     // Apply theme at the halfway point so it's hidden under the ripple
     setTimeout(() => {
       setTheme(next);
-      try { localStorage.setItem('fc-theme', next); } catch (e) {}
+      try { localStorage.setItem('fc-theme', next); } catch (e) { }
       document.documentElement.setAttribute('data-theme', next);
-      document.documentElement.classList.toggle('dark', next === 'dark');
       document.documentElement.style.colorScheme = next === 'light' ? 'light' : 'dark';
     }, 280);
 
