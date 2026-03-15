@@ -3,6 +3,10 @@ import ValidationEngine from '../services/validation';
 import RuleEngine, { setDefaultValues } from '../services/RuleEngine';
 import CalculationEngine from '../services/CalculationEngine';
 import { getDraft, saveDraft } from '../services/api';
+import Card from './ui/Card';
+import Button from './ui/Button';
+import Badge from './ui/Badge';
+import Spinner from './ui/Spinner';
 
 /**
  * FormRenderer — enterprise dynamic form renderer with Conditional Rule Engine.
@@ -480,13 +484,17 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   // ── Success screen ─────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <div className="form-renderer-card">
-        <div className="form-success-state">
-          <div className="success-icon-ring">✓</div>
-          <h2>Submitted Successfully!</h2>
-          <p>Thank you — your response has been recorded.</p>
-          <button
-            className="btn btn-secondary success-another-btn"
+      <Card className="max-w-2xl mx-auto overflow-hidden">
+        <div className="flex flex-col items-center justify-center text-center py-16 px-8">
+          <div className="w-20 h-20 rounded-full bg-emerald-500/20 flex items-center justify-center mb-8 ring-4 ring-emerald-500/10 animate-pulse">
+            <span className="text-4xl text-emerald-500">✓</span>
+          </div>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Submission Complete</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-10 max-w-sm">
+            Thank you! Your response has been securely recorded and processed.
+          </p>
+          <Button
+            variant="outline"
             onClick={() => {
               const fresh = makeInitialValues();
               setValues(fresh);
@@ -498,75 +506,98 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
               setSubmitted(false);
             }}
           >
-            Submit another response
-          </button>
+            Submit Another Response
+          </Button>
         </div>
-      </div>
+      </Card>
     );
   }
 
-  // ── Main render ────────────────────────────────────────────────────────────
   return (
-    <div className="form-renderer-card">
+    <Card className="relative overflow-hidden border-none shadow-2xl">
+      {/* Background Glow */}
+      <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-[100px] -mr-48 -mt-48 pointer-events-none" />
+      
       {isPreview && (
-        <div className="preview-banner">
-          👁&nbsp;<strong>Preview Mode</strong> — submissions are disabled
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2 flex items-center gap-2 text-xs font-bold text-amber-500 uppercase tracking-widest justify-center">
+          <span className="animate-pulse">●</span> Preview Mode — Submissions Disabled
         </div>
       )}
 
-      <div className="form-renderer-header">
-        <h1 className="form-renderer-title">{form.name}</h1>
-        {form.description && <p className="form-renderer-desc">{form.description}</p>}
-        <div className="form-renderer-meta">
-          <span className="form-renderer-meta-item">
-            🔲 {fields.length} field{fields.length !== 1 ? 's' : ''}
-          </span>
-          {fields.some((f) => f.required) && (
-            <span className="form-renderer-meta-item">
-              <span className="form-field-required-star">*</span> Required fields marked
-            </span>
-          )}
-          {lastSaved && (
-            <span className="form-renderer-meta-item draft-indicator">
-              {saving ? (
-                <><span className="spinner-micro" /> Saving draft…</>
-              ) : (
-                <>✔ Draft saved at {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
-              )}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {serverError && (
-        <div className="auth-error" style={{ margin: '0 32px 16px', borderRadius: 10 }}>
-          <span>⚠</span> {serverError}
-        </div>
-      )}
-
-      {/* ── Wizard Progress Bar (only when multi-step) ────────────────────── */}
-      {isMultiStep && (
-        <div className="wizard-progress-bar">
-          <div className="wizard-steps-track">
-            {pages.map((page, idx) => (
-              <div key={idx} className="wizard-step-wrapper">
-                <div className={`wizard-step-dot ${idx < currentPage ? 'completed' : ''} ${idx === currentPage ? 'active' : ''}`}>
-                  {idx < currentPage ? <span>✓</span> : <span>{idx + 1}</span>}
-                </div>
-                {idx < totalPages - 1 && (
-                  <div className={`wizard-step-connector ${idx < currentPage ? 'completed' : ''}`} />
+      <div className="p-8 md:p-12">
+        <div className="mb-12">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tight leading-tight">
+              {form.name}
+            </h1>
+            {lastSaved && (
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                {saving ? (
+                  <><Spinner size="xs" /> Saving...</>
+                ) : (
+                  <span className="text-emerald-500 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Saved
+                  </span>
                 )}
               </div>
-            ))}
+            )}
           </div>
-          <div className="wizard-page-label">
-            {pages[currentPage]?.title
-              ? <span className="wizard-page-title">Step {currentPage + 1}: {pages[currentPage].title}</span>
-              : <span>Page {currentPage + 1} of {totalPages}</span>
-            }
+          
+          {form.description && (
+            <p className="text-gray-500 dark:text-gray-400 text-lg leading-relaxed max-w-3xl">
+              {form.description}
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-4 mt-8 pt-8 border-t border-gray-100 dark:border-white/5">
+            <Badge variant="ghost">
+              <span className="mr-1 opacity-60">FIELDS:</span> {fields.length}
+            </Badge>
+            {fields.some((f) => f.required) && (
+              <Badge variant="ghost" className="text-rose-500">
+                <span className="mr-1 opacity-60">*</span> REQUIRED FIELDS
+              </Badge>
+            )}
           </div>
         </div>
-      )}
+
+        {serverError && (
+          <div className="mb-8 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-sm font-medium flex items-center gap-3">
+            <span className="text-lg">⚠️</span> {serverError}
+          </div>
+        )}
+
+        {/* ── Wizard Progress Bar ── */}
+        {isMultiStep && (
+          <div className="mb-12 px-4">
+            <div className="flex items-center justify-between mb-8">
+              {pages.map((page, idx) => (
+                <React.Fragment key={idx}>
+                  <div className="flex flex-col items-center gap-3 relative z-10">
+                    <div className={`
+                      w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm transition-all duration-500
+                      ${idx < currentPage ? 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 
+                        (idx === currentPage ? 'bg-primary text-white shadow-[0_0_15px_var(--primary-glow)] scale-110' : 'bg-gray-100 dark:bg-white/5 text-gray-400')}
+                    `}>
+                      {idx < currentPage ? '✓' : idx + 1}
+                    </div>
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${idx === currentPage ? 'text-primary' : 'text-gray-400'}`}>
+                      {page.title || `Part ${idx + 1}`}
+                    </span>
+                  </div>
+                  {idx < totalPages - 1 && (
+                    <div className="flex-1 h-[2px] mx-[-10px] mb-7 bg-gray-100 dark:bg-white/5 relative overflow-hidden">
+                      <div className={`
+                        absolute inset-0 bg-primary transition-all duration-700 ease-in-out
+                        ${idx < currentPage ? 'w-full' : 'w-0'}
+                      `} />
+                    </div>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        )}
 
       <form onSubmit={handleSubmit} noValidate>
         {fields.length === 0 && staticFields.length === 0 ? (
@@ -694,55 +725,49 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
         <button type="submit" id="__form-submit-hidden__" style={{ display: 'none' }} aria-hidden="true" />
       </form>
 
-      {/* ── Footer: Back / Next / Submit — OUTSIDE <form> to prevent accidental submission ── */}
-      <div className={`form-renderer-footer${isMultiStep ? ' wizard-footer' : ''}`}>
-        {isMultiStep && !isFirstPage && (
-          <button
-            type="button"
-            className="btn btn-secondary wizard-back-btn"
-            onClick={handleBack}
-            disabled={submitting}
-          >
-            ← Back
-          </button>
-        )}
+        <div className="mt-12 pt-8 border-t border-gray-100 dark:border-white/5 flex items-center justify-between gap-4">
+          {isMultiStep && !isFirstPage && (
+            <Button
+              variant="outline"
+              onClick={handleBack}
+              disabled={submitting}
+            >
+              ← Back
+            </Button>
+          )}
 
-        {isMultiStep && !isLastPage ? (
-          /* Next button — validates current page then advances */
-          <button
-            type="button"
-            id="wizard-next-btn"
-            className="form-submit-btn"
-            onClick={handleNext}
-            disabled={submitting}
-            style={{ marginLeft: 'auto' }}
-          >
-            Next →
-          </button>
-        ) : (
-          /* Submit button — triggers the hidden submit inside <form> */
-          <button
-            type="button"
-            id="form-submit-btn"
-            className="form-submit-btn"
-            disabled={submitting || isPreview || fields.length === 0}
-            style={isMultiStep ? { marginLeft: 'auto' } : undefined}
-            onClick={() => {
-              const hidden = document.getElementById('__form-submit-hidden__');
-              if (hidden) hidden.click();
-            }}
-          >
-            {submitting ? (
-              <><span className="spinner" style={{ borderTopColor: '#fff', width: 18, height: 18 }} /> Submitting…</>
-            ) : isPreview ? (
-              '👁 Preview Mode — Submit Disabled'
+          <div className="ml-auto flex items-center gap-4">
+            {isMultiStep && !isLastPage ? (
+              <Button
+                variant="primary"
+                onClick={handleNext}
+                disabled={submitting}
+              >
+                Next Step →
+              </Button>
             ) : (
-              'Submit Form →'
+              <Button
+                variant="primary"
+                size="lg"
+                disabled={submitting || isPreview || fields.length === 0}
+                onClick={() => {
+                  const hidden = document.getElementById('__form-submit-hidden__');
+                  if (hidden) hidden.click();
+                }}
+              >
+                {submitting ? (
+                  <><Spinner size="sm" className="mr-2" light /> Submitting...</>
+                ) : isPreview ? (
+                  'Preview Mode Enabled'
+                ) : (
+                  'Submit Form'
+                )}
+              </Button>
             )}
-          </button>
-        )}
+          </div>
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -752,30 +777,31 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
  * Never collects input, never validated, never included in submission payload.
  */
 function StaticElement({ field }) {
-  // staticData from /render endpoint, or label as fallback (legacy)
   const content = field.staticData || field.label || field.data || '';
 
   if (field.fieldType === 'section_header') {
     return (
-      <div className="static-section-header">
-        <h3 className="static-section-header-text">{content}</h3>
-        <div className="static-section-header-line" />
+      <div className="mt-12 mb-6">
+        <div className="flex items-center gap-4 mb-2">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white whitespace-nowrap">{content}</h3>
+          <div className="h-[1px] flex-1 bg-gradient-to-r from-primary/30 to-transparent" />
+        </div>
       </div>
     );
   }
 
   if (field.fieldType === 'label_text') {
     return (
-      <div className="static-label-text">
-        <p className="static-label-text-content">{content}</p>
+      <div className="mb-4">
+        <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-widest opacity-70">{content}</p>
       </div>
     );
   }
 
   if (field.fieldType === 'description_block') {
     return (
-      <div className="static-description-block">
-        <p className="static-description-block-content">{content}</p>
+      <div className="mb-6 p-4 rounded-xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+        <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed italic">{content}</p>
       </div>
     );
   }
@@ -818,18 +844,25 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
   }
 
   return (
-    <div className="form-field-group" style={{
+    <div className="group mb-8 transition-all duration-300" style={{
       animationDelay: `${(field.fieldOrder || 0) * 40}ms`,
-      position: 'relative',
-      zIndex: 100 - (field.fieldOrder || 0)
     }}>
-
       {/* Label */}
       {field.fieldType !== 'boolean' && (
-        <label className="form-field-label" htmlFor={id}>
-          {effectiveLabel}
-          {field.required && <span className="form-field-required-star" title="Required"> *</span>}
-          {field.isCalculated && <span className="badge badge-text" style={{ marginLeft: 8, background: 'rgba(99,102,241,0.1)', color: 'var(--accent)', fontSize: '0.7em', padding: '2px 6px' }}>∑ Calculated</span>}
+        <label className="flex items-center gap-2 mb-3 px-1 transition-colors group-focus-within:text-primary" htmlFor={id}>
+          <span className="text-sm font-bold text-gray-900 dark:text-white tracking-tight">
+            {effectiveLabel}
+          </span>
+          {field.required && (
+            <span className="text-rose-500 text-sm font-black animate-pulse" title="Required">
+              *
+            </span>
+          )}
+          {field.isCalculated && (
+            <Badge variant="primary" size="xs" className="text-[9px] px-1 py-0 opacity-80">
+              ∑ CALC
+            </Badge>
+          )}
         </label>
       )}
 
@@ -838,7 +871,14 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         <input
           id={id}
           type="text"
-          className={inputClass}
+          className={`
+            w-full px-5 py-3.5 rounded-2xl border transition-all duration-300 outline-none
+            bg-gray-50 dark:bg-white/[0.03] border-gray-200 dark:border-white/5
+            text-gray-900 dark:text-white placeholder-gray-400
+            focus:border-primary/50 focus:bg-white dark:focus:bg-primary/[0.02] focus:shadow-[0_0_20px_var(--primary-glow-subtle)]
+            ${hasError ? 'border-rose-500/50 bg-rose-500/[0.02] shadow-[0_0_15px_rgba(244,63,94,0.1)]' : ''}
+            ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
+          `}
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           onBlur={(e) => onBlur(e.target.value)}
@@ -855,7 +895,14 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         <input
           id={id}
           type="number"
-          className={inputClass}
+          className={`
+            w-full px-5 py-3.5 rounded-2xl border transition-all duration-300 outline-none
+            bg-gray-50 dark:bg-white/[0.03] border-gray-200 dark:border-white/5
+            text-gray-900 dark:text-white placeholder-gray-400
+            focus:border-primary/50 focus:bg-white dark:focus:bg-primary/[0.02] focus:shadow-[0_0_20px_var(--primary-glow-subtle)]
+            ${hasError ? 'border-rose-500/50 bg-rose-500/[0.02] shadow-[0_0_15px_rgba(244,63,94,0.1)]' : ''}
+            ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
+          `}
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           onBlur={(e) => onBlur(e.target.value)}
@@ -882,7 +929,14 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
             <input
               id={id}
               type="date"
-              className={inputClass}
+              className={`
+                w-full px-5 py-3.5 rounded-2xl border transition-all duration-300 outline-none
+                bg-gray-50 dark:bg-white/[0.03] border-gray-200 dark:border-white/5
+                text-gray-900 dark:text-white
+                focus:border-primary/50 focus:bg-white dark:focus:bg-primary/[0.02] focus:shadow-[0_0_20px_var(--primary-glow-subtle)]
+                ${hasError ? 'border-rose-500/50 bg-rose-500/[0.02] shadow-[0_0_15px_rgba(244,63,94,0.1)]' : ''}
+                ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
+              `}
               value={value || ''}
               onChange={(e) => onChange(e.target.value)}
               onBlur={(e) => onBlur(e.target.value)}
@@ -904,20 +958,30 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
       {/* ── boolean ────────────────────────────────────────────── */}
       {field.fieldType === 'boolean' && (
         <label
-          className={`bool-toggle-wrap${disabled ? ' opacity-50' : ''}${hasError ? ' bool-toggle-error' : ''}`}
+          className={`flex items-center gap-4 cursor-pointer group/bool ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
           htmlFor={id}
         >
-          <input
-            id={id}
-            type="checkbox"
-            checked={!!value}
-            onChange={(e) => { onChange(e.target.checked); onBlur(e.target.checked); }}
-            disabled={disabled}
-            aria-invalid={hasError || undefined}
-          />
-          <span className="bool-toggle-label">
+          <div className="relative inline-flex items-center cursor-pointer">
+            <input
+              id={id}
+              type="checkbox"
+              className="sr-only peer"
+              checked={!!value}
+              onChange={(e) => { onChange(e.target.checked); onBlur(e.target.checked); }}
+              disabled={disabled}
+            />
+            <div className={`
+              w-12 h-6 bg-gray-200 dark:bg-white/10 peer-focus:outline-none rounded-full peer 
+              peer-checked:after:translate-x-full peer-checked:after:border-white 
+              after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+              after:bg-white after:border-gray-300 after:border after:rounded-full 
+              after:h-5 after:w-5 after:transition-all dark:border-gray-600 
+              peer-checked:bg-primary peer-checked:shadow-[0_0_10px_var(--primary-glow)]
+            `} />
+          </div>
+          <span className="text-sm font-bold text-gray-700 dark:text-gray-300 group-hover/bool:text-gray-900 dark:group-hover/bool:text-white transition-colors">
             {effectiveLabel}
-            {field.required && <span className="form-field-required-star"> *</span>}
+            {field.required && <span className="text-rose-500 ml-1 font-black">*</span>}
           </span>
         </label>
       )}
@@ -936,7 +1000,14 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
           return (
             <select
               id={id}
-              className={`form-select${hasError ? ' input-error' : ''}`}
+              className={`
+                w-full px-5 py-3.5 rounded-2xl border transition-all duration-300 outline-none appearance-none
+                bg-gray-50 dark:bg-white/[0.03] border-gray-200 dark:border-white/5
+                text-gray-900 dark:text-white
+                focus:border-primary/50 focus:bg-white dark:focus:bg-primary/[0.02] focus:shadow-[0_0_20px_var(--primary-glow-subtle)]
+                ${hasError ? 'border-rose-500/50 bg-rose-500/[0.02] shadow-[0_0_15px_rgba(244,63,94,0.1)]' : ''}
+                ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
+              `}
               value={value || ''}
               onChange={(e) => onChange(e.target.value)}
               onBlur={(e) => onBlur(e.target.value)}
@@ -1088,35 +1159,47 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
       {/* ── radio (single-select radio buttons) ────────────────── */}
       {field.fieldType === 'radio' && (
         <div
-          className={`radio-group${hasError ? ' radio-group-error' : ''}`}
+          className="grid grid-cols-1 md:grid-cols-2 gap-3"
           role="radiogroup"
           aria-describedby={hasError ? `${id}-err` : undefined}
         >
-          {filterOpts(parseOptions(field.optionsJson, field.options)).map((opt, i) => (
-            <label key={i} className="radio-option">
-              <input
-                type="radio"
-                name={id}
-                value={opt.value}
-                checked={value === opt.value}
-                onChange={(e) => { onChange(e.target.value); onBlur(e.target.value); }}
-                disabled={disabled}
-              />
-              <span>{opt.label}</span>
-            </label>
-          ))}
+          {filterOpts(parseOptions(field.optionsJson, field.options)).map((opt, i) => {
+            const isChecked = value === opt.value;
+            return (
+              <label key={i} className={`
+                flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all duration-300
+                ${isChecked ? 'bg-primary/5 border-primary shadow-[0_0_15px_var(--primary-glow-subtle)]' : 'bg-gray-50 dark:bg-white/[0.02] border-gray-100 dark:border-white/5 hover:border-primary/30'}
+                ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
+              `}>
+                <div className="relative flex items-center justify-center">
+                  <input
+                    type="radio"
+                    name={id}
+                    className="sr-only peer"
+                    value={opt.value}
+                    checked={isChecked}
+                    onChange={(e) => { onChange(e.target.value); onBlur(e.target.value); }}
+                    disabled={disabled}
+                  />
+                  <div className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-white/20 peer-checked:border-primary peer-checked:bg-primary transition-all after:content-[''] after:absolute after:w-2 after:h-2 after:bg-white after:rounded-full after:opacity-0 peer-checked:after:opacity-100" />
+                </div>
+                <span className={`text-sm font-medium ${isChecked ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>
+                  {opt.label}
+                </span>
+              </label>
+            );
+          })}
         </div>
       )}
 
       {/* ── multiple_choice (multi-select checkboxes) ─────────── */}
       {field.fieldType === 'multiple_choice' && (
         <div
-          className={`radio-group${hasError ? ' multiple-choice-error' : ''}`}
+          className="grid grid-cols-1 md:grid-cols-2 gap-3"
           role="group"
           aria-describedby={hasError ? `${id}-err` : undefined}
         >
           {filterOpts(parseOptions(field.optionsJson, field.options)).map((opt, i) => {
-            // value stored as JSON array string e.g. '["Red","Blue"]'
             let selected = [];
             if (value) {
               const str = String(value).trim();
@@ -1129,7 +1212,6 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
             const isChecked = selected.includes(opt.value);
             const handleCheckChange = (e) => {
               e.stopPropagation();
-              // Always re-parse current value fresh to avoid stale closure
               let currentSelected = [];
               if (value) {
                 const str = String(value).trim();
@@ -1144,20 +1226,28 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
                 ? [...currentSelected, opt.value]
                 : currentSelected.filter(v => v !== opt.value);
               const unique = [...new Set(next)];
-              // Store as JSON array string
               onChange(JSON.stringify(unique));
             };
             return (
-              <label key={i} className="radio-option checkbox-style">
-                <input
-                  type="checkbox"
-                  name={id}
-                  value={opt.value}
-                  checked={isChecked}
-                  onChange={handleCheckChange}
-                  disabled={disabled}
-                />
-                <span>{opt.label}</span>
+              <label key={i} className={`
+                flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all duration-300
+                ${isChecked ? 'bg-primary/5 border-primary shadow-[0_0_15px_var(--primary-glow-subtle)]' : 'bg-gray-50 dark:bg-white/[0.02] border-gray-100 dark:border-white/5 hover:border-primary/30'}
+                ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
+              `}>
+                <div className="relative flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    value={opt.value}
+                    checked={isChecked}
+                    onChange={handleCheckChange}
+                    disabled={disabled}
+                  />
+                  <div className="w-5 h-5 rounded-lg border-2 border-gray-300 dark:border-white/20 peer-checked:border-primary peer-checked:bg-primary transition-all flex items-center justify-center after:content-['✓'] after:text-white after:text-[10px] after:font-bold after:opacity-0 peer-checked:after:opacity-100" />
+                </div>
+                <span className={`text-sm font-medium ${isChecked ? 'text-primary' : 'text-gray-700 dark:text-gray-300'}`}>
+                  {opt.label}
+                </span>
               </label>
             );
           })}
@@ -1189,32 +1279,31 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
           onBlur(JSON.stringify(next));
         };
         return (
-          <div className={`mcg-wrapper${hasError ? ' input-error-group' : ''}`}>
-            <table className="mcg-table">
+          <div className={`overflow-hidden rounded-3xl border border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01] ${hasError ? 'ring-1 ring-rose-500/50' : ''}`}>
+            <table className="w-full border-collapse">
               <thead>
-                <tr className="mcg-header-row">
-                  <th></th>
-                  {cols.map((col, ci) => <th key={ci}>{col}</th>)}
+                <tr className="bg-gray-100/50 dark:bg-white/[0.03]">
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Row</th>
+                  {cols.map((col, ci) => <th key={ci} className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-widest text-gray-500">{col}</th>)}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100 dark:divide-white/5">
                 {rows.map((row, ri) => (
-                  <tr key={ri} className="mcg-row">
-                    <td className="mcg-row-label">{row}</td>
+                  <tr key={ri} className="hover:bg-primary/[0.02] transition-colors">
+                    <td className="px-6 py-4 text-sm font-bold text-gray-700 dark:text-gray-300">{row}</td>
                     {cols.map((col, ci) => (
-                      <td key={ci} className="mcg-cell">
-                        <label className={`mcg-radio-wrap${disabled ? ' disabled' : ''}`}>
+                      <td key={ci} className="px-6 py-4 text-center">
+                        <label className={`inline-flex items-center justify-center cursor-pointer ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
                           <input
                             type="radio"
+                            className="sr-only peer"
                             name={`${id}-row-${ri}`}
                             value={col}
                             checked={selected[row] === col}
                             onChange={() => handleGridChange(row, col)}
                             disabled={disabled}
                           />
-                          <span className="mcg-radio-circle">
-                            <span className="mcg-radio-dot" />
-                          </span>
+                          <div className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-white/20 peer-checked:border-primary peer-checked:bg-primary transition-all after:content-[''] after:absolute after:w-2 after:h-2 after:bg-white after:rounded-full after:opacity-0 peer-checked:after:opacity-100 scale-125" />
                         </label>
                       </td>
                     ))}
@@ -1241,16 +1330,20 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         for (let i = scaleMin; i <= scaleMax; i++) steps.push(i);
         const selected = value !== '' && value !== null && value !== undefined ? Number(value) : null;
         return (
-          <div className={`linear-scale-wrapper${hasError ? ' input-error-group' : ''}`}>
-            <div className="linear-scale-inner">
-              <div className="linear-scale-track" role="group" aria-label={effectiveLabel}>
+          <div className={`p-6 rounded-3xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 ${hasError ? 'ring-1 ring-rose-500/50' : ''}`}>
+            <div className="flex flex-col gap-6">
+              <div className="flex items-center justify-center gap-2" role="group" aria-label={effectiveLabel}>
                 {steps.map((step) => {
                   const isActive = selected === step;
                   return (
                     <button
                       key={step}
                       type="button"
-                      className={`linear-scale-btn${isActive ? ' active' : ''}`}
+                      className={`
+                        w-12 h-12 rounded-xl border font-bold text-sm transition-all duration-300
+                        ${isActive ? 'bg-primary border-primary text-white shadow-[0_0_15px_var(--primary-glow)] scale-110' : 'bg-white dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-500 hover:border-primary/50 hover:text-primary'}
+                        ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
+                      `}
                       onClick={() => { if (!disabled) { onChange(step); onBlur(step); } }}
                       disabled={disabled}
                       aria-pressed={isActive}
@@ -1262,9 +1355,9 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
                 })}
               </div>
               {(labelLeft || labelRight) && (
-                <div className="linear-scale-labels">
-                  <span className="linear-scale-label-left">{labelLeft}</span>
-                  <span className="linear-scale-label-right">{labelRight}</span>
+                <div className="flex justify-between px-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{labelLeft}</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{labelRight}</span>
                 </div>
               )}
             </div>
@@ -1287,30 +1380,36 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
         for (let i = scaleMin; i <= scaleMax; i++) steps.push(i);
         const selected = value !== '' && value !== null && value !== undefined ? Number(value) : null;
         return (
-          <div className={`linear-scale-wrapper${hasError ? ' input-error-group' : ''}`}>
-            <div className="linear-scale-inner">
-              <div className="linear-scale-track" role="group" aria-label={effectiveLabel}>
+          <div className={`p-6 rounded-3xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 ${hasError ? 'ring-1 ring-rose-500/50' : ''}`}>
+            <div className="flex flex-col gap-6">
+              <div className="flex items-center justify-center gap-1" role="group" aria-label={effectiveLabel}>
                 {steps.map((step) => {
-                  const isActive = selected === step;
+                  const isActive = selected >= step;
+                  const isCurrent = selected === step;
                   return (
                     <button
                       key={step}
                       type="button"
-                      className={`linear-scale-btn star-rating-btn${isActive ? ' active' : ''}`}
+                      className={`
+                        text-3xl transition-all duration-300 hover:scale-125
+                        ${isActive ? 'text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]' : 'text-gray-300 dark:text-white/10'}
+                        ${isCurrent ? 'scale-125' : ''}
+                        ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
+                      `}
                       onClick={() => { if (!disabled) { onChange(step); onBlur(step); } }}
                       disabled={disabled}
-                      aria-pressed={isActive}
-                      aria-label={`${step}`}
+                      aria-pressed={isCurrent}
+                      aria-label={`${step} stars`}
                     >
-                      {isActive ? '★' : '☆'}
+                      ★
                     </button>
                   );
                 })}
               </div>
               {(labelLeft || labelRight) && (
-                <div className="linear-scale-labels">
-                  <span className="linear-scale-label-left">{labelLeft}</span>
-                  <span className="linear-scale-label-right">{labelRight}</span>
+                <div className="flex justify-between px-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{labelLeft}</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{labelRight}</span>
                 </div>
               )}
             </div>
@@ -1386,29 +1485,46 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
 
       {/* ── file ───────────────────────────────────────────────── */}
       {field.fieldType === 'file' && (
-        <input
-          id={id}
-          type="file"
-          className={inputClass}
-          multiple={getMultiple(field.validationJson)}
-          accept={getAllowedAccept(field.validationJson)}
-          onChange={(e) => {
-            const files = e.target.files;
-            if (!files || files.length === 0) return;
-            // Pass full FileList so multi-file validation works
-            const payload = files.length === 1 ? files[0] : files;
-            onChange(payload);
-            onBlur(payload);
-          }}
-          disabled={disabled}
-          aria-describedby={hasError ? `${id}-err` : undefined}
-          aria-invalid={hasError || undefined}
-        />
+        <div className={`
+          relative border-2 border-dashed rounded-3xl p-8 transition-all duration-300 text-center
+          ${disabled ? 'opacity-40 cursor-not-allowed bg-gray-100 dark:bg-white/5' : 'hover:border-primary/50 hover:bg-primary/[0.01] cursor-pointer'}
+          ${hasError ? 'border-rose-500/50 bg-rose-500/[0.01]' : 'border-gray-200 dark:border-white/10'}
+        `}>
+          <input
+            id={id}
+            type="file"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            multiple={getMultiple(field.validationJson)}
+            accept={getAllowedAccept(field.validationJson)}
+            onChange={(e) => {
+              const files = e.target.files;
+              if (!files || files.length === 0) return;
+              const payload = files.length === 1 ? files[0] : files;
+              onChange(payload);
+              onBlur(payload);
+            }}
+            disabled={disabled}
+          />
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary text-xl">
+              📂
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900 dark:text-white">
+                {value ? (Array.isArray(value) || value instanceof FileList ? `${value.length} files selected` : value.name) : 'Drop files here or click to upload'}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                {getAllowedAccept(field.validationJson) || 'All file types supported'}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Error (shows after first interaction, highest-priority only) ── */}
       {hasError && (
-        <span id={`${id}-err`} className="form-field-error" role="alert" aria-live="polite">
+        <span id={`${id}-err`} className="flex items-center gap-2 mt-3 px-1 text-xs font-bold text-rose-500 animate-in slide-in-from-top-1 duration-300" role="alert" aria-live="polite">
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
           {shownError}
         </span>
       )}

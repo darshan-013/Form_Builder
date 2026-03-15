@@ -4,6 +4,7 @@ import com.formbuilder.dto.FormDTO;
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
+import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.service.UserRoleService;
 import com.formbuilder.service.AuditLogService;
 import com.formbuilder.service.FormRenderService;
@@ -60,7 +61,7 @@ public class FormController {
             map.put("tableName", form.getTableName());
             map.put("status", form.getStatus());
             map.put("visibility", form.getVisibility());
-            map.put("allowedRoles", form.getAllowedRoles());
+            map.put("allowedUsers", form.getAllowedUsers());
             map.put("createdBy", form.getCreatedBy());
             map.put("assignedBuilderId", form.getAssignedBuilderId());
             map.put("assignedBuilderUsername", form.getAssignedBuilderUsername());
@@ -174,7 +175,7 @@ public class FormController {
         response.put("tableName", form.getTableName());
         response.put("status", form.getStatus());
         response.put("visibility", form.getVisibility());
-        response.put("allowedRoles", form.getAllowedRoles());
+        response.put("allowedUsers", form.getAllowedUsers());
         response.put("createdBy", form.getCreatedBy());
         response.put("assignedBuilderId", form.getAssignedBuilderId());
         response.put("assignedBuilderUsername", form.getAssignedBuilderUsername());
@@ -342,7 +343,7 @@ public class FormController {
         return ResponseEntity.ok(updated);
     }
 
-    /** Soft-delete — moves form to trash. Owner or Admin. */
+    /** Soft-delete only. Owner or Admin. */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id, Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -365,32 +366,6 @@ public class FormController {
                 null,
                 null
         );
-        return ResponseEntity.noContent().build();
-    }
-
-    /** List trash — Admin sees all, others see their own. */
-    @GetMapping("/trash")
-    public ResponseEntity<List<FormEntity>> getTrash(Authentication auth) {
-        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
-        return ResponseEntity.ok(formService.getTrashForms(auth.getName(), isAdmin));
-    }
-
-    /** Restore — move a trashed form back to active. Owner or Admin. */
-    @PostMapping("/{id}/restore")
-    public ResponseEntity<Map<String, Object>> restore(@PathVariable UUID id, Authentication auth) {
-        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
-        FormEntity form = formService.restoreForm(id, auth.getName(), isAdmin);
-        return ResponseEntity.ok(Map.of(
-                "id", id.toString(),
-                "message", "Form restored successfully",
-                "name", form.getName()));
-    }
-
-    /** Permanently delete — only works if form is already in trash. Owner or Admin. */
-    @DeleteMapping("/{id}/permanent")
-    public ResponseEntity<Void> permanentDelete(@PathVariable UUID id, Authentication auth) {
-        boolean isAdmin = userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
-        formService.permanentDeleteForm(id, auth.getName(), isAdmin);
         return ResponseEntity.noContent().build();
     }
 
@@ -449,6 +424,29 @@ public class FormController {
                 "id", id.toString(),
                 "status", "DRAFT",
                 "message", "Form unpublished successfully"));
+    }
+
+    @GetMapping("/visibility-candidates")
+    public ResponseEntity<?> getVisibilityCandidates(Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (!(roles.contains("Viewer") || roles.contains("Builder") || roles.contains(ROLE_ADMIN))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Only Viewer, Builder, or Admin can view visibility candidates"));
+        }
+
+        List<Map<String, Object>> users = userRoleService.getAllUsersLite().stream()
+                .map(this::toVisibilityUserSummary)
+                .toList();
+
+        return ResponseEntity.ok(Map.of("users", users));
+    }
+
+    private Map<String, Object> toVisibilityUserSummary(User user) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", user.getId());
+        map.put("username", user.getUsername());
+        map.put("name", user.getName());
+        return map;
     }
 
     public static class AssignBuilderRequest {

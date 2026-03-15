@@ -38,6 +38,11 @@ public class UserRoleService {
     //  USER CRUD
     // ═══════════════════════════════════════════════════════════════════════
 
+    /** Returns lightweight ordered user list for selection UIs. */
+    public List<User> getAllUsersLite() {
+        return userRepo.findAllOrdered();
+    }
+
     /** Returns all RBAC users with roles + permissions eagerly loaded. */
     public List<User> getAllUsers() {
         return userRepo.findAllWithRolesAndPermissions();

@@ -2,11 +2,17 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import Navbar from '../../components/Navbar';
-import DataTable from '../../components/DataTable';
 import { getForm, getSubmissions, downloadFile, deleteSubmission, updateSubmission, getFormRender } from '../../services/api';
 import { toastError, toastSuccess } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
+import DataTable from '../../components/DataTable';
+import PageContainer from '../../components/layout/PageContainer';
+import SectionHeader from '../../components/layout/SectionHeader';
+import Button from '../../components/ui/Button';
+import Card from '../../components/ui/Card';
+import Badge from '../../components/ui/Badge';
+import Spinner from '../../components/ui/Spinner';
+import Modal from '../../components/ui/Modal';
 
 /**
  * Submissions View Page — /submissions/[id]
@@ -1108,91 +1114,56 @@ export default function SubmissionsPage() {
                 <meta name="description" content="View form submissions" />
             </Head>
 
-            <div className="page">
-                <Navbar />
-
-                <div className="container">
-                    {/* Header */}
-                    <div className="page-header">
-                        <div>
-                            <Link href="/dashboard" className="breadcrumb-link">
-                                ← Back to Dashboard
-                            </Link>
-                            <h1 className="page-title">
-                                {form?.name || 'Form'} — Submissions
-                            </h1>
-                            <p className="page-subtitle">
-                                {form?.description || 'View all submitted responses'}
-                            </p>
-                        </div>
-                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <Link href={`/submit/${id}`} className="btn btn-secondary" target="_blank">
-                                📝 Submit Form
-                            </Link>
-                            <Link href={`/preview/${id}`} className="btn btn-secondary">
-                                👁 Preview Form
-                            </Link>
-                            {can('DELETE') && (
-                                <Link href={`/submissions/trash/${id}`} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    🗑 Trash
-                                </Link>
-                            )}
-                            {/* Export buttons — only shown when there are submissions and user has EXPORT perm */}
+            <PageContainer>
+                <SectionHeader 
+                    title={form?.name ? `${form.name} — Submissions` : 'Form Submissions'}
+                    subtitle={form?.description || 'View and manage all submitted responses'}
+                    actions={
+                        <div className="flex gap-2 flex-wrap items-center">
+                            <Button variant="secondary" size="sm" onClick={() => router.push(`/submit/${id}`)} target="_blank">
+                                📝 Submit
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={() => router.push(`/preview/${id}`)}>
+                                👁 Preview
+                            </Button>
                             {submissions.length > 0 && can('EXPORT') && (
-                                <div className="export-btn-group">
-                                    <button
-                                        className="btn btn-export-csv"
-                                        onClick={exportCSV}
-                                        title="Download as CSV (Excel compatible)"
-                                    >
-                                        📊 CSV
-                                    </button>
-                                    <button
-                                        className="btn btn-export-xlsx"
-                                        onClick={exportXLSX}
-                                        title="Download as Excel (.xlsx)"
-                                    >
-                                        📗 XLSX
-                                    </button>
-                                    <button
-                                        className="btn btn-export-pdf"
-                                        onClick={exportPDF}
-                                        title="Download as PDF"
-                                    >
-                                        📄 PDF
-                                    </button>
+                                <div className="flex gap-1 p-1 bg-white/5 border border-white/10 rounded-xl">
+                                    <Button variant="ghost" size="sm" onClick={exportCSV} title="CSV">📊</Button>
+                                    <Button variant="ghost" size="sm" onClick={exportXLSX} title="XLSX">📗</Button>
+                                    <Button variant="ghost" size="sm" onClick={exportPDF} title="PDF">📄</Button>
                                 </div>
                             )}
                         </div>
+                    }
+                />
+
+                {/* Stats */}
+                {form && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8 mt-6">
+                        <Card className="p-4 text-center">
+                            <div className="text-2xl font-bold text-primary">{submissions.length}</div>
+                            <div className="text-xs text-gray-500 uppercase tracking-wider">Total Submissions</div>
+                        </Card>
+                        <Card className="p-4 text-center">
+                            <div className="text-2xl font-bold text-primary">{form.fields?.length || 0}</div>
+                            <div className="text-xs text-gray-500 uppercase tracking-wider">Form Fields</div>
+                        </Card>
+                        <Card className="p-4 text-center">
+                            <div className="text-2xl font-bold text-primary">
+                                {form.createdAt ? formatDate(form.createdAt) : '—'}
+                            </div>
+                            <div className="text-xs text-gray-500 uppercase tracking-wider">Created Date</div>
+                        </Card>
                     </div>
+                )}
 
-                    {/* Stats */}
-                    {form && (
-                        <div className="dashboard-stats" style={{ marginBottom: '32px' }}>
-                            <div className="stat-card">
-                                <div className="stat-value">{submissions.length}</div>
-                                <div className="stat-label">Total Submissions</div>
-                            </div>
-                            <div className="stat-card">
-                                <div className="stat-value">{form.fields?.length || 0}</div>
-                                <div className="stat-label">Form Fields</div>
-                            </div>
-                            <div className="stat-card">
-                                <div className="stat-value">
-                                    {form.createdAt ? formatDate(form.createdAt) : '—'}
-                                </div>
-                                <div className="stat-label">Form Created</div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Loading State */}
-                    {loading && (
-                        <div className="loading-center">
-                            <span className="spinner" style={{ width: 48, height: 48 }} />
-                            <p style={{ marginTop: '16px', color: '#64748b' }}>Loading submissions...</p>
-                        </div>
-                    )}
+                {/* Loading State */}
+                {loading && (
+                    <div className="py-20 flex flex-col items-center justify-center gap-4">
+                        <Spinner size="lg" />
+                        <p className="text-gray-500 animate-pulse">Loading submissions...</p>
+                    </div>
+                )}
 
                     {/* View mode toggle & Search/Filter Bar */}
                     {!loading && form && submissions.length > 0 && (
@@ -1485,8 +1456,7 @@ export default function SubmissionsPage() {
                             <Link href="/dashboard" className="btn btn-primary">Go to Dashboard</Link>
                         </div>
                     )}
-                </div>
-            </div>
+            </PageContainer>
 
             {/* ── View Submission Modal ── */}
             {selectedSubmission && (

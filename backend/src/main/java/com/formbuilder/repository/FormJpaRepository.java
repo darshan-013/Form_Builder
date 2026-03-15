@@ -35,7 +35,7 @@ public interface FormJpaRepository extends JpaRepository<FormEntity, UUID> {
 
     /**
      * Returns all non-deleted PUBLISHED forms.
-     * Fine-grained role filtering is done in FormService via allowed_roles column.
+     * Fine-grained access filtering is applied in FormService via allowed_users rules.
      */
     @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields " +
            "WHERE f.softDeleted = false AND f.status = 'PUBLISHED' " +
@@ -60,19 +60,4 @@ public interface FormJpaRepository extends JpaRepository<FormEntity, UUID> {
     /** Find active form by ID scoped to owner. */
     @Query("SELECT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.id = :id AND f.createdBy = :owner AND f.softDeleted = false")
     Optional<FormEntity> findByIdAndCreatedBy(@Param("id") UUID id, @Param("owner") String owner);
-
-    /**
-     * Find ANY form by ID (including soft-deleted) — used for
-     * restore/permanent-delete.
-     */
-    @Query("SELECT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.id = :id AND f.createdBy = :owner")
-    Optional<FormEntity> findByIdAndCreatedByIncludingTrashed(@Param("id") UUID id, @Param("owner") String owner);
-
-    /** Returns soft-deleted forms for a specific user (the trash bin). */
-    @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.createdBy = :owner AND f.softDeleted = true ORDER BY f.deletedAt DESC")
-    List<FormEntity> findTrashedByOwner(@Param("owner") String owner);
-
-    /** Returns ALL soft-deleted forms (Admin trash view). */
-    @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.softDeleted = true ORDER BY f.deletedAt DESC")
-    List<FormEntity> findAllTrashed();
 }

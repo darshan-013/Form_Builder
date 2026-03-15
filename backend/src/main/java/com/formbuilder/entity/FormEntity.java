@@ -77,13 +77,12 @@ public class FormEntity {
     private FormVisibility visibility = FormVisibility.PUBLIC;
 
     /**
-     * JSON array of role names that can see this form.
-     * e.g. ["Viewer","Employee","Manager","Approver","Builder"]
-     * If null/empty → all roles can see (PUBLIC equivalent).
-     * Admin and Role Administrator ALWAYS have access regardless of this setting.
+     * JSON array of explicit user access entries.
+     * Each entry carries user id + username + optional display-name snapshot.
+     * If null/empty, default visibility rules apply.
      */
-    @Column(name = "allowed_roles", columnDefinition = "TEXT")
-    private String allowedRoles;
+    @Column(name = "allowed_users", columnDefinition = "TEXT")
+    private String allowedUsers;
 
     /**
      * Username of the user who created this form. Used to scope dashboard

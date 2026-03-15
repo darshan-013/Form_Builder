@@ -1,111 +1,67 @@
-import { useRouter } from 'next/router';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { logout } from '../services/api';
-import { toastSuccess, toastError } from '../services/toast';
-import { useTheme } from '../context/ThemeContext';
+import { useRouter } from 'next/router';
 import { useAuth } from '../context/AuthContext';
-
+import NavItem from './navbar/NavItem';
+import ThemeToggle from './navbar/ThemeToggle';
+import UserMenu from './navbar/UserMenu';
+import NotificationBell from './navbar/NotificationBell';
+import Container from './ui/Container';
 
 export default function Navbar() {
-    const router = useRouter();
-    const { theme, toggleTheme } = useTheme();
-    const { can, clearAuth, user, roles, hasRole } = useAuth();
+  const { user, can, hasRole } = useAuth();
+  const [isScrolled, setIsScrolled] = useState(false);
 
-    const handleLogout = async () => {
-        try {
-            await logout();
-            clearAuth();
-            toastSuccess('You have been logged out.');
-            router.push('/login');
-        } catch {
-            toastError('Logout failed. Please try again.');
-        }
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 10);
     };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
-    // Display the highest-priority role name
-    const roleDisplay = roles && roles.length > 0
-        ? roles.map(r => r.roleName).join(', ')
-        : 'Viewer';
-
-    return (
-        <nav className="navbar">
-            <Link href="/dashboard" className="navbar-brand">
-                ⚡ FormCraft
-            </Link>
-            <div className="navbar-actions">
-                {user && (
-                    <span style={{
-                        fontSize: 11, color: 'var(--text-muted)',
-                        padding: '4px 10px', borderRadius: 8,
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        whiteSpace: 'nowrap'
-                    }}>
-                        👤 {user.username} <span style={{ opacity: 0.5 }}>|</span> {roleDisplay}
-                    </span>
-                )}
-
-                <Link href="/dashboard" className="btn btn-secondary btn-sm">
-                    Dashboard
-                </Link>
-
-                {can('MANAGE') && (
-                    <Link href="/roles" className="btn btn-secondary btn-sm">
-                        🛡️ Roles
-                    </Link>
-                )}
-
-                {can('MANAGE') && (
-                    <Link href="/users" className="btn btn-secondary btn-sm">
-                        👤 Users
-                    </Link>
-                )}
-
-                {hasRole('Admin') && (
-                    <Link href="/logs/admin" className="btn btn-secondary btn-sm">
-                        Audit Logs
-                    </Link>
-                )}
-
-                {hasRole('Role Administrator') && (
-                    <Link href="/logs/role-assignments" className="btn btn-secondary btn-sm">
-                        Role Logs
-                    </Link>
-                )}
-
-                {(hasRole('Manager') || hasRole('Approver') || hasRole('Builder')) && (
-                    <Link href="/admin/approvals" className="btn btn-secondary btn-sm">
-                        Approval Inbox
-                    </Link>
-                )}
-
-                {(hasRole('Viewer') || hasRole('Builder')) && (
-                    <Link href="/workflows/status" className="btn btn-secondary btn-sm">
-                        Workflow Status
-                    </Link>
-                )}
-
-                {(can('WRITE') || hasRole('Viewer')) && (
-                    <Link href="/builder/new" className="btn btn-primary btn-sm">
-                        + New Form
-                    </Link>
-                )}
-
-                <button
-                    className="theme-toggle-btn"
-                    onClick={(e) => toggleTheme(e)}
-                    title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
-                    aria-label="Toggle theme"
-                >
-                    <span className={`theme-toggle-icon ${theme === 'dark' ? 'icon-sun' : 'icon-moon'}`}>
-                        {theme === 'dark' ? '☀️' : '🌙'}
-                    </span>
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={handleLogout}>
-                    Logout
-                </button>
+  return (
+    <nav className={`
+      sticky top-0 z-[100] w-full transition-all duration-300
+      ${isScrolled 
+        ? 'bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-gray-100 dark:border-white/5 shadow-sm' 
+        : 'bg-transparent'
+      }
+    `}>
+      <Container size="7xl">
+        <div className="flex items-center justify-between h-16 sm:h-20">
+          {/* Logo */}
+          <Link href="/dashboard" className="flex items-center gap-2 group">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-indigo-500/20 group-hover:scale-110 transition-transform">
+              F
             </div>
-        </nav>
-    );
+            <span className="text-xl font-extrabold tracking-tight text-gray-900 dark:text-white hidden sm:block">
+              Form<span className="text-indigo-600">Craft</span>
+            </span>
+          </Link>
+
+          {/* Center Links (Primary) */}
+          <div className="hidden lg:flex items-center gap-1">
+            <NavItem href="/dashboard">Dashboard</NavItem>
+            {can('MANAGE') && <NavItem href="/users">Users</NavItem>}
+            {can('MANAGE') && <NavItem href="/roles">Roles</NavItem>}
+            
+            {/* Contextual links based on roles */}
+            {(hasRole('Manager') || hasRole('Approver') || hasRole('Builder')) && (
+              <NavItem href="/admin/approvals">Approvals</NavItem>
+            )}
+          </div>
+
+          {/* Right Actions */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1 sm:gap-2 pr-2 sm:pr-4 border-r border-gray-100 dark:border-white/5">
+              <ThemeToggle />
+              <NotificationBell />
+            </div>
+            <UserMenu />
+          </div>
+        </div>
+      </Container>
+    </nav>
+  );
 }

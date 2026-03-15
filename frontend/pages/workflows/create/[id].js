@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import Navbar from '../../../components/Navbar';
 import WorkflowHeader from '../../../components/workflows/WorkflowHeader';
 import WorkflowDiagram from '../../../components/workflows/WorkflowDiagram';
 import { assignBuilder, getForm, getWorkflowCandidates, initiateWorkflow } from '../../../services/api';
 import { toastError, toastSuccess } from '../../../services/toast';
 import { useAuth } from '../../../context/AuthContext';
+import PageContainer from '../../../components/layout/PageContainer';
+import SectionHeader from '../../../components/layout/SectionHeader';
+import Button from '../../../components/ui/Button';
+import Card from '../../../components/ui/Card';
+import Badge from '../../../components/ui/Badge';
+import Spinner from '../../../components/ui/Spinner';
 
 function displayUser(user) {
     if (!user) return 'Unassigned';
@@ -237,12 +242,12 @@ export default function CreateWorkflowPage() {
 
     if (loading) {
         return (
-            <>
-                <Navbar />
-                <div className="loading-center" style={{ minHeight: '60vh' }}>
-                    <span className="spinner" style={{ width: 36, height: 36 }} />
+            <PageContainer>
+                <div className="py-20 flex flex-col items-center justify-center gap-4">
+                    <Spinner size="lg" />
+                    <p className="text-gray-500 animate-pulse">Initializing workflow setup...</p>
                 </div>
-            </>
+            </PageContainer>
         );
     }
 
@@ -260,19 +265,19 @@ export default function CreateWorkflowPage() {
     }) => {
         const filteredUsers = filterUsers(users, searchValue);
         return (
-        <div className="wf-group">
-            <div className="wf-group-head">
-                <div className="wf-group-label">{title}</div>
+        <div className="space-y-3 mb-6">
+            <div className="flex justify-between items-center">
+                <label className="text-sm font-bold text-gray-700 dark:text-gray-300">{title}</label>
                 {allowClear && selectedId && (
-                    <button type="button" className="wf-clear-link" onClick={() => setSelectedId('')}>
-                        Clear
+                    <button type="button" className="text-xs text-primary hover:underline" onClick={() => setSelectedId('')}>
+                        Clear selection
                     </button>
                 )}
             </div>
-            <div className="wf-search-wrap">
+            <div className="relative">
                 <input
                     type="text"
-                    className="form-input wf-search-input"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all"
                     value={searchValue}
                     onChange={(e) => setSearchValue(e.target.value)}
                     placeholder={searchPlaceholder || 'Search by name or username'}
@@ -280,18 +285,24 @@ export default function CreateWorkflowPage() {
                 />
             </div>
             {!users.length ? (
-                <div className="wf-empty-text">{emptyText || 'No users available.'}</div>
+                <div className="p-4 text-center text-sm text-gray-500 bg-gray-50 dark:bg-white/5 rounded-xl border border-dashed border-gray-200 dark:border-white/10">
+                    {emptyText || 'No users available.'}
+                </div>
             ) : !filteredUsers.length ? (
-                <div className="wf-empty-text">No users match your search.</div>
+                <div className="p-4 text-center text-sm text-gray-500">No users match your search.</div>
             ) : (
-                <div className="wf-radio-grid">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {filteredUsers.map((u) => {
                         const optionValue = String(u.id);
                         const checked = selectedId === optionValue;
                         return (
                             <label
                                 key={u.id}
-                                className={`wf-radio-card${checked ? ' active' : ''}${disabled ? ' disabled' : ''}`}
+                                className={`relative flex items-center p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                                    checked 
+                                        ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10' 
+                                        : 'border-white/5 bg-white/5 hover:border-white/20'
+                                } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 <input
                                     type="radio"
@@ -300,10 +311,19 @@ export default function CreateWorkflowPage() {
                                     checked={checked}
                                     onChange={(e) => setSelectedId(e.target.value)}
                                     disabled={disabled}
+                                    className="sr-only"
                                 />
-                                <span className="wf-radio-text">
-                                    <strong>{u.name || u.username}</strong> ({u.username})
-                                </span>
+                                <div className="flex-1 min-w-0">
+                                    <p className={`text-sm font-semibold truncate ${checked ? 'text-primary' : 'text-gray-900 dark:text-white'}`}>
+                                        {u.name || u.username}
+                                    </p>
+                                    <p className="text-xs text-gray-500 truncate">@{u.username}</p>
+                                </div>
+                                {checked && (
+                                    <div className="ml-2 w-5 h-5 bg-primary rounded-full flex items-center justify-center text-white scale-110">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    </div>
+                                )}
                             </label>
                         );
                     })}
@@ -316,153 +336,166 @@ export default function CreateWorkflowPage() {
     return (
         <>
             <Head><title>Create Workflow — FormCraft</title></Head>
-            <Navbar />
-            <div className="container wf-setup-page">
-                <WorkflowHeader
-                    title="Workflow Process"
-                    subtitle="Configure and preview a horizontal process before starting the workflow."
+            
+            <PageContainer>
+                <SectionHeader 
+                    title={isAssignMode ? '👤 Assign Builder' : '🧭 Workflow Setup'}
+                    subtitle={form ? `Form: ${form.name}` : 'Configure the approval chain and assign responsibilities'}
+                    actions={
+                        <div className="flex gap-2">
+                             <Button variant="secondary" size="sm" onClick={() => router.push('/dashboard')}>
+                                Cancel
+                            </Button>
+                            <Button variant="primary" size="sm" onClick={handleSubmit} disabled={submitting || viewerReassignBlocked}>
+                                {submitting ? <Spinner size="sm" /> : (isAssignMode ? 'Assign Builder' : 'Start Workflow')}
+                            </Button>
+                        </div>
+                    }
                 />
 
-                <div className="wf-setup-header">
-                    <h1>{isAssignMode ? 'Assign Builder' : 'Workflow Setup'}</h1>
-                    <p>
-                    {form
-                        ? `Form: ${form.name}`
-                        : (isAssignMode
-                            ? 'Select a Builder to assign this form before workflow starts.'
-                            : 'Configure the mandatory approval chain before publication.')}
-                    </p>
-                </div>
-
-                {!isAssignMode && !isAdmin && !form?.assignedBuilderId && (
-                    <div className="card wf-notice-card">
-                        <div className="wf-notice-text">
-                            This form must be assigned to a Builder before workflow can start.
-                        </div>
-                    </div>
-                )}
-
-                {viewerReassignBlocked && (
-                    <div className="card wf-notice-card">
-                        <div className="wf-notice-text">
-                            Builder already assigned to <strong>{form?.assignedBuilderUsername}</strong>. Viewer cannot change it. Contact Admin for reassignment.
-                        </div>
-                    </div>
-                )}
-
-                <div className="card wf-setup-card">
-                    {!isAssignMode && (
-                        <div className="wf-group wf-mode-panel">
-                            <div className="wf-group-label">Workflow Level</div>
-                            <div className="wf-mode-toggle" role="tablist" aria-label="Workflow level toggle">
-                                {strategyOptions.map((opt) => {
-                                    const checked = strategy === opt.key;
-                                    return (
-                                        <button
-                                            type="button"
-                                            key={opt.key}
-                                            className={`wf-mode-btn${checked ? ' active' : ''}`}
-                                            onClick={() => setStrategy(opt.key)}
-                                            role="tab"
-                                            aria-selected={checked}
-                                        >
-                                            <span>{opt.label}</span>
-                                        </button>
-                                    );
-                                })}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-6">
+                    <div className="lg:col-span-8 space-y-6">
+                        {viewerReassignBlocked && (
+                            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex gap-3 text-amber-700 dark:text-amber-300 text-sm">
+                                <span>⚠️</span>
+                                <p>Builder already assigned to <strong>{form?.assignedBuilderUsername}</strong>. Viewer cannot change it. Contact Admin for reassignment.</p>
                             </div>
-                            <div className="wf-radio-help">
-                                {strategyOptions.find((s) => s.key === strategy)?.help}
+                        )}
+
+                        {!isAssignMode && !isAdmin && !form?.assignedBuilderId && (
+                            <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex gap-3 text-indigo-700 dark:text-indigo-300 text-sm">
+                                <span>ℹ️</span>
+                                <p>This form must be assigned to a Builder before workflow can start.</p>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {!isAssignMode && strategy === 'NORMAL' && (
-                        <div className="wf-chain-text">No authority step required for Normal flow.</div>
-                    )}
+                        <Card>
+                            <div className="p-6">
+                                {!isAssignMode && (
+                                    <div className="mb-8 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl">
+                                        <label className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 block">Workflow Complexity</label>
+                                        <div className="flex gap-2 p-1 bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                                            {strategyOptions.map((opt) => {
+                                                const checked = strategy === opt.key;
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={opt.key}
+                                                        className={`flex-1 py-2 px-4 text-sm font-medium rounded-lg transition-all ${
+                                                            checked 
+                                                                ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+                                                                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                                                        }`}
+                                                        onClick={() => setStrategy(opt.key)}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="mt-3 text-xs text-gray-400 italic">
+                                            {strategyOptions.find((s) => s.key === strategy)?.help}
+                                        </p>
+                                    </div>
+                                )}
 
-                    {!isAssignMode && strategy === 'LEVEL_1' && (
-                        <RadioUserGroup
-                            title="Authority 1 (Manager/Approver)"
-                            users={authorities}
-                            selectedId={authority1}
-                            setSelectedId={setAuthority1}
-                            searchValue={authority1Search}
-                            setSearchValue={setAuthority1Search}
-                            searchPlaceholder="Search authority"
-                            allowClear
-                            emptyText="No authority users available."
-                        />
-                    )}
+                                {!isAssignMode && strategy === 'NORMAL' && (
+                                    <div className="py-10 text-center opacity-40">
+                                        <p className="text-sm">No authority step required for Normal flow.</p>
+                                    </div>
+                                )}
 
-                    {!isAssignMode && strategy === 'LEVEL_2' && (
-                        <>
-                            <RadioUserGroup
-                                title="Authority 1 (Manager/Approver)"
-                                users={authorities}
-                                selectedId={authority1}
-                                setSelectedId={setAuthority1}
-                                searchValue={authority1Search}
-                                setSearchValue={setAuthority1Search}
-                                searchPlaceholder="Search authority 1"
-                                allowClear
-                                emptyText="No authority users available."
-                            />
+                                {!isAssignMode && strategy === 'LEVEL_1' && (
+                                    <RadioUserGroup
+                                        title="Authority 1 (Manager/Approver)"
+                                        users={authorities}
+                                        selectedId={authority1}
+                                        setSelectedId={setAuthority1}
+                                        searchValue={authority1Search}
+                                        setSearchValue={setAuthority1Search}
+                                        searchPlaceholder="Search authority"
+                                        allowClear
+                                        emptyText="No authority users available."
+                                    />
+                                )}
 
-                            <RadioUserGroup
-                                title="Authority 2 (Manager/Approver)"
-                                users={authority2Candidates}
-                                selectedId={authority2}
-                                setSelectedId={setAuthority2}
-                                searchValue={authority2Search}
-                                setSearchValue={setAuthority2Search}
-                                searchPlaceholder="Search authority 2"
-                                allowClear
-                                emptyText={authority1 ? 'No other authority available. Clear or change Authority 1.' : 'No authority users available.'}
-                            />
-                        </>
-                    )}
+                                {!isAssignMode && strategy === 'LEVEL_2' && (
+                                    <>
+                                        <RadioUserGroup
+                                            title="Authority 1 (Manager/Approver)"
+                                            users={authorities}
+                                            selectedId={authority1}
+                                            setSelectedId={setAuthority1}
+                                            searchValue={authority1Search}
+                                            setSearchValue={setAuthority1Search}
+                                            searchPlaceholder="Search authority 1"
+                                            allowClear
+                                            emptyText="No authority users available."
+                                        />
 
-                    <RadioUserGroup
-                        title={isAssignMode ? 'Assign Builder' : 'Target Builder'}
-                        users={builders}
-                        selectedId={targetBuilderId}
-                        setSelectedId={setTargetBuilderId}
-                        searchValue={builderSearch}
-                        setSearchValue={setBuilderSearch}
-                        searchPlaceholder="Search builder"
-                        disabled={viewerReassignBlocked || (!isAdmin && !isAssignMode && !!form?.assignedBuilderId)}
-                        emptyText="No Builder users available."
-                    />
+                                        <RadioUserGroup
+                                            title="Authority 2 (Manager/Approver)"
+                                            users={authority2Candidates}
+                                            selectedId={authority2}
+                                            setSelectedId={setAuthority2}
+                                            searchValue={authority2Search}
+                                            setSearchValue={setAuthority2Search}
+                                            searchPlaceholder="Search authority 2"
+                                            allowClear
+                                            emptyText={authority1 ? 'No other authority available. Clear or change Authority 1.' : 'No authority users available.'}
+                                        />
+                                    </>
+                                )}
 
-                    {!isAssignMode && form?.assignedBuilderUsername && (
-                        <div className="wf-assigned-pill">
-                            Assigned Builder: <strong>{form.assignedBuilderUsername}</strong>
-                        </div>
-                    )}
+                                <RadioUserGroup
+                                    title={isAssignMode ? 'Assign Builder' : 'Target Builder'}
+                                    users={builders}
+                                    selectedId={targetBuilderId}
+                                    setSelectedId={setTargetBuilderId}
+                                    searchValue={builderSearch}
+                                    setSearchValue={setBuilderSearch}
+                                    searchPlaceholder="Search builder"
+                                    disabled={viewerReassignBlocked || (!isAdmin && !isAssignMode && !!form?.assignedBuilderId)}
+                                    emptyText="No Builder users available."
+                                />
 
-                    <div className="wf-action-row">
-                        <button type="button" className="btn btn-secondary" onClick={() => router.push('/dashboard')}>
-                            Cancel
-                        </button>
-                        <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={submitting || viewerReassignBlocked}>
-                            {submitting ? (isAssignMode ? 'Assigning...' : 'Starting...') : (isAssignMode ? 'Assign Builder' : 'Start Workflow')}
-                        </button>
+                                {!isAssignMode && form?.assignedBuilderUsername && (
+                                    <div className="mt-4 p-3 bg-primary/5 border border-primary/20 rounded-xl text-xs text-primary text-center">
+                                        Form is currently assigned to <strong>@{form.assignedBuilderUsername}</strong>
+                                    </div>
+                                )}
+                            </div>
+                        </Card>
+                    </div>
+
+                    <div className="lg:col-span-4 gap-6">
+                         <div className="sticky top-24 space-y-6">
+                            <Card className="overflow-hidden">
+                                <div className="p-5">
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Live Preview</h4>
+                                    <WorkflowDiagram steps={workflowSteps} />
+                                    
+                                    <div className="mt-6 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
+                                        <p className="text-xs font-bold text-gray-400 mb-2">Chain Logic</p>
+                                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-mono">
+                                            {chainLabel}
+                                        </p>
+                                    </div>
+                                </div>
+                            </Card>
+                            
+                            <div className="p-6 bg-gradient-to-br from-primary/10 to-transparent border border-primary/10 rounded-3xl">
+                                <h4 className="text-sm font-bold mb-2">Next Steps</h4>
+                                <ul className="text-xs text-gray-500 space-y-2 list-disc list-inside">
+                                    <li>Builder will receive a notification</li>
+                                    <li>Form will move to "Assigned" or "Pending" status</li>
+                                    <li>Approvers will be able to review the form structure</li>
+                                </ul>
+                            </div>
+                         </div>
                     </div>
                 </div>
-
-                <div className="card wf-visual-card">
-                    <div className="wf-group-label">Workflow Visualization</div>
-                    <div className="wf-visual-subtext">Live chain preview based on your current selections.</div>
-
-                    <WorkflowDiagram steps={workflowSteps} />
-
-                    <div className="wf-chain-text">{chainLabel}</div>
-                </div>
-            </div>
+            </PageContainer>
         </>
     );
 }
-
-
-

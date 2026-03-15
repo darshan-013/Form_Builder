@@ -7,12 +7,15 @@ import com.formbuilder.entity.FormFieldEntity;
 import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.SharedOptionsEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
+import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.repository.UserRepository;
 import com.formbuilder.repository.FormFieldJpaRepository;
 import com.formbuilder.repository.FormGroupRepository;
 import com.formbuilder.repository.FormJpaRepository;
 import com.formbuilder.repository.SharedOptionsRepository;
 import com.formbuilder.repository.StaticFormFieldRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +37,8 @@ public class FormService {
     private final DynamicTableService dynamicTable;
     private final UserRepository userRepo;
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     // ── Read ──────────────────────────────────────────────────────────────────
 
     /** Returns only forms owned by the given user (legacy — kept for backward compatibility). */
@@ -44,105 +49,119 @@ public class FormService {
     /**
      * Returns forms visible to the user based on their RBAC roles.
      *
-     * Role visibility matrix:
-     * - Admin:              ALL non-deleted forms
-     * - Role Administrator: ALL non-deleted forms (draft + published), preview-only
-     * - Builder:            ONLY their own forms (any status) — not other builders' forms
-     * - Others:             PUBLISHED forms filtered by allowed_roles
-     *
-     * allowed_roles filtering:
-     *   If form.allowed_roles is NULL/empty → visible to everyone (default/PUBLIC)
-     *   If form.allowed_roles is set → only users with a matching role can see it
-     *   Admin & Role Administrator always bypass allowed_roles
+     * Access model:
+     * - Admin / Role Administrator: all active forms
+     * - Builder: own forms, assigned draft forms, and published forms explicitly assigned via allowed_users
+     * - Viewer: own forms and published forms explicitly assigned via allowed_users
+     * - Others: only published forms explicitly assigned via allowed_users
      */
     public List<FormEntity> getFormsForRole(String username, Set<String> roleNames) {
-        // Admin sees everything
-        if (roleNames.contains("Admin")) {
+        Integer userId = userRepo.findByUsername(username).map(User::getId).orElse(null);
+
+        if (roleNames.contains("Admin") || roleNames.contains("Role Administrator")) {
             return formRepo.findAllByOrderByCreatedAtDesc();
         }
 
-        // Role Administrator sees all active forms (including drafts)
-        if (roleNames.contains("Role Administrator")) {
-            return formRepo.findAllByOrderByCreatedAtDesc();
-        }
-
-        // Builder sees:
-        // 1) their own forms (any status)
-        // 2) published forms they can access by allowed_roles
-        // 3) forms explicitly assigned to them before workflow start
         if (roleNames.contains("Builder")) {
             List<FormEntity> all = formRepo.findAllByOrderByCreatedAtDesc();
-
-            List<FormEntity> publishedVisible = filterByAllowedRoles(
+            Set<UUID> publishedVisibleIds = filterPublishedByAccess(
                     all.stream().filter(f -> f.getStatus() == FormEntity.FormStatus.PUBLISHED).toList(),
-                    roleNames);
-            Set<UUID> publishedVisibleIds = publishedVisible.stream().map(FormEntity::getId).collect(Collectors.toSet());
+                    username,
+                    userId)
+                    .stream().map(FormEntity::getId).collect(Collectors.toSet());
 
             return all.stream().filter(f -> {
-                if (username.equals(f.getCreatedBy())) {
-                    return true;
-                }
-                if (publishedVisibleIds.contains(f.getId())) {
-                    return true;
-                }
-                if (f.getStatus() != FormEntity.FormStatus.PUBLISHED && f.getAssignedBuilderUsername() != null) {
-                    return username.equals(f.getAssignedBuilderUsername());
-                }
-                return false;
+                if (username.equals(f.getCreatedBy())) return true;
+                if (publishedVisibleIds.contains(f.getId())) return true;
+                return f.getStatus() != FormEntity.FormStatus.PUBLISHED
+                        && f.getAssignedBuilderUsername() != null
+                        && username.equals(f.getAssignedBuilderUsername());
             }).collect(Collectors.toList());
         }
 
-        // Viewer sees only forms they created.
         if (roleNames.contains("Viewer")) {
-            return formRepo.findAllByCreatedByOrderByCreatedAtDesc(username);
+            List<FormEntity> all = formRepo.findAllByOrderByCreatedAtDesc();
+            return all.stream().filter(f ->
+                    username.equals(f.getCreatedBy())
+                            || (f.getStatus() == FormEntity.FormStatus.PUBLISHED
+                            && hasExplicitUserAccess(f, username, userId))
+            ).collect(Collectors.toList());
         }
 
-        // All other roles: get published forms, then filter by allowed_roles
         List<FormEntity> published = formRepo.findPublishedAccessibleForms();
-        return filterByAllowedRoles(published, roleNames);
+        return filterPublishedByAccess(published, username, userId);
     }
 
     /**
-     * Filters a list of forms by the allowed_roles JSON column.
-     * If allowed_roles is null/empty → form is visible to everyone.
-     * If allowed_roles contains role names → user must have at least one matching role.
+     * Access policy for published forms:
+     * - If allowed_users is non-empty: only explicitly listed users can access.
+     * - If allowed_users is empty: published forms are visible by default.
      */
-    private List<FormEntity> filterByAllowedRoles(List<FormEntity> forms, Set<String> userRoles) {
+    private List<FormEntity> filterPublishedByAccess(List<FormEntity> forms,
+                                                     String username,
+                                                     Integer userId) {
         return forms.stream().filter(form -> {
-            String json = form.getAllowedRoles();
-            if (json == null || json.isBlank() || json.equals("[]")) {
-                return true; // no restriction → visible to all
+            List<AllowedUserEntry> allowedUsers = deserializeUserList(form.getAllowedUsers());
+            if (allowedUsers.isEmpty()) {
+                return true;
             }
-            List<String> allowed = deserializeRoleList(json);
-            if (allowed.isEmpty()) return true;
-            // User must have at least one of the allowed roles
-            return allowed.stream().anyMatch(userRoles::contains);
+            return matchesAllowedUser(allowedUsers, username, userId);
         }).collect(Collectors.toList());
     }
 
-    /** Deserialize JSON array string to List<String>. */
-    private List<String> deserializeRoleList(String json) {
-        if (json == null || json.isBlank()) return List.of();
+    private boolean hasExplicitUserAccess(FormEntity form, String username, Integer userId) {
+        List<AllowedUserEntry> allowedUsers = deserializeUserList(form.getAllowedUsers());
+        if (allowedUsers.isEmpty()) return false;
+        return matchesAllowedUser(allowedUsers, username, userId);
+    }
+
+    private boolean matchesAllowedUser(List<AllowedUserEntry> allowedUsers, String username, Integer userId) {
+        return allowedUsers.stream().anyMatch(u -> {
+            boolean usernameMatch = u.username != null && u.username.equalsIgnoreCase(username);
+            boolean idMatch = userId != null && u.id != null && Objects.equals(u.id, userId);
+            return usernameMatch || idMatch;
+        });
+    }
+
+    private List<AllowedUserEntry> deserializeUserList(String json) {
+        if (json == null || json.isBlank() || "[]".equals(json)) return List.of();
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper()
-                    .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+            List<AllowedUserEntry> parsed = JSON.readValue(json, new TypeReference<>() {});
+            if (parsed == null || parsed.isEmpty()) return List.of();
+            return parsed.stream()
+                    .filter(Objects::nonNull)
+                    .filter(u -> (u.id != null) || (u.username != null && !u.username.isBlank()))
+                    .toList();
         } catch (Exception e) {
-            log.warn("Failed to parse allowed_roles JSON: {}", json);
+            log.warn("Failed to parse allowed_users JSON: {}", json);
             return List.of();
         }
     }
 
-    private boolean isViewerUser(String username) {
-        return userRepo.findByUsernameWithRolesAndPermissions(username)
-                .map(user -> user.getRoles().stream().anyMatch(r -> "Viewer".equals(r.getRoleName())))
-                .orElse(false);
-    }
+    private String serializeUserList(List<FormDTO.AllowedUserDTO> users) {
+        if (users == null || users.isEmpty()) return null;
 
-    /** Serialize List<String> to JSON array string. */
-    private String serializeRoleList(List<String> roles) {
-        if (roles == null || roles.isEmpty()) return null;
+        // Keep stable snapshots (id + username + optional name), dedupe by id/username.
+        LinkedHashMap<String, AllowedUserEntry> unique = new LinkedHashMap<>();
+        for (FormDTO.AllowedUserDTO dto : users) {
+            if (dto == null) continue;
+            String username = dto.getUsername() == null ? null : dto.getUsername().trim();
+            if (username != null && username.isBlank()) username = null;
+            Integer id = dto.getId();
+            if (id == null && username == null) continue;
+
+            AllowedUserEntry entry = new AllowedUserEntry();
+            entry.id = id;
+            entry.username = username;
+            entry.name = dto.getName() == null ? null : dto.getName().trim();
+
+            String key = id != null ? ("id:" + id) : ("username:" + username.toLowerCase());
+            unique.putIfAbsent(key, entry);
+        }
+
+        if (unique.isEmpty()) return null;
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(roles);
+            return JSON.writeValueAsString(unique.values());
         } catch (Exception e) {
             return null;
         }
@@ -180,24 +199,6 @@ public class FormService {
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
     }
 
-    /**
-     * Returns a form by ID (including soft-deleted) — allows access if owner OR Admin.
-     * Used by restore and permanent-delete.
-     */
-    public FormEntity getFormForActionIncludingTrashed(UUID id, String username, boolean isAdmin) {
-        if (isAdmin) {
-            return formRepo.findById(id)
-                    .map(f -> {
-                        // Force-load fields for consistency
-                        f.getFields().size();
-                        return f;
-                    })
-                    .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
-        }
-        return formRepo.findByIdAndCreatedByIncludingTrashed(id, username)
-                .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
-    }
-
     // ── Create ────────────────────────────────────────────────────────────────
 
     @Transactional
@@ -211,7 +212,7 @@ public class FormService {
                 .tableName(tableName)
                 .createdBy(owner)
                 .visibility(parseVisibility(dto.getVisibility()))
-                .allowedRoles(serializeRoleList(dto.getAllowedRoles()))
+                .allowedUsers(serializeUserList(dto.getAllowedUsers()))
                 .allowMultipleSubmissions(
                         dto.getAllowMultipleSubmissions() == null ? true : dto.getAllowMultipleSubmissions())
                 .showTimestamp(true) // always compulsory — timestamp every submission
@@ -295,8 +296,8 @@ public class FormService {
         if (dto.getVisibility() != null) {
             existing.setVisibility(parseVisibility(dto.getVisibility()));
         }
-        if (dto.getAllowedRoles() != null) {
-            existing.setAllowedRoles(serializeRoleList(dto.getAllowedRoles()));
+        if (dto.getAllowedUsers() != null) {
+            existing.setAllowedUsers(serializeUserList(dto.getAllowedUsers()));
         }
         if (dto.getAllowMultipleSubmissions() != null)
             existing.setAllowMultipleSubmissions(dto.getAllowMultipleSubmissions());
@@ -335,12 +336,9 @@ public class FormService {
         return formRepo.save(existing);
     }
 
-    // ── Delete / Soft Delete / Trash ────────────────────────────────────────────
+    // ── Delete / Soft Delete ────────────────────────────────────────────────
 
-    /**
-     * Soft-delete: mark the form as deleted without removing data.
-     * The form disappears from all active listings and appears in the trash.
-     */
+    /** Soft-delete only: mark form as deleted without dropping schema/data. */
     @Transactional
     public void deleteForm(UUID id, String owner, boolean isAdmin) {
         FormEntity form = getFormForAction(id, owner, isAdmin);
@@ -348,37 +346,6 @@ public class FormService {
         form.setDeletedAt(java.time.LocalDateTime.now());
         formRepo.save(form);
         log.info("Form '{}' soft-deleted by '{}'", form.getName(), owner);
-    }
-
-    /** Returns soft-deleted forms — Admin sees all, others see only their own. */
-    public List<FormEntity> getTrashForms(String owner, boolean isAdmin) {
-        if (isAdmin) {
-            return formRepo.findAllTrashed();
-        }
-        return formRepo.findTrashedByOwner(owner);
-    }
-
-    /** Restore a soft-deleted form back to active. */
-    @Transactional
-    public FormEntity restoreForm(UUID id, String owner, boolean isAdmin) {
-        FormEntity form = getFormForActionIncludingTrashed(id, owner, isAdmin);
-        form.setSoftDeleted(false);
-        form.setDeletedAt(null);
-        FormEntity saved = formRepo.save(form);
-        log.info("Form '{}' restored by '{}'", form.getName(), owner);
-        return saved;
-    }
-
-    /** Permanently delete a soft-deleted form and drop its submission table. */
-    @Transactional
-    public void permanentDeleteForm(UUID id, String owner, boolean isAdmin) {
-        FormEntity form = getFormForActionIncludingTrashed(id, owner, isAdmin);
-        if (!form.isSoftDeleted()) {
-            throw new IllegalStateException("Form must be in trash before permanent deletion");
-        }
-        dynamicTable.dropTable(form.getTableName());
-        formRepo.delete(form);
-        log.info("Form '{}' permanently deleted by '{}'", form.getName(), owner);
     }
 
     // ── Status (Publish / Unpublish) ──────────────────────────────────────────
@@ -507,10 +474,12 @@ public class FormService {
                 .id(dto.getId() != null ? dto.getId() : UUID.randomUUID())
                 .form(parent)
                 .fieldKey(dto.getFieldKey())
-                .label(dto.getLabel())
+                .label(dto.getLabel()
+                )
                 .fieldType(dto.getFieldType())
                 .required(dto.isRequired())
-                .defaultValue(dto.getDefaultValue())
+                .defaultValue(dto.getDefaultValue()
+                )
                 .validationRegex(dto.getValidationRegex())
                 .validationJson(dto.getValidationJson())
                 .rulesJson(dto.getRulesJson())
@@ -568,5 +537,11 @@ public class FormService {
         } catch (IllegalArgumentException e) {
             return FormEntity.FormVisibility.PUBLIC;
         }
+    }
+
+    private static final class AllowedUserEntry {
+        public Integer id;
+        public String username;
+        public String name;
     }
 }

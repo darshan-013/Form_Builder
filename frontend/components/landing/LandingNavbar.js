@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import styles from '../../styles/Home.module.css';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function LandingNavbar() {
     const [scrolled, setScrolled] = useState(false);
+    const { theme, toggleTheme } = useTheme();
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 16);
@@ -16,19 +18,28 @@ export default function LandingNavbar() {
         <header className={`${styles.navbarWrap} ${scrolled ? styles.navbarSolid : styles.navbarTransparent}`}>
             <div className={styles.container}>
                 <nav className={styles.navbar}>
-                    <Link href="/" className={styles.brand}>
-                        FormCraft
-                    </Link>
+                    <div className={styles.navLinksPill}>
+                        <Link href="/" className={`${styles.brand} ${styles.brandStart}`}>⚡ FormCraft</Link>
 
-                    <div className={styles.navLinks}>
-                        <a href="#features" className={styles.navLink}>Features</a>
-                        <a href="#overview" className={styles.navLink}>Overview</a>
-                        <Link href="/login" className={styles.navLink}>Login</Link>
-                        <Link href="/register" className={`${styles.ctaButton} ${styles.btnPrimarySm}`}>Get Started</Link>
+                        <Link href="/" className={styles.navLinkPill}>⌂ Home</Link>
+                        <a href="#features" className={styles.navLinkPill}>◇ Features</a>
+                        <Link href="/login" className={styles.navLinkPill}>→ Login</Link>
+                        <Link href="/register" className={`${styles.navLinkPill} ${styles.navLinkPrimary}`}>✦ Signup</Link>
+
+                        <button
+                            type="button"
+                            className="theme-toggle-btn"
+                            onClick={(e) => toggleTheme(e)}
+                            title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
+                            aria-label="Toggle theme"
+                        >
+                            <span className={`theme-toggle-icon ${theme === 'dark' ? 'icon-sun' : 'icon-moon'}`}>
+                                {theme === 'dark' ? '☀️' : '🌙'}
+                            </span>
+                        </button>
                     </div>
                 </nav>
             </div>
         </header>
     );
 }
-

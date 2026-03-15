@@ -1,14 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import FieldPalette from '../../components/Builder/FieldPalette';
 import Canvas from '../../components/Builder/Canvas';
-import { getForm, updateForm, getRoles } from '../../services/api';
+import { getForm, updateForm, getVisibilityCandidates } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
+import { useAuth } from '../../context/AuthContext';
+import PageContainer from '../../components/layout/PageContainer';
+import Button from '../../components/ui/Button';
+import Badge from '../../components/ui/Badge';
+import Spinner from '../../components/ui/Spinner';
+import Input from '../../components/ui/Input';
+import Modal from '../../components/ui/Modal';
 
 const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
-const HIDDEN_ROLES = new Set(['Admin', 'Role Administrator']);
 
 /**
  * Edit Form Builder Page — /builder/[id]
@@ -18,6 +24,8 @@ const HIDDEN_ROLES = new Set(['Admin', 'Role Administrator']);
 export default function EditBuilderPage() {
     const router = useRouter();
     const { id } = router.query;
+    const { hasRole } = useAuth();
+    const isViewer = hasRole('Viewer');
 
     const [formName, setFormName] = useState('');
     const [formDescription, setFormDescription] = useState('');
@@ -30,19 +38,57 @@ export default function EditBuilderPage() {
     const [visibility, setVisibility] = useState('PUBLIC');
     const [showSettings, setShowSettings] = useState(false);
 
-    // ── Role-based form access ──
-    const [availableRoles, setAvailableRoles] = useState([]);
-    const [allowedRoles, setAllowedRoles] = useState([]);
+    // ── User-based form access ──
+    const [allowedUsers, setAllowedUsers] = useState([]);
+    const [availableUsers, setAvailableUsers] = useState([]);
+    const [userSearch, setUserSearch] = useState('');
 
     // Load available roles
     useEffect(() => {
-        getRoles()
-            .then(roles => {
-                const filtered = (roles || []).filter(r => !HIDDEN_ROLES.has(r.roleName));
-                setAvailableRoles(filtered);
+        if (isViewer) return;
+        getVisibilityCandidates()
+            .then((res) => {
+                const users = Array.isArray(res?.users) ? res.users : [];
+                setAvailableUsers(users);
             })
-            .catch(() => { /* silent */ });
-    }, []);
+            .catch(() => setAvailableUsers([]));
+    }, [isViewer]);
+
+    const filteredVisibilityUsers = useMemo(() => {
+        const q = userSearch.trim().toLowerCase();
+        const selectedIds = new Set(allowedUsers.map(u => String(u.id ?? u.username)));
+        const source = availableUsers.filter(u => !selectedIds.has(String(u.id ?? u.username)));
+        if (!q) return source.slice(0, 12);
+        return source.filter(u => {
+            const username = (u.username || '').toLowerCase();
+            const name = (u.name || '').toLowerCase();
+            return username.includes(q) || name.includes(q);
+        }).slice(0, 12);
+    }, [availableUsers, allowedUsers, userSearch]);
+
+    function addAllowedUser(user) {
+        if (!user) return;
+        setAllowedUsers(prev => {
+            const exists = prev.some(u =>
+                (u.id != null && user.id != null && Number(u.id) === Number(user.id)) ||
+                (u.username && user.username && u.username.toLowerCase() === user.username.toLowerCase())
+            );
+            if (exists) return prev;
+            return [...prev, { id: user.id ?? null, username: user.username || '', name: user.name || '' }];
+        });
+        setUserSearch('');
+    }
+
+    function removeAllowedUser(user) {
+        setAllowedUsers(prev => prev.filter(u => {
+            if (user.id != null && u.id != null) return Number(u.id) !== Number(user.id);
+            return (u.username || '').toLowerCase() !== (user.username || '').toLowerCase();
+        }));
+    }
+
+    function clearAllowedUsers() {
+        setAllowedUsers([]);
+    }
 
     // Load existing form (dynamic fields + static fields merged by fieldOrder)
     useEffect(() => {
@@ -54,20 +100,24 @@ export default function EditBuilderPage() {
                 setAllowMultipleSubmissions(form.allowMultipleSubmissions ?? true);
                 setVisibility(form.visibility || 'PUBLIC');
 
-                // Load allowed roles from form data
-                if (form.allowedRoles) {
+                // Load allowed users from form data
+                if (form.allowedUsers) {
                     try {
-                        const parsed = typeof form.allowedRoles === 'string'
-                            ? JSON.parse(form.allowedRoles)
-                            : form.allowedRoles;
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                            setAllowedRoles(parsed);
+                        const parsedUsers = typeof form.allowedUsers === 'string'
+                            ? JSON.parse(form.allowedUsers)
+                            : form.allowedUsers;
+                        if (Array.isArray(parsedUsers) && parsedUsers.length > 0) {
+                            setAllowedUsers(parsedUsers.map(u => ({
+                                id: u?.id ?? null,
+                                username: u?.username || '',
+                                name: u?.name || '',
+                            })).filter(u => u.id != null || u.username));
                         } else {
-                            setAllowedRoles([]);
+                            setAllowedUsers([]);
                         }
-                    } catch { setAllowedRoles([]); }
+                    } catch { setAllowedUsers([]); }
                 } else {
-                    setAllowedRoles([]);
+                    setAllowedUsers([]);
                 }
 
                 // Load expiry — convert from ISO to datetime-local format (YYYY-MM-DDTHH:mm)
@@ -188,7 +238,7 @@ export default function EditBuilderPage() {
             })),
             allowMultipleSubmissions: allowMultipleSubmissions,
             visibility: visibility,
-            allowedRoles: allowedRoles,
+            allowedUsers: allowedUsers,
             showTimestamp: true, // always recorded — compulsory
             expiresAt: expiresAt ? expiresAt : null,
         };
@@ -207,8 +257,11 @@ export default function EditBuilderPage() {
 
     if (loading) {
         return (
-            <div className="loading-center" style={{ height: '100vh', background: 'var(--bg-base)' }}>
-                <span className="spinner" style={{ width: 36, height: 36 }} />
+            <div className="flex h-[80vh] items-center justify-center">
+                <div className="text-center space-y-4">
+                    <Spinner size="lg" />
+                    <p className="text-gray-500 animate-pulse">Initializing builder...</p>
+                </div>
             </div>
         );
     }
@@ -222,149 +275,122 @@ export default function EditBuilderPage() {
         <>
             <Head><title>Edit Form — FormCraft Builder</title></Head>
 
-            <div className="builder-page">
-                <header className="builder-topbar">
-                    <Link href="/dashboard" className="builder-topbar-brand">⚡ FormCraft</Link>
+            <div className="builder-grid">
+                <header className="builder-topbar sticky top-0 z-50 flex items-center gap-4 px-6 h-16 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl animate-slide-down">
+                    <Link href="/dashboard" className="builder-topbar-brand text-xl font-black bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">
+                        ⚡ FormCraft
+                    </Link>
 
                     <input
-                        className="builder-form-name-input"
-                        placeholder="Form name…"
+                        className="flex-1 max-w-sm px-4 py-2 text-sm font-semibold bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/50 transition-all"
+                        placeholder="Untitled Form"
                         value={formName}
                         onChange={(e) => setFormName(e.target.value)}
                     />
                     <input
-                        className="builder-form-name-input"
-                        style={{ maxWidth: 240, fontWeight: 400, fontSize: 13 }}
-                        placeholder="Description (optional)"
+                        className="hidden md:block flex-1 max-w-xs px-4 py-2 text-xs text-slate-400 bg-transparent border-none focus:outline-none focus:ring-0"
+                        placeholder="Add a description..."
                         value={formDescription}
                         onChange={(e) => setFormDescription(e.target.value)}
                     />
 
-                    <div className="builder-topbar-actions">
+                    <div className="flex items-center gap-3 ml-auto">
                         {fields.length > 0 && (
-                            <span className="badge badge-text">
-                                {dynamicCount} field{dynamicCount !== 1 ? 's' : ''}
-                                {staticCount > 0 ? ` + ${staticCount} static` : ''}
-                                {pageBreakCount > 0 ? ` · ${pageCount} pages` : ''}
-                            </span>
+                            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-[10px] font-bold text-indigo-400">
+                                <span>{dynamicCount} Fields</span>
+                                {staticCount > 0 && <span className="opacity-30">|</span>}
+                                {staticCount > 0 && <span>{staticCount} Static</span>}
+                                {pageBreakCount > 0 && <span className="opacity-30">|</span>}
+                                {pageBreakCount > 0 && <span>{pageCount} Pages</span>}
+                            </div>
                         )}
 
-                        {/* Settings button */}
-                        <div style={{ position: 'relative' }}>
-                            <button
-                                className={`btn btn-secondary btn-sm${showSettings ? ' btn-active' : ''}`}
+                        <div className="relative">
+                            <Button
+                                variant={showSettings ? 'primary' : 'secondary'}
+                                size="sm"
+                                className={`rounded-xl px-4 h-10 flex items-center gap-2 font-semibold transition-all ${showSettings ? 'ring-2 ring-indigo-500/40 shadow-lg shadow-indigo-500/20' : ''}`}
                                 onClick={() => setShowSettings(v => !v)}
-                                title="Form Settings"
                             >
-                                ⚙️ Settings
-                            </button>
+                                <span className="text-lg">⚙️</span>
+                                <span className="hidden sm:inline">Settings</span>
+                            </Button>
 
                             {/* Settings dropdown */}
                             {showSettings && (
                                 <>
-                                    <div className="settings-dropdown-backdrop" onClick={() => setShowSettings(false)} />
-                                    <div className="settings-dropdown">
-                                        <div className="settings-dropdown-header">
-                                            <span>⚙️ Form Settings</span>
-                                            <button className="settings-dropdown-close" onClick={() => setShowSettings(false)}>✕</button>
+                                    <div className="fixed inset-0 z-40" onClick={() => setShowSettings(false)} />
+                                    <div className="absolute right-0 mt-3 w-80 p-5 rounded-2xl bg-slate-900/90 border border-white/10 backdrop-blur-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2">
+                                        <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/5">
+                                            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Form Settings</span>
+                                            <button className="text-slate-400 hover:text-white" onClick={() => setShowSettings(false)}>✕</button>
                                         </div>
 
                                         {/* Toggle: Limit to one submission */}
-                                        <div className="form-settings-toggle" onClick={() => setAllowMultipleSubmissions(v => !v)}>
-                                            <div className="form-settings-toggle-info">
-                                                <span className="form-settings-toggle-label">🔒 Limit to one submission</span>
-                                                <span className="form-settings-toggle-desc">Each person can only submit this form once per session</span>
+                                        <div className="flex items-center justify-between p-3 mb-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors cursor-pointer group" onClick={() => setAllowMultipleSubmissions(v => !v)}>
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-xs font-bold text-slate-200">🔒 Limit to 1 submission</span>
+                                                <p className="text-[10px] text-slate-500 leading-tight">Restrict users to one entry per session</p>
                                             </div>
-                                            <div className={`toggle-switch${!allowMultipleSubmissions ? ' toggle-on' : ''}`} role="switch" aria-checked={!allowMultipleSubmissions}>
-                                                <div className="toggle-knob" />
+                                            <div className={`w-8 h-4 rounded-full transition-colors relative ${!allowMultipleSubmissions ? 'bg-indigo-500' : 'bg-slate-700'}`}>
+                                                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${!allowMultipleSubmissions ? 'left-4.5' : 'left-0.5'}`} />
                                             </div>
                                         </div>
 
                                         {/* Expiry date-time picker */}
-                                        <div className="form-settings-expiry">
-                                            <div className="form-settings-expiry-info">
-                                                <span className="form-settings-toggle-label">📅 Form expiry</span>
-                                                <span className="form-settings-toggle-desc">
-                                                    {expiresAt
-                                                        ? `Closes on ${new Date(expiresAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-                                                        : 'No expiry — form stays open indefinitely'}
-                                                </span>
-                                            </div>
-                                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                        <div className="mb-4">
+                                            <span className="text-xs font-bold text-slate-200 block mb-2">📅 Form Expiry</span>
+                                            <div className="flex gap-2">
                                                 <input
                                                     type="datetime-local"
-                                                    className="form-input form-settings-date-input"
+                                                    className="flex-1 px-3 py-2 text-xs bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
                                                     value={expiresAt}
                                                     min={new Date().toISOString().slice(0, 16)}
                                                     onChange={e => setExpiresAt(e.target.value)}
-                                                    title="Set form expiry date and time"
                                                 />
                                                 {expiresAt && (
-                                                    <button
-                                                        className="btn btn-secondary btn-sm"
+                                                    <button 
+                                                        className="p-2 text-slate-500 hover:text-rose-500 transition-colors"
                                                         onClick={() => setExpiresAt('')}
-                                                        title="Clear expiry"
-                                                        style={{ whiteSpace: 'nowrap', padding: '6px 10px' }}
                                                     >
-                                                        ✕ Clear
+                                                        ✕
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
 
-                                        {/* Role-based form access */}
-                                        <div className="form-settings-expiry">
-                                            <div className="form-settings-expiry-info">
-                                                <span className="form-settings-toggle-label">👥 Who can see this form?</span>
-                                                <span className="form-settings-toggle-desc">
-                                                    {allowedRoles.length === 0
-                                                        ? 'No explicit role access selected. System default visibility rules apply.'
-                                                        : `${allowedRoles.length} explicit role${allowedRoles.length !== 1 ? 's' : ''} selected — Admin & Role Admin always have access`}
-                                                </span>
-                                            </div>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                                                {availableRoles.map(role => {
-                                                    const checked = allowedRoles.includes(role.roleName);
-                                                    return (
-                                                        <label key={role.id}
-                                                            style={{
-                                                                display: 'flex', alignItems: 'center', gap: 6,
-                                                                padding: '5px 12px', borderRadius: 6, fontSize: 13,
-                                                                cursor: 'pointer', userSelect: 'none',
-                                                                background: checked ? 'var(--primary-light, #e8f0fe)' : 'var(--bg-card)',
-                                                                border: `1.5px solid ${checked ? 'var(--primary, #4285f4)' : 'var(--border)'}`,
-                                                                color: checked ? 'var(--primary, #4285f4)' : 'var(--text-secondary)',
-                                                                fontWeight: checked ? 600 : 400,
-                                                                transition: 'all .15s ease',
-                                                            }}>
-                                                            <input type="checkbox" checked={checked}
-                                                                style={{ display: 'none' }}
-                                                                onChange={() => {
-                                                                    setAllowedRoles(prev =>
-                                                                        prev.includes(role.roleName)
-                                                                            ? prev.filter(r => r !== role.roleName)
-                                                                            : [...prev, role.roleName]
-                                                                    );
-                                                                }} />
-                                                            <span>{checked ? '☑' : '☐'}</span>
-                                                            {role.roleName}
-                                                        </label>
-                                                    );
-                                                })}
-                                            </div>
-                                            {availableRoles.length > 0 && (
-                                                <div style={{ marginTop: 6, display: 'flex', gap: 10, fontSize: 11 }}>
-                                                    <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
-                                                        onClick={() => setAllowedRoles(availableRoles.map(r => r.roleName))}>
-                                                        Select All
-                                                    </button>
-                                                    <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
-                                                        onClick={() => setAllowedRoles([])}>
-                                                        Clear All
-                                                    </button>
-                                                    <span style={{ color: 'var(--text-muted)', alignSelf: 'center' }}>
-                                                        🔒 Admin & Role Admin always have access
-                                                    </span>
+                                        {/* Visibility Search */}
+                                        <div className="pt-2">
+                                            <span className="text-xs font-bold text-slate-200 block mb-2">👥 Restricted Access</span>
+                                            <input
+                                                type="text"
+                                                className="w-full px-3 py-2 text-xs bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500/50 mb-2"
+                                                placeholder="Search users..."
+                                                value={userSearch}
+                                                onChange={(e) => setUserSearch(e.target.value)}
+                                            />
+                                            {filteredVisibilityUsers.length > 0 && (
+                                                <div className="max-h-32 overflow-y-auto rounded-lg border border-white/5 bg-black/20 mb-3">
+                                                    {filteredVisibilityUsers.map(user => (
+                                                        <button
+                                                            key={`${user.id ?? 'u'}-${user.username}`}
+                                                            className="w-full text-left px-3 py-1.5 text-[10px] hover:bg-indigo-500/20 transition-colors border-b border-white/5 last:border-0"
+                                                            onClick={() => addAllowedUser(user)}
+                                                        >
+                                                            <span className="font-bold text-slate-200">{user.name || user.username}</span>
+                                                            <span className="text-slate-500 ml-2">@{user.username}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {allowedUsers.length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {allowedUsers.map(user => (
+                                                        <span key={`${user.id ?? 'u'}-${user.username}`} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-[9px] text-indigo-400">
+                                                            {user.username}
+                                                            <button className="hover:text-white" onClick={() => removeAllowedUser(user)}>✕</button>
+                                                        </span>
+                                                    ))}
                                                 </div>
                                             )}
                                         </div>
@@ -373,24 +399,38 @@ export default function EditBuilderPage() {
                             )}
                         </div>
 
-                        <Link href={`/preview/${id}`} className="btn btn-secondary btn-sm">👁 Preview</Link>
-                        <button
+                        <Link href={`/preview/${id}`}>
+                            <Button variant="secondary" size="sm" className="rounded-xl px-4 h-10 font-semibold">
+                                <span className="text-lg mr-2">👁</span>
+                                <span className="hidden sm:inline">Preview</span>
+                            </Button>
+                        </Link>
+
+                        <Button
                             id="update-form-btn"
-                            className="btn btn-primary btn-sm"
+                            variant="primary"
+                            size="sm"
+                            className="rounded-xl px-6 h-10 font-bold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/25 transition-all active:scale-95 flex items-center gap-2"
                             onClick={handleSave}
                             disabled={saving}
                         >
-                            {saving
-                                ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</>
-                                : '💾 Save Changes'}
-                        </button>
+                            {saving ? (
+                                <><Spinner size="sm" /> <span>Saving…</span></>
+                            ) : (
+                                <><span className="text-lg">💾</span> <span>Save Changes</span></>
+                            )}
+                        </Button>
                     </div>
                 </header>
 
-                <FieldPalette />
-                <main className="builder-canvas-wrap">
-                    <Canvas fields={fields} setFields={setFields} groups={groups} setGroups={setGroups} />
-                </main>
+                <PageContainer size="full" py={false}>
+                    <div className="flex gap-6 mt-4">
+                        <FieldPalette />
+                        <main className="flex-1 min-w-0">
+                            <Canvas fields={fields} setFields={setFields} groups={groups} setGroups={setGroups} />
+                        </main>
+                    </div>
+                </PageContainer>
             </div>
         </>
     );
