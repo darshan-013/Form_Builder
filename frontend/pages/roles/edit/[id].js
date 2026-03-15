@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-
+import Navbar from '../../../components/Navbar';
 import PermissionCheckboxGroups from '../../../components/PermissionCheckboxGroups';
 import { getRole, updateRole } from '../../../services/api';
 import { toastSuccess, toastError } from '../../../services/toast';
@@ -89,7 +89,7 @@ export default function EditRolePage() {
         return (
             <>
                 <Head><title>Edit Role — FormCraft</title></Head>
-
+                <Navbar />
                 <div className="roles-page">
                     <div className="roles-skeleton">
                         {[...Array(4)].map((_, i) => (
@@ -108,7 +108,7 @@ export default function EditRolePage() {
             <Head>
                 <title>{isSystemRole ? 'View' : 'Edit'} {originalRole.roleName} — FormCraft</title>
             </Head>
-
+            <Navbar />
 
             <div className="roles-page">
                 <div className="roles-page-header">

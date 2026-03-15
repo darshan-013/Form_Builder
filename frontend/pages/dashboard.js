@@ -2,16 +2,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import Navbar from '../components/Navbar';
 import { getForms, deleteForm, publishForm } from '../services/api';
 import { toastSuccess, toastError } from '../services/toast';
 import { useAuth } from '../context/AuthContext';
-import PageContainer from '../components/layout/PageContainer';
-import SectionHeader from '../components/layout/SectionHeader';
-import Button from '../components/ui/Button';
-import Card from '../components/ui/Card';
-import Spinner from '../components/ui/Spinner';
-import Badge from '../components/ui/Badge';
-import Modal from '../components/ui/Modal';
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -142,23 +136,23 @@ export default function DashboardPage() {
                     <div className="form-card-icon">{isPublished ? '🌐' : '📋'}</div>
                     <div className="form-card-menu">
                         {formCanEdit && !hasRole('Viewer') && (
-                            <Link href={`/builder/${form.id}`}>
-                                <Button variant="secondary" size="sm" title="Edit">✎</Button>
-                            </Link>
+                            <Link href={`/builder/${form.id}`} className="btn btn-secondary btn-sm" title="Edit">✎</Link>
                         )}
-                        <Link href={`/preview/${form.id}`}>
-                            <Button variant="secondary" size="sm" title="Preview">👁</Button>
-                        </Link>
+                        <Link href={`/preview/${form.id}`} className="btn btn-secondary btn-sm" title="Preview">👁</Link>
                         {formCanDelete && (
-                            <Button variant="danger" size="sm" onClick={() => setDeleteTarget(form)}>✕</Button>
+                            <button className="btn btn-danger btn-sm" onClick={() => setDeleteTarget(form)}>✕</button>
                         )}
                     </div>
                 </div>
 
                 <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                    <Badge variant={isPublished ? 'success' : isPending ? 'warning' : isRejected ? 'danger' : isAssigned ? 'info' : 'secondary'}>
+                    <span className={`status-badge status-badge-${isPublished ? 'published' : 'draft'}`} style={
+                        isPending ? { background: 'rgba(245,158,11,0.18)', color: '#FCD34D', borderColor: 'rgba(245,158,11,0.35)' } :
+                            isRejected ? { background: 'rgba(239,68,68,0.18)', color: '#FCA5A5', borderColor: 'rgba(239,68,68,0.35)' } :
+                                undefined
+                    }>
                         {isPublished ? '🌐 Published' : isPending ? '⏳ Pending Approval' : isRejected ? '⛔ Rejected' : isAssigned ? '🧭 Assigned' : '📝 Draft'}
-                    </Badge>
+                    </span>
                     {!isOwner && (
                         <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4 }}>
                             by {form.createdBy}
@@ -169,8 +163,14 @@ export default function DashboardPage() {
                 <div className="form-card-name">{form.name}</div>
                 <div className="form-card-desc">{form.description || 'No description'}</div>
 
-                <div className="p-2.5 rounded-xl border border-indigo-500/20 bg-indigo-500/5 mb-3">
-                    <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, color: 'var(--primary)' }}>
+                <div style={{
+                    marginBottom: 10,
+                    padding: '8px 10px',
+                    borderRadius: 10,
+                    border: '1px solid rgba(99,102,241,0.22)',
+                    background: 'rgba(99,102,241,0.08)'
+                }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#C7D2FE' }}>
                         {workflow
                             ? `Workflow ${workflow.currentStepIndex}/${workflow.totalSteps} · ${workflow.status}`
                             : 'Workflow · NOT_STARTED'}
@@ -193,35 +193,31 @@ export default function DashboardPage() {
                         {isPublished ? (
                             <>
                                 {formCanViewSubs && (
-                                    <Link href={`/submissions/${form.id}`}>
-                                        <Button variant="primary" size="sm">📊 Submissions</Button>
-                                    </Link>
+                                    <Link href={`/submissions/${form.id}`} className="btn btn-primary btn-sm">📊 Submissions</Link>
                                 )}
-                                <Link href={`/submit/${form.id}`}>
-                                    <Button variant="secondary" size="sm">↗ Share</Button>
-                                </Link>
+                                <Link href={`/submit/${form.id}`} className="btn btn-secondary btn-sm">↗ Share</Link>
                             </>
                         ) : (
                             <>
                                 {formCanPublish && (
-                                    <Button variant="primary" size="sm"
+                                    <button className="btn btn-publish btn-sm"
                                         onClick={() => handlePublish(form.id, form.name)} disabled={busy}>
-                                        {busy ? <Spinner size="sm" /> : '🚀 Publish'}
-                                    </Button>
+                                        {busy ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : '🚀 Publish'}
+                                    </button>
                                 )}
                                 {formCanAssignBuilder && !isPending && (
-                                    <Link href={`/workflows/create/${form.id}`}>
-                                        <Button variant="secondary" size="sm">👤 Assign Builder</Button>
+                                    <Link href={`/workflows/create/${form.id}`} className="btn btn-secondary btn-sm">
+                                        👤 Assign Builder
                                     </Link>
                                 )}
                                 {formCanStartWorkflow && !isPending && (
-                                    <Link href={`/workflows/create/${form.id}`}>
-                                        <Button variant="secondary" size="sm">🧭 Start Workflow</Button>
+                                    <Link href={`/workflows/create/${form.id}`} className="btn btn-secondary btn-sm">
+                                        🧭 Start Workflow
                                     </Link>
                                 )}
                                 {isPending && (
-                                    <Link href="/workflows/status">
-                                        <Button variant="secondary" size="sm">📍 Track Status</Button>
+                                    <Link href="/workflows/status" className="btn btn-secondary btn-sm">
+                                        📍 Track Status
                                     </Link>
                                 )}
                             </>
@@ -257,11 +253,7 @@ export default function DashboardPage() {
     }) => {
         const allSel = filteredCount > 0 && selectedSet.size === filteredCount;
         return (
-            <div className={`
-                section-bar ${section === 'published' ? 'section-bar-published' : 'section-bar-draft'}
-                mb-6 p-4 rounded-2xl border backdrop-blur-xl transition-all
-            `}>
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className={`section-bar ${accentClass}`}>
                 {/* Row 1: title + count */}
                 <div className="section-bar-top">
                     <div className="section-bar-title">
@@ -276,12 +268,12 @@ export default function DashboardPage() {
                     {selectedSet.size > 0 && (
                         <div className="section-sel-row">
                             <span className="bulk-count">{selectedSet.size} selected</span>
-                            <Button variant="secondary" size="sm" onClick={clearSel}>✕ Clear</Button>
+                            <button className="sb-btn sb-btn-ghost" onClick={clearSel}>✕ Clear</button>
                             {can('DELETE') && (
-                                <Button variant="danger" size="sm"
+                                <button className="sb-btn sb-btn-danger"
                                     onClick={() => setBulkTarget(section)}>
                                     🗑 Delete {selectedSet.size}
-                                </Button>
+                                </button>
                             )}
                         </div>
                     )}
@@ -299,20 +291,18 @@ export default function DashboardPage() {
                             onChange={(e) => setSearch(e.target.value)}
                         />
                         {search && (
-                            <Button variant="secondary" size="xs" onClick={() => setSearch('')} style={{ minWidth: 'auto', padding: '0 8px' }}>✕</Button>
+                            <button className="section-search-clear" onClick={() => setSearch('')}>✕</button>
                         )}
                     </div>
-                    <Button
-                        variant={allSel ? 'primary' : 'secondary'}
-                        size="sm"
+                    <button
+                        className={`sb-btn ${allSel ? 'sb-btn-active' : 'sb-btn-ghost'}`}
                         onClick={allSel ? clearSel : selectAll}
                         disabled={filteredCount === 0}
                     >
                         {allSel ? '☑ Deselect All' : '☐ Select All'}
-                    </Button>
+                    </button>
                 </div>
             </div>
-        </div>
         );
     };
 
@@ -320,45 +310,53 @@ export default function DashboardPage() {
         <>
             <Head><title>Dashboard — FormCraft</title></Head>
 
-            <PageContainer>
+            <div className="page">
+                <Navbar />
+                <div className="container">
 
-                        <SectionHeader 
-                            title={hasRole('Admin') ? 'All Forms' : hasRole('Builder') ? 'My Forms & Published' : 'Forms'}
-                            subtitle={hasRole('Admin') ? 'Admin view — all forms across the system' : hasRole('Builder') ? 'Your forms and published forms you can access' : 'Published forms available to you'}
-                            actions={
-                                (can('WRITE') || hasRole('Viewer')) && (
-                                    <Link href="/builder/new">
-                                        <Button variant="primary" id="new-form-btn">+ New Form</Button>
-                                    </Link>
-                                )
-                            }
-                        />
+                    {/* Page header */}
+                    <div className="page-header">
+                        <div>
+                            <h1 className="page-title">
+                                {hasRole('Admin') ? 'All Forms' :
+                                    hasRole('Builder') ? 'My Forms & Published' :
+                                        'Forms'}
+                            </h1>
+                            <p className="page-subtitle">
+                                {hasRole('Admin') ? 'Admin view — all forms across the system' :
+                                    hasRole('Builder') ? 'Your forms and published forms you can access' :
+                                        'Published forms available to you'}
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                            {(can('WRITE') || hasRole('Viewer')) && (
+                                <Link href="/builder/new" className="btn btn-primary" id="new-form-btn">+ New Form</Link>
+                            )}
+                        </div>
+                    </div>
 
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                        <div className="bg-white/5 dark:bg-slate-900/50 backdrop-blur-md border border-gray-100 dark:border-white/5 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1 transition-all">{forms.length}</div>
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Forms</div>
+                    {/* Stats */}
+                    <div className="dashboard-stats">
+                        <div className="stat-card">
+                            <div className="stat-value">{forms.length}</div>
+                            <div className="stat-label">Total Forms</div>
                         </div>
-                        <div className="bg-white/5 dark:bg-slate-900/50 backdrop-blur-md border border-gray-100 dark:border-white/5 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-emerald-500">
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1 transition-all">{allPublished.length}</div>
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Published</div>
+                        <div className="stat-card">
+                            <div className="stat-value">{allPublished.length}</div>
+                            <div className="stat-label">Published</div>
                         </div>
-                        <div className="bg-white/5 dark:bg-slate-900/50 backdrop-blur-md border border-gray-100 dark:border-white/5 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-amber-500">
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1 transition-all">{allDraft.length}</div>
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Drafts</div>
+                        <div className="stat-card">
+                            <div className="stat-value">{allDraft.length}</div>
+                            <div className="stat-label">Drafts</div>
                         </div>
-                        <div className="bg-white/5 dark:bg-slate-900/50 backdrop-blur-md border border-gray-100 dark:border-white/5 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-indigo-500">
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1 transition-all">{forms.reduce((a, f) => a + (f.fields?.length || 0), 0)}</div>
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Fields</div>
+                        <div className="stat-card">
+                            <div className="stat-value">{forms.reduce((a, f) => a + (f.fields?.length || 0), 0)}</div>
+                            <div className="stat-label">Total Fields</div>
                         </div>
                     </div>
 
                     {loading ? (
-                        <div className="flex flex-col items-center justify-center py-20 gap-4">
-                            <Spinner size="lg" />
-                            <p className="text-gray-500 dark:text-gray-400 animate-pulse">Loading your forms...</p>
-                        </div>
+                        <div className="loading-center"><span className="spinner" style={{ width: 36, height: 36 }} /></div>
                     ) : forms.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-state-icon">📋</div>
@@ -408,21 +406,19 @@ export default function DashboardPage() {
                                     {/* Published Pagination */}
                                     {publishedForms.length > pageSize && (
                                         <div className="datatable-pagination" style={{ marginTop: '24px' }}>
-                                        <Button variant="secondary" size="sm"
-                                            disabled={publishedPage === 1}
-                                            onClick={() => setPublishedPage(p => p - 1)}>‹ Prev</Button>
-                                        <div className="pagination-pages">
-                                            {Array.from({ length: Math.ceil(publishedForms.length / pageSize) }, (_, i) => i + 1).map(p => (
-                                                <Button key={p}
-                                                    variant={publishedPage === p ? 'primary' : 'secondary'}
-                                                    size="sm"
-                                                    onClick={() => setPublishedPage(p)}>{p}
-                                                </Button>
-                                            ))}
-                                        </div>
-                                        <Button variant="secondary" size="sm"
-                                            disabled={publishedPage === Math.ceil(publishedForms.length / pageSize)}
-                                            onClick={() => setPublishedPage(p => p + 1)}>Next ›</Button>
+                                            <button className="btn btn-secondary btn-sm"
+                                                disabled={publishedPage === 1}
+                                                onClick={() => setPublishedPage(p => p - 1)}>‹ Prev</button>
+                                            <div className="pagination-pages">
+                                                {Array.from({ length: Math.ceil(publishedForms.length / pageSize) }, (_, i) => i + 1).map(p => (
+                                                    <button key={p}
+                                                        className={`btn btn-sm ${publishedPage === p ? 'btn-primary' : 'btn-secondary'}`}
+                                                        onClick={() => setPublishedPage(p)}>{p}</button>
+                                                ))}
+                                            </div>
+                                            <button className="btn btn-secondary btn-sm"
+                                                disabled={publishedPage === Math.ceil(publishedForms.length / pageSize)}
+                                                onClick={() => setPublishedPage(p => p + 1)}>Next ›</button>
                                         </div>
                                     )}
                                 </section>
@@ -456,78 +452,70 @@ export default function DashboardPage() {
                                         </div>
                                     )}
 
-                                {/* Draft Pagination */}
-                                {draftForms.length > pageSize && (
-                                    <div className="datatable-pagination" style={{ marginTop: '24px' }}>
-                                        <Button variant="secondary" size="sm"
-                                            disabled={draftPage === 1}
-                                            onClick={() => setDraftPage(p => p - 1)}>‹ Prev</Button>
-                                        <div className="pagination-pages">
-                                            {Array.from({ length: Math.ceil(draftForms.length / pageSize) }, (_, i) => i + 1).map(p => (
-                                                <Button key={p}
-                                                    variant={draftPage === p ? 'primary' : 'secondary'}
-                                                    size="sm"
-                                                    onClick={() => setDraftPage(p)}>{p}</Button>
-                                            ))}
+                                    {/* Draft Pagination */}
+                                    {draftForms.length > pageSize && (
+                                        <div className="datatable-pagination" style={{ marginTop: '24px' }}>
+                                            <button className="btn btn-secondary btn-sm"
+                                                disabled={draftPage === 1}
+                                                onClick={() => setDraftPage(p => p - 1)}>‹ Prev</button>
+                                            <div className="pagination-pages">
+                                                {Array.from({ length: Math.ceil(draftForms.length / pageSize) }, (_, i) => i + 1).map(p => (
+                                                    <button key={p}
+                                                        className={`btn btn-sm ${draftPage === p ? 'btn-primary' : 'btn-secondary'}`}
+                                                        onClick={() => setDraftPage(p)}>{p}</button>
+                                                ))}
+                                            </div>
+                                            <button className="btn btn-secondary btn-sm"
+                                                disabled={draftPage === Math.ceil(draftForms.length / pageSize)}
+                                                onClick={() => setDraftPage(p => p + 1)}>Next ›</button>
                                         </div>
-                                        <Button variant="secondary" size="sm"
-                                            disabled={draftPage === Math.ceil(draftForms.length / pageSize)}
-                                            onClick={() => setDraftPage(p => p + 1)}>Next ›</Button>
-                                    </div>
-                                )}
-                            </section>
-                        )}
-                    </>
-                )}
-            </PageContainer>
-
-            <Modal
-                isOpen={!!deleteTarget}
-                onClose={() => setDeleteTarget(null)}
-                title="Delete Form"
-                footer={
-                    <>
-                        <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-                        <Button variant="danger" onClick={handleDelete} disabled={deleting}>
-                            {deleting ? 'Deleting…' : 'Yes, Delete'}
-                        </Button>
-                    </>
-                }
-            >
-                <div className="text-center space-y-4">
-                    <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center text-3xl mx-auto">
-                        🗑
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-400">
-                        Move <strong>&quot;{deleteTarget?.name}&quot;</strong> to deleted state?<br />
-                        This is a soft delete and the form remains in storage.
-                    </p>
+                                    )}
+                                </section>
+                            )}
+                        </>
+                    )}
                 </div>
-            </Modal>
+            </div>
 
-            <Modal
-                isOpen={!!bulkTarget}
-                onClose={() => setBulkTarget(null)}
-                title={`Delete ${bulkTarget === 'published' ? publishedSelected.size : draftSelected.size} Forms`}
-                footer={
-                    <>
-                        <Button variant="secondary" onClick={() => setBulkTarget(null)} disabled={bulkDeleting}>Cancel</Button>
-                        <Button variant="danger" onClick={handleBulkDelete} disabled={bulkDeleting}>
-                            {bulkDeleting ? 'Deleting…' : `Yes, Delete All`}
-                        </Button>
-                    </>
-                }
-            >
-                <div className="text-center space-y-4">
-                    <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center text-3xl mx-auto">
-                        🗑
+            {/* ── Single delete confirm ── */}
+            {deleteTarget && (
+                <div className="confirm-dialog">
+                    <div className="confirm-box">
+                        <div className="confirm-icon">🗑</div>
+                        <h3>Delete Form</h3>
+                        <p>
+                            Move <strong>&quot;{deleteTarget.name}&quot;</strong> to deleted state?<br />
+                            This is a soft delete and the form remains in storage.
+                        </p>
+                        <div className="confirm-actions">
+                            <button className="btn btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+                            <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+                                {deleting ? 'Deleting…' : 'Yes, Delete'}
+                            </button>
+                        </div>
                     </div>
-                    <p className="text-gray-600 dark:text-gray-400">
-                        Soft delete <strong>{bulkTarget === 'published' ? publishedSelected.size : draftSelected.size} {bulkTarget}</strong> form{(bulkTarget === 'published' ? publishedSelected.size : draftSelected.size) !== 1 ? 's' : ''}?<br />
-                        Items will be marked deleted only.
-                    </p>
                 </div>
-            </Modal>
+            )}
+
+            {/* ── Bulk delete confirm ── */}
+            {bulkTarget && (
+                <div className="confirm-dialog">
+                    <div className="confirm-box">
+                        <div className="confirm-icon">🗑</div>
+                        <h3>Delete {bulkTarget === 'published' ? publishedSelected.size : draftSelected.size} Form{(bulkTarget === 'published' ? publishedSelected.size : draftSelected.size) !== 1 ? 's' : ''}</h3>
+                        <p>
+                            Soft delete <strong>{bulkTarget === 'published' ? publishedSelected.size : draftSelected.size} {bulkTarget}</strong> form{(bulkTarget === 'published' ? publishedSelected.size : draftSelected.size) !== 1 ? 's' : ''}?<br />
+                            Items will be marked deleted only.
+                        </p>
+                        <div className="confirm-actions">
+                            <button className="btn btn-secondary" onClick={() => setBulkTarget(null)} disabled={bulkDeleting}>Cancel</button>
+                            <button className="btn btn-danger" onClick={handleBulkDelete} disabled={bulkDeleting}>
+                                {bulkDeleting ? 'Deleting…' : `Yes, Delete All`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

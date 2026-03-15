@@ -25,7 +25,8 @@
     0 32px 80px rgba(0, 0, 0, 0.65),
     0 0 0 1px rgba(139, 92, 246, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  overflow: visible; /* Changed from hidden to allow dropdowns to overflow */
+  overflow: visible;
+  /* Changed from hidden to allow dropdowns to overflow */
   animation: scaleIn 0.4s cubic-bezier(0.34, 1.2, 0.64, 1);
 }
 
