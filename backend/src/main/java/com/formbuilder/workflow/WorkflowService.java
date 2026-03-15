@@ -4,6 +4,9 @@ import com.formbuilder.entity.FormEntity;
 import com.formbuilder.repository.FormJpaRepository;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.repository.UserRepository;
+import com.formbuilder.workflow.dto.AdminWorkflowStatusDTO;
+import com.formbuilder.workflow.dto.BuilderReviewDTO;
+import com.formbuilder.workflow.dto.CreatorWorkflowStatusDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -245,6 +248,11 @@ public class WorkflowService {
     }
 
     @Transactional(readOnly = true)
+    public List<WorkflowInstance> getAllStatuses() {
+        return instanceRepo.findAllWithSteps();
+    }
+
+    @Transactional(readOnly = true)
     public Map<UUID, WorkflowInstance> getLatestWorkflowsByFormIds(Collection<UUID> formIds) {
         if (formIds == null || formIds.isEmpty()) {
             return Map.of();
@@ -383,8 +391,136 @@ public class WorkflowService {
         String trimmed = comments.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }
+
+    @Transactional(readOnly = true)
+    public List<CreatorWorkflowStatusDTO> getCreatorStatuses(String username) {
+        return instanceRepo.findByCreatorUsernameWithSteps(username).stream()
+                .map(this::toCreatorStatusDto)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<BuilderReviewDTO> getPendingReviews(Integer builderUserId) {
+        return stepRepo.findMyPendingSteps(builderUserId).stream()
+                .map(this::toBuilderReviewDto)
+                .toList();
+    }
+
+    @Transactional
+    public WorkflowStep approveWorkflow(Long workflowId, Integer actorUserId, String comments) {
+        WorkflowStep current = getCurrentPendingStepForApprover(workflowId, actorUserId);
+        return approveStep(current.getId(), actorUserId, comments);
+    }
+
+    @Transactional
+    public WorkflowStep rejectWorkflow(Long workflowId, Integer actorUserId, String comments) {
+        WorkflowStep current = getCurrentPendingStepForApprover(workflowId, actorUserId);
+        return rejectStep(current.getId(), actorUserId, comments);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminWorkflowStatusDTO> getAdminStatuses(String creator,
+                                                         String status,
+                                                         Integer workflowStep,
+                                                         LocalDateTime fromDate,
+                                                         LocalDateTime toDate) {
+        return instanceRepo.findAllWithSteps().stream()
+                .filter(wi -> creator == null || creator.isBlank() ||
+                        wi.getCreator().getUsername().equalsIgnoreCase(creator) ||
+                        (wi.getCreator().getName() != null && wi.getCreator().getName().equalsIgnoreCase(creator)))
+                .filter(wi -> {
+                    if (status == null || status.isBlank()) return true;
+                    return mapDecisionStatus(wi).equalsIgnoreCase(status);
+                })
+                .filter(wi -> workflowStep == null || Objects.equals(wi.getCurrentStepIndex(), workflowStep))
+                .filter(wi -> fromDate == null || !wi.getCreatedAt().isBefore(fromDate))
+                .filter(wi -> toDate == null || !wi.getCreatedAt().isAfter(toDate))
+                .map(this::toAdminStatusDto)
+                .toList();
+    }
+
+    private WorkflowStep getCurrentPendingStepForApprover(Long workflowId, Integer approverId) {
+        WorkflowInstance instance = instanceRepo.findById(workflowId)
+                .orElseThrow(() -> new NoSuchElementException("Workflow not found: " + workflowId));
+
+        if (instance.getStatus() != WorkflowInstanceStatus.ACTIVE) {
+            throw new IllegalStateException("Workflow is not active");
+        }
+
+        WorkflowStep current = instance.getSteps().stream()
+                .filter(s -> Objects.equals(s.getStepIndex(), instance.getCurrentStepIndex()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Current workflow step not found"));
+
+        if (!Objects.equals(current.getApprover().getId(), approverId)) {
+            throw new IllegalStateException("You are not the current approver for this workflow");
+        }
+        if (current.getStatus() != WorkflowStepStatus.PENDING) {
+            throw new IllegalStateException("Current workflow step is already decided");
+        }
+        return current;
+    }
+
+    private CreatorWorkflowStatusDTO toCreatorStatusDto(WorkflowInstance wi) {
+        return CreatorWorkflowStatusDTO.builder()
+                .workflowId(wi.getId())
+                .formName(wi.getForm().getName())
+                .currentStep(wi.getCurrentStepIndex())
+                .status(mapDecisionStatus(wi))
+                .submittedAt(wi.getCreatedAt())
+                .lastUpdatedAt(wi.getUpdatedAt())
+                .build();
+    }
+
+    private BuilderReviewDTO toBuilderReviewDto(WorkflowStep step) {
+        WorkflowInstance wi = step.getInstance();
+        String creatorName = wi.getCreator().getName();
+        if (creatorName == null || creatorName.isBlank()) {
+            creatorName = wi.getCreator().getUsername();
+        }
+
+        return BuilderReviewDTO.builder()
+                .workflowId(wi.getId())
+                .formName(wi.getForm().getName())
+                .creatorName(creatorName)
+                .currentStep(wi.getCurrentStepIndex())
+                .submittedAt(wi.getCreatedAt())
+                .status(mapDecisionStatus(wi))
+                .build();
+    }
+
+    private AdminWorkflowStatusDTO toAdminStatusDto(WorkflowInstance wi) {
+        WorkflowStep current = wi.getSteps().stream()
+                .filter(s -> Objects.equals(s.getStepIndex(), wi.getCurrentStepIndex()))
+                .findFirst()
+                .orElse(null);
+
+        String creatorName = wi.getCreator().getName();
+        if (creatorName == null || creatorName.isBlank()) creatorName = wi.getCreator().getUsername();
+
+        String currentApprover = null;
+        if (current != null && current.getApprover() != null) {
+            currentApprover = current.getApprover().getName();
+            if (currentApprover == null || currentApprover.isBlank()) {
+                currentApprover = current.getApprover().getUsername();
+            }
+        }
+
+        return AdminWorkflowStatusDTO.builder()
+                .workflowId(wi.getId())
+                .formName(wi.getForm().getName())
+                .creator(creatorName)
+                .currentApprover(currentApprover)
+                .workflowStep(wi.getCurrentStepIndex())
+                .status(mapDecisionStatus(wi))
+                .createdAt(wi.getCreatedAt())
+                .updatedAt(wi.getUpdatedAt())
+                .build();
+    }
+
+    private String mapDecisionStatus(WorkflowInstance wi) {
+        if (wi.getStatus() == WorkflowInstanceStatus.COMPLETED) return "APPROVED";
+        if (wi.getStatus() == WorkflowInstanceStatus.REJECTED) return "REJECTED";
+        return "PENDING";
+    }
 }
-
-
-
-

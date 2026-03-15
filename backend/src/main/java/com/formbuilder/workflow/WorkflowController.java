@@ -3,6 +3,8 @@ package com.formbuilder.workflow;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.service.UserRoleService;
 import com.formbuilder.service.AuditLogService;
+import com.formbuilder.workflow.dto.BuilderReviewDTO;
+import com.formbuilder.workflow.dto.CreatorWorkflowStatusDTO;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -115,27 +117,59 @@ public class WorkflowController {
     }
 
     @GetMapping("/my-status")
-    public ResponseEntity<?> myStatus(Authentication auth, HttpSession session) {
-        Integer userId = requireSessionUserId(session);
-        List<WorkflowInstance> items = workflowService.getMyInvolvedStatuses(auth.getName(), userId);
-        List<Map<String, Object>> rows = items.stream().map(this::toCreatorStatusRow).toList();
+    public ResponseEntity<?> myStatus(Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (!(roles.contains("Creator") || roles.contains("Viewer") || roles.contains("Admin"))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Creator access required"));
+        }
+        List<CreatorWorkflowStatusDTO> rows = workflowService.getCreatorStatuses(auth.getName());
         return ResponseEntity.ok(rows);
     }
 
-    @GetMapping("/candidates")
-    public ResponseEntity<?> candidates(Authentication auth) {
+    @GetMapping("/pending-reviews")
+    public ResponseEntity<?> pendingReviews(Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
-        if (!(roles.contains("Viewer") || roles.contains("Builder") || roles.contains("Admin"))) {
+        if (!(roles.contains("Builder") || roles.contains("Admin"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Only Viewer, Builder, or Admin can view workflow candidates"));
+                    .body(Map.of("error", "Builder access required"));
         }
 
-        Map<String, List<User>> candidates = workflowService.getWorkflowCandidates();
+        Integer userId = requireSessionUserId(session);
+        List<BuilderReviewDTO> rows = workflowService.getPendingReviews(userId);
+        return ResponseEntity.ok(rows);
+    }
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("builders", candidates.getOrDefault("builders", List.of()).stream().map(this::toUserSummary).toList());
-        payload.put("authorities", candidates.getOrDefault("authorities", List.of()).stream().map(this::toUserSummary).toList());
-        return ResponseEntity.ok(payload);
+    @PostMapping("/{workflowId}/approve")
+    public ResponseEntity<?> approveWorkflow(@PathVariable Long workflowId,
+                                             @RequestBody(required = false) DecideRequest req,
+                                             Authentication auth,
+                                             HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (!(roles.contains("Builder") || roles.contains("Admin"))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Builder access required"));
+        }
+
+        Integer userId = requireSessionUserId(session);
+        WorkflowStep step = workflowService.approveWorkflow(workflowId, userId, req != null ? req.comments : null);
+        return ResponseEntity.ok(toPendingRow(step));
+    }
+
+    @PostMapping("/{workflowId}/reject")
+    public ResponseEntity<?> rejectWorkflow(@PathVariable Long workflowId,
+                                            @RequestBody(required = false) DecideRequest req,
+                                            Authentication auth,
+                                            HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (!(roles.contains("Builder") || roles.contains("Admin"))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Builder access required"));
+        }
+
+        Integer userId = requireSessionUserId(session);
+        WorkflowStep step = workflowService.rejectWorkflow(workflowId, userId, req != null ? req.comments : null);
+        return ResponseEntity.ok(toPendingRow(step));
     }
 
     private Integer requireSessionUserId(HttpSession session) {
@@ -252,6 +286,8 @@ public class WorkflowController {
         public String comments;
     }
 }
+
+
 
 
 

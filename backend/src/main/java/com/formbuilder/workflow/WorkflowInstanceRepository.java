@@ -54,8 +54,12 @@ public interface WorkflowInstanceRepository extends JpaRepository<WorkflowInstan
             "AND (wi.creator.id = :userId OR wi.targetBuilder.id = :userId OR a.id = :userId)")
     List<WorkflowInstance> findActiveInvolvingUser(@Param("userId") Integer userId);
 
+    @Query("SELECT DISTINCT wi FROM WorkflowInstance wi " +
+            "JOIN FETCH wi.form f " +
+            "LEFT JOIN FETCH wi.steps s " +
+            "LEFT JOIN FETCH s.approver " +
+            "ORDER BY wi.createdAt DESC")
+    List<WorkflowInstance> findAllWithSteps();
+
     long countByCreator_IdOrTargetBuilder_Id(Integer creatorId, Integer targetBuilderId);
 }
-
-
-

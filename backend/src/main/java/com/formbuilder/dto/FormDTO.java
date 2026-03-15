@@ -23,12 +23,11 @@ public class FormDTO {
     private String visibility;
 
     /**
-     * List of role names allowed to see this form.
-     * e.g. ["Viewer","Employee","Manager"]
-     * If null/empty, defaults to all roles (PUBLIC).
-     * Admin and Role Administrator always have access.
+     * Explicit users allowed to see this form.
+     * Stored as JSON array of objects with id + username + optional name snapshot.
+     * If null/empty, fallback visibility rules apply.
      */
-    private List<String> allowedRoles;
+    private List<AllowedUserDTO> allowedUsers;
 
     /**
      * If false — only one submission per session is allowed. Default true = no
@@ -62,5 +61,12 @@ public class FormDTO {
         private String groupDescription;
         private int groupOrder;
         private String rulesJson;
+    }
+
+    @Data
+    public static class AllowedUserDTO {
+        private Integer id;
+        private String username;
+        private String name;
     }
 }

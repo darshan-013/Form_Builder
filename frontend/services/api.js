@@ -109,20 +109,6 @@ export const publishForm = (id) =>
 export const unpublishForm = (id) =>
     request('PATCH', `/forms/${id}/unpublish`);
 
-// ── Forms Trash Bin ────────────────────────────────────────────
-
-/** Get all soft-deleted (trashed) forms for the current user. */
-export const getTrashForms = () =>
-    request('GET', '/forms/trash');
-
-/** Restore a soft-deleted form back to active. */
-export const restoreForm = (id) =>
-    request('POST', `/forms/${id}/restore`);
-
-/** Permanently delete a form from trash (irreversible). */
-export const permanentDeleteForm = (id) =>
-    request('DELETE', `/forms/${id}/permanent`);
-
 // ── Submissions ───────────────────────────────────────────────
 
 export async function submitForm(formId, data) {
@@ -173,20 +159,6 @@ export const deleteSubmission = (formId, submissionId) =>
 
 export const updateSubmission = (formId, submissionId, data) =>
     request('PUT', `/forms/${formId}/submissions/${submissionId}`, data);
-
-// ── Submissions Trash Bin ─────────────────────────────────────
-
-/** Get all soft-deleted submissions for a form. */
-export const getTrashSubmissions = (formId) =>
-    request('GET', `/forms/${formId}/submissions/trash`);
-
-/** Restore a soft-deleted submission back to active. */
-export const restoreSubmission = (formId, submissionId) =>
-    request('POST', `/forms/${formId}/submissions/${submissionId}/restore`);
-
-/** Permanently delete a submission from trash. */
-export const permanentDeleteSubmission = (formId, submissionId) =>
-    request('DELETE', `/forms/${formId}/submissions/${submissionId}/permanent`);
 
 // ── Shared Options ────────────────────────────────────────────
 // Manages the shared_options table — canonical option lists shared across form fields.
@@ -345,6 +317,9 @@ export const getRoleAssignmentLogs = (filters = {}) => {
 
 // ── Workflow Engine ───────────────────────────────────────────
 
+export const getVisibilityCandidates = () =>
+    request('GET', '/forms/visibility-candidates');
+
 export const getWorkflowCandidates = () =>
     request('GET', '/workflows/candidates');
 
@@ -363,3 +338,25 @@ export const rejectWorkflowStep = (stepId, comments) =>
 export const getMyWorkflowStatus = () =>
     request('GET', '/workflows/my-status');
 
+export const getPendingWorkflowReviews = () =>
+    request('GET', '/workflows/pending-reviews');
+
+export const approveWorkflowById = (workflowId, comments) =>
+    request('POST', `/workflows/${workflowId}/approve`, { comments: comments || null });
+
+export const rejectWorkflowById = (workflowId, comments) =>
+    request('POST', `/workflows/${workflowId}/reject`, { comments: comments || null });
+
+export const getAdminWorkflowStatus = (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.creator) params.set('creator', filters.creator);
+    if (filters.status) params.set('status', filters.status);
+    if (filters.step != null && filters.step !== '') params.set('step', String(filters.step));
+    if (filters.fromDate) params.set('fromDate', filters.fromDate);
+    if (filters.toDate) params.set('toDate', filters.toDate);
+    const qs = params.toString();
+    return request('GET', `/admin/workflows/status${qs ? `?${qs}` : ''}`);
+};
+
+export const getAllWorkflowStatus = () =>
+    request('GET', '/workflows/all-status');

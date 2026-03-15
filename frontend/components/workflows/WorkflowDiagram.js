@@ -45,12 +45,13 @@ export default function WorkflowDiagram({ steps, activeStepIndex = 0 }) {
     }
 
     return (
-        <div className="workflow-diagram-shell">
-            <div className="workflow-steps-track">
+        <div className="w-full overflow-x-auto py-8 px-4 scrollbar-hide">
+            <div className="flex items-start min-w-max mx-auto justify-center">
                 {normalized.map((step, index) => {
                     const nextStep = normalized[index + 1];
                     const connectorStatus = nextStep ? getConnectorStatus(step, nextStep) : 'pending';
                     const connectorActive = connectorStatus === 'completed' || connectorStatus === 'active' || connectorStatus === 'rejected';
+                    
                     return (
                         <React.Fragment key={step.id}>
                             <WorkflowStepNode
@@ -60,9 +61,12 @@ export default function WorkflowDiagram({ steps, activeStepIndex = 0 }) {
                                 status={step.status}
                                 role={step.role}
                             />
-                            {index < normalized.length - 1
-                                ? <WorkflowConnector status={connectorStatus} active={connectorActive} />
-                                : null}
+                            {index < normalized.length - 1 && (
+                                <WorkflowConnector 
+                                    status={connectorStatus} 
+                                    active={connectorActive} 
+                                />
+                            )}
                         </React.Fragment>
                     );
                 })}
@@ -70,5 +74,3 @@ export default function WorkflowDiagram({ steps, activeStepIndex = 0 }) {
         </div>
     );
 }
-
-

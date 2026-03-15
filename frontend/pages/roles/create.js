@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import Navbar from '../../components/Navbar';
+
 import PermissionCheckboxGroups from '../../components/PermissionCheckboxGroups';
 import { createRole } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
@@ -54,7 +54,7 @@ export default function CreateRolePage() {
             <Head>
                 <title>Create Role — FormCraft</title>
             </Head>
-            <Navbar />
+
 
             <div className="roles-page">
                 <div className="roles-page-header">

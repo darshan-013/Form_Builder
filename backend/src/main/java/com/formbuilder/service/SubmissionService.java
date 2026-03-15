@@ -296,10 +296,10 @@ public class SubmissionService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // DELETE / SOFT DELETE / TRASH
+    // DELETE / SOFT DELETE
     // ─────────────────────────────────────────────────────────────────────────
 
-    /** Soft-delete: marks submission as trashed, hides from active view. */
+    /** Soft-delete: marks submission as deleted, hides from active view. */
     public void deleteSubmission(UUID formId, UUID submissionId) {
         String tableName = getTableName(formId);
         dynamicTableService.ensureTableExists(tableName, formId);
@@ -310,41 +310,6 @@ public class SubmissionService {
         if (affected == 0)
             throw new NoSuchElementException("Submission not found or already deleted: " + submissionId);
         log.info("Submission {} soft-deleted from {}", submissionId, tableName);
-    }
-
-    /** Returns all soft-deleted submissions for a form (trash bin). */
-    public List<Map<String, Object>> getTrashSubmissions(UUID formId) {
-        String tableName = getTableName(formId);
-        dynamicTableService.ensureTableExists(tableName, formId);
-        try {
-            return jdbc.queryForList(
-                    "SELECT * FROM \"" + tableName + "\" WHERE is_soft_deleted = TRUE ORDER BY deleted_at DESC");
-        } catch (Exception e) {
-            log.warn("is_soft_deleted column missing on {}, returning empty trash", tableName);
-            return java.util.Collections.emptyList();
-        }
-    }
-
-    /** Restore a soft-deleted submission back to active. */
-    public void restoreSubmission(UUID formId, UUID submissionId) {
-        String tableName = getTableName(formId);
-        int affected = jdbc.update(
-                "UPDATE \"" + tableName + "\" SET is_soft_deleted = FALSE, deleted_at = NULL " +
-                        "WHERE id = ? AND is_soft_deleted = TRUE",
-                submissionId);
-        if (affected == 0)
-            throw new NoSuchElementException("Submission not found in trash: " + submissionId);
-        log.info("Submission {} restored in {}", submissionId, tableName);
-    }
-
-    /** Permanently delete a submission that is already in trash. */
-    public void permanentDeleteSubmission(UUID formId, UUID submissionId) {
-        String tableName = getTableName(formId);
-        int affected = jdbc.update(
-                "DELETE FROM \"" + tableName + "\" WHERE id = ? AND is_soft_deleted = TRUE", submissionId);
-        if (affected == 0)
-            throw new NoSuchElementException("Submission not found in trash: " + submissionId);
-        log.info("Submission {} permanently deleted from {}", submissionId, tableName);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

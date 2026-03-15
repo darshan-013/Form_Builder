@@ -16,6 +16,10 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "babel-plugin-react-compiler": "1.0.0"
+    "@tailwindcss/postcss": "^4.2.1",
+    "autoprefixer": "^10.4.27",
+    "babel-plugin-react-compiler": "1.0.0",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1"
   }
 }

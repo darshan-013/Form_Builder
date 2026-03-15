@@ -86,8 +86,11 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         // ── 7b. Form visibility column ───────────────────────────────────────
         exec("ALTER TABLE forms ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'PUBLIC'");
 
-        // ── 7c. Per-form allowed roles (JSON array of role names) ────────────
-        exec("ALTER TABLE forms ADD COLUMN IF NOT EXISTS allowed_roles TEXT");
+        // ── 7c. Remove legacy per-form allowed roles column ─────────────────
+        exec("ALTER TABLE forms DROP COLUMN IF EXISTS allowed_roles");
+
+        // ── 7d. Per-form allowed users (JSON array of user snapshots) ───────
+        exec("ALTER TABLE forms ADD COLUMN IF NOT EXISTS allowed_users TEXT");
 
         // ── 8. RBAC — Role Based Access Control ──────────────────────────────
 

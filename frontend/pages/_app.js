@@ -8,12 +8,15 @@ import '../styles/roles.css';
 import '../styles/users.css';
 import { ThemeProvider } from '../context/ThemeContext';
 import { AuthProvider } from '../context/AuthContext';
+import AppLayout from '../components/layout/AppLayout';
 
 export default function App({ Component, pageProps }) {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <Component {...pageProps} />
+        <AppLayout>
+          <Component {...pageProps} />
+        </AppLayout>
       </ThemeProvider>
     </AuthProvider>
   );

@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import Navbar from '../../components/Navbar';
-import WorkflowDiagram from '../../components/workflows/WorkflowDiagram';
-import { useAuth } from '../../context/AuthContext';
 import { getMyWorkflowStatus } from '../../services/api';
 import { toastError } from '../../services/toast';
+import PageContainer from '../../components/layout/PageContainer';
+import SectionHeader from '../../components/layout/SectionHeader';
+import Button from '../../components/ui/Button';
+import Card from '../../components/ui/Card';
+import Badge from '../../components/ui/Badge';
+import Spinner from '../../components/ui/Spinner';
 
 export default function WorkflowStatusPage() {
-    const { hasRole } = useAuth();
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [category, setCategory] = useState('ALL');
@@ -20,154 +22,102 @@ export default function WorkflowStatusPage() {
             .finally(() => setLoading(false));
     }, []);
 
-    function normalizeDecision(value) {
-        const v = String(value || 'PENDING').toLowerCase();
-        if (v === 'approved') return 'approved';
-        if (v === 'rejected') return 'rejected';
-        return 'pending';
-    }
+    const filteredRows = useMemo(() => {
+        if (category === 'ALL') return rows;
+        return rows.filter((r) => String(r.status || '').toUpperCase() === category);
+    }, [rows, category]);
 
-    const filteredRows = rows.filter((r) => {
-        if (category === 'ALL') return true;
-        const normalized = normalizeDecision(r.finalDecision || r.status).toUpperCase();
-        return normalized === category;
-    });
-
-    function buildSteps(row) {
-        const totalSteps = Number(row?.totalSteps || 0);
-        const activeStep = Math.max(1, Number(row?.currentStepIndex || 1));
-        const decision = normalizeDecision(row?.finalDecision || row?.status);
-
-        const backendChain = Array.isArray(row?.flowChain) ? row.flowChain : [];
-        const core = backendChain.length
-            ? backendChain.map((name, i) => ({
-                id: `core-${i + 1}`,
-                name,
-                icon: i === backendChain.length - 1 ? 'builder' : 'check',
-                role: i === backendChain.length - 1 ? 'Builder' : `Authority ${i + 1}`,
-            }))
-            : Array.from({ length: totalSteps }, (_, i) => ({
-                id: `core-${i + 1}`,
-                name: i === totalSteps - 1 ? 'Target Builder' : `Step ${i + 1}`,
-                icon: i === totalSteps - 1 ? 'builder' : 'check',
-                role: i === totalSteps - 1 ? 'Builder' : `Authority ${i + 1}`,
-            }));
-
-        const out = [{ id: 'start', name: 'Start', icon: 'file', role: 'System', status: 'completed' }];
-
-        core.forEach((step, idx) => {
-            const oneBased = idx + 1;
-            let status = 'pending';
-
-            if (decision === 'approved') {
-                status = 'completed';
-            } else if (decision === 'rejected') {
-                if (oneBased < activeStep) status = 'completed';
-                else if (oneBased === activeStep) status = 'rejected';
-                else status = 'pending';
-            } else {
-                if (oneBased < activeStep) status = 'completed';
-                else if (oneBased === activeStep) status = 'active';
-                else status = 'pending';
-            }
-
-            out.push({ ...step, status });
-        });
-
-        out.push({
-            id: 'end',
-            name: 'End',
-            icon: 'done',
-            role: 'System',
-            status: decision === 'approved' ? 'completed' : decision === 'rejected' ? 'rejected' : 'pending',
-        });
-
-        if (hasRole('Viewer') && decision === 'rejected') {
-            return out.map((step) => ({ ...step, status: 'rejected' }));
-        }
-
-        return out;
-    }
+    const stats = {
+        ALL: rows.length,
+        PENDING: rows.filter(r => String(r.status || '').toUpperCase() === 'PENDING').length,
+        APPROVED: rows.filter(r => String(r.status || '').toUpperCase() === 'APPROVED').length,
+        REJECTED: rows.filter(r => String(r.status || '').toUpperCase() === 'REJECTED').length,
+    };
 
     return (
         <>
-            <Head><title>Workflow Status — FormCraft</title></Head>
-            <Navbar />
-            <div className="container workflow-page-shell">
-                <div className="workflow-page-head">
-                    <h1>My Workflow Status</h1>
-                </div>
+            <Head><title>My Workflow Status — FormCraft</title></Head>
+            
+            <PageContainer>
+                <SectionHeader 
+                    title="🧭 My Workflow Status"
+                    subtitle="Track the approval progress of your submitted forms"
+                    actions={
+                        <Link href="/dashboard">
+                            <Button variant="secondary" size="sm">Back to Dashboard</Button>
+                        </Link>
+                    }
+                />
 
-                <div className="workflow-filter-row" role="tablist" aria-label="Workflow category filter">
+                <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
                     {['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map((c) => (
-                        <button
+                        <Button
                             key={c}
-                            type="button"
-                            className={`workflow-filter-chip${category === c ? ' active' : ''}`}
+                            variant={category === c ? 'primary' : 'secondary'}
+                            size="sm"
                             onClick={() => setCategory(c)}
-                            role="tab"
-                            aria-selected={category === c}
                         >
-                            {c}
-                        </button>
+                            {c} <span className="ml-1.5 opacity-60 text-xs">{stats[c]}</span>
+                        </Button>
                     ))}
                 </div>
 
                 {loading ? (
-                    <div className="loading-center" style={{ minHeight: 280 }}>
-                        <span className="spinner" style={{ width: 34, height: 34 }} />
+                    <div className="py-20 flex flex-col items-center justify-center gap-4">
+                        <Spinner size="lg" />
+                        <p className="text-gray-500 animate-pulse">Loading workflow status...</p>
                     </div>
                 ) : filteredRows.length === 0 ? (
-                    <div className="empty-state">
-                        <div className="empty-state-icon">🧭</div>
-                        <h3>No workflow records in this category</h3>
-                        <p>Try another category or start a workflow from a draft form.</p>
+                    <div className="py-20 text-center border-2 border-dashed border-gray-100 dark:border-white/5 rounded-2xl">
+                        <div className="text-5xl mb-4 opacity-20">🧭</div>
+                        <h3 className="text-lg font-medium">No workflow records found</h3>
+                        <p className="text-gray-500">Records in category &quot;{category}&quot; will appear here.</p>
                     </div>
                 ) : (
-                    <div className="workflow-status-grid">
-                        {filteredRows.map((r) => {
-                            const decisionClass = normalizeDecision(r.finalDecision || r.status);
-                            return (
-                                <div key={r.workflowId} className={`form-card workflow-status-card ${decisionClass}`}>
-                                    <div className="form-card-header workflow-card-head">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {filteredRows.map((r) => (
+                            <Card key={r.workflowId} className="group hover:scale-[1.02] transition-transform">
+                                <div className="p-5 space-y-4">
+                                    <div className="flex justify-between items-start">
                                         <div>
-                                            <div className="form-card-name" style={{ marginBottom: 2 }}>{r.formName}</div>
-                                            <div className="form-card-desc">Workflow #{r.workflowId}</div>
+                                            <h3 className="font-bold text-gray-900 dark:text-white group-hover:text-primary transition-colors">
+                                                {r.formName}
+                                            </h3>
+                                            <p className="text-xs text-gray-500">Workflow #{r.workflowId}</p>
                                         </div>
-                                        <span className={`status-badge status-badge-draft workflow-decision-badge ${decisionClass}`}>
-                                            {r.finalDecision || 'PENDING'}
-                                        </span>
+                                        <Badge variant={
+                                            r.status === 'APPROVED' ? 'success' : 
+                                            r.status === 'REJECTED' ? 'danger' : 
+                                            'warning'
+                                        }>
+                                            {r.status || 'PENDING'}
+                                        </Badge>
                                     </div>
 
-                                    <div className="workflow-quick-meta">
-                                        <span>Current Step <strong>{r.currentStepIndex}/{r.totalSteps}</strong></span>
-                                        <span>Status <strong>{r.status || '—'}</strong></span>
-                                    </div>
-
-                                    <WorkflowDiagram steps={buildSteps(r)} />
-
-                                    <div className="wf-chain-text">
-                                        {r.currentFlowView || (r.flowChain || []).join(' -> ') || 'No flow chain available'}
-                                    </div>
-
-                                    {r.finalDecision === 'REJECTED' && (
-                                        <div className="workflow-rejection-note">
-                                            {r.finalComments || 'Rejected by approver. Please update the form and resubmit.'}
+                                    <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-white/5">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-gray-400">Current Step</span>
+                                            <span className="font-medium">{r.currentStep ?? '-'}</span>
                                         </div>
-                                    )}
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-gray-400">Submitted</span>
+                                            <span className="font-medium text-gray-500">
+                                                {r.submittedAt ? new Date(r.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '-'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-gray-400">Last Update</span>
+                                            <span className="font-medium text-gray-500">
+                                                {r.lastUpdatedAt ? new Date(r.lastUpdatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '-'}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
-                            );
-                        })}
+                            </Card>
+                        ))}
                     </div>
                 )}
-
-                <div style={{ marginTop: 14, marginBottom: 20 }}>
-                    <Link href="/dashboard" className="btn btn-secondary btn-sm">Back to Dashboard</Link>
-                </div>
-            </div>
+            </PageContainer>
         </>
     );
 }
-
-
-

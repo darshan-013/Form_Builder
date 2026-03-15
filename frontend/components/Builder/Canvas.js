@@ -285,7 +285,11 @@ export default function Canvas({ fields, setFields, groups = [], setGroups = () 
         <>
             <div
                 ref={canvasRef}
-                className={`builder-canvas ${isOverCanvas ? 'drag-over' : ''}`}
+                className={`
+                    relative min-h-[600px] p-8 rounded-3xl transition-all duration-500
+                    ${isOverCanvas ? 'bg-primary/5 ring-2 ring-primary/20 ring-inset' : 'bg-transparent'}
+                    before:absolute before:inset-0 before:bg-[radial-gradient(var(--primary-glow)_1px,transparent_1px)] before:bg-[size:32px_32px] before:opacity-[0.03] before:pointer-events-none
+                `}
                 onDragOver={handleCanvasDragOver}
                 onDrop={handleCanvasDrop}
                 onDragLeave={handleCanvasDragLeave}
@@ -293,10 +297,19 @@ export default function Canvas({ fields, setFields, groups = [], setGroups = () 
                 aria-label="Form canvas"
             >
                 {topLevelItems.length === 0 ? (
-                    <div className="canvas-empty">
-                        <div className="canvas-empty-icon">⊕</div>
-                        <h3>Drop fields here</h3>
-                        <p>Drag a field type or section from the left panel to get started</p>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-12 translate-y-[-10%]">
+                        <div className="w-20 h-20 rounded-3xl bg-primary/5 flex items-center justify-center mb-6 ring-1 ring-primary/20 animate-pulse">
+                            <span className="text-4xl text-primary">⊕</span>
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Build your masterpiece</h3>
+                        <p className="text-gray-500 max-w-xs mx-auto text-sm leading-relaxed">
+                            Drag and drop fields from the left palette to start creating your dynamic form.
+                        </p>
+                        
+                        <div className="mt-8 flex gap-4 opacity-30 grayscale pointer-events-none">
+                            <div className="w-32 h-10 rounded-xl border border-gray-300 dark:border-white/10" />
+                            <div className="w-32 h-10 rounded-xl border border-gray-300 dark:border-white/10" />
+                        </div>
                     </div>
                 ) : (
                     topLevelItems.map((item, idx) => {

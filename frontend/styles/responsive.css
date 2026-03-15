@@ -10,8 +10,9 @@
 @media (max-width: 1023px) {
   .builder-page { grid-template-columns: 210px 1fr; }
   .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
-  .navbar { padding: 0 20px; }
-  .navbar-actions { gap: 10px; }
+  .navbar { padding: 10px 12px; align-items: flex-start; }
+  .navbar-pill { width: calc(100% - 140px); max-width: 100%; }
+  .navbar-actions { gap: 6px; }
   .container { padding: 0 20px; }
   .dashboard-stats { flex-wrap: wrap; }
 }
@@ -61,9 +62,32 @@
   .container  { padding: 0 16px; }
 
   /* ── Navbar ──────────────────────────────────────────────── */
-  .navbar { padding: 0 16px; height: 58px; }
+  .navbar {
+    padding: 8px 10px;
+    min-height: 66px;
+    gap: 8px;
+    align-items: flex-start;
+  }
   .navbar-brand { font-size: 18px; }
-  .navbar-user  { display: none; }
+  .navbar-pill {
+    flex: 1;
+    padding: 6px 8px;
+    gap: 6px;
+    min-width: 0;
+  }
+  .navbar-user-chip { display: none; }
+  .navbar-actions {
+    display: flex;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    width: 100%;
+    padding-bottom: 2px;
+    gap: 6px;
+  }
+  .navbar-actions .btn,
+  .navbar-actions .theme-toggle-btn {
+    flex-shrink: 0;
+  }
 
   /* ── Form renderer ───────────────────────────────────────── */
   .form-page { padding: 24px 16px 60px; }

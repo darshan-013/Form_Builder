@@ -28,8 +28,15 @@ export default function IndexPage() {
   }, [loading, user, router]);
 
   useEffect(() => {
+    if (loading || user) return;
+
     const targets = document.querySelectorAll('[data-reveal]');
     if (!targets.length) return;
+
+    if (typeof window.IntersectionObserver === 'undefined') {
+      targets.forEach((el) => el.classList.add('is-revealed'));
+      return;
+    }
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -45,7 +52,7 @@ export default function IndexPage() {
 
     targets.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, []);
+  }, [loading, user]);
 
   if (loading || user) {
     return (

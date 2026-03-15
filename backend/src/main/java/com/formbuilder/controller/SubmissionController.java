@@ -307,45 +307,4 @@ public class SubmissionController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
-
-    // ── Trash Bin Endpoints ────────────────────────────────────────────────
-
-    /** List all soft-deleted submissions for a form (the trash). */
-    @GetMapping("/{id}/submissions/trash")
-    public ResponseEntity<?> getTrashSubmissions(
-            @PathVariable UUID id,
-            Authentication auth) {
-        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
-        return ResponseEntity.ok(submissionService.getTrashSubmissions(id));
-    }
-
-    /** Restore a submission from trash back to active. */
-    @PostMapping("/{id}/submissions/{submissionId}/restore")
-    public ResponseEntity<?> restoreSubmission(
-            @PathVariable UUID id,
-            @PathVariable UUID submissionId,
-            Authentication auth) {
-        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
-        try {
-            submissionService.restoreSubmission(id, submissionId);
-            return ResponseEntity.ok(Map.of("message", "Submission restored successfully"));
-        } catch (NoSuchElementException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    /** Permanently delete a submission that is in trash. */
-    @DeleteMapping("/{id}/submissions/{submissionId}/permanent")
-    public ResponseEntity<?> permanentDeleteSubmission(
-            @PathVariable UUID id,
-            @PathVariable UUID submissionId,
-            Authentication auth) {
-        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
-        try {
-            submissionService.permanentDeleteSubmission(id, submissionId);
-            return ResponseEntity.ok(Map.of("message", "Submission permanently deleted"));
-        } catch (NoSuchElementException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
 }

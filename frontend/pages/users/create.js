@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import Navbar from '../../components/Navbar';
+
 import { createUser, getRoles, assignRoleToUser } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -71,7 +71,7 @@ export default function CreateUserPage() {
             <Head>
                 <title>Create User — FormCraft</title>
             </Head>
-            <Navbar />
+
 
             <div className="users-page">
                 <div className="users-page-header">
