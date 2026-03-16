@@ -36,16 +36,20 @@ export default function ApprovalsInboxPage() {
     function buildSteps(row) {
         const total = Number(row?.totalSteps || 0);
         const targetName = row?.targetBuilder?.name || row?.targetBuilder?.username || 'Target Builder';
-        const active = Math.max(1, Number(row?.currentStepIndex || 1));
+        const active = Number(row?.currentStepIndex ?? 0);
 
         const core = Array.from({ length: total }, (_, i) => {
             const oneBased = i + 1;
             let status = 'pending';
             if (oneBased < active) status = 'completed';
-            else if (oneBased === active) status = 'active';
+            else if (oneBased === active) {
+                status = (row.status === 'REJECTED') ? 'rejected' : 'active';
+            } else if (oneBased > active && row.status === 'APPROVED') {
+                status = 'completed';
+            }
 
             return {
-                id: `core-${oneBased}`,
+                id: `step-${oneBased}`,
                 name: oneBased === total ? targetName : `Authority ${oneBased}`,
                 icon: oneBased === total ? 'builder' : 'check',
                 role: oneBased === total ? 'Builder' : `Approver ${oneBased}`,
@@ -56,7 +60,7 @@ export default function ApprovalsInboxPage() {
         return [
             { id: 'start', name: 'Start', icon: 'file', role: 'System', status: 'completed' },
             ...core,
-            { id: 'end', name: 'End', icon: 'done', role: 'System', status: 'pending' },
+            { id: 'end', name: 'End', icon: 'done', role: 'System', status: (row.status === 'APPROVED' ? 'completed' : 'pending') },
         ];
     }
 
@@ -134,7 +138,7 @@ export default function ApprovalsInboxPage() {
                                         <span>Target <strong>{row.targetBuilder?.name || row.targetBuilder?.username || '—'}</strong></span>
                                     </div>
 
-                                    <WorkflowDiagram steps={buildSteps(row)} />
+                                    <WorkflowDiagram steps={buildSteps(row)} activeStepIndex={row.currentStepIndex} />
 
                                     <div className="workflow-inbox-actions">
                                         <button className="btn btn-primary btn-sm" onClick={() => handleApprove(row)} disabled={busy}>

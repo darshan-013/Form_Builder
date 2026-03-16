@@ -3,6 +3,7 @@ import ValidationEngine from '../services/validation';
 import RuleEngine, { setDefaultValues } from '../services/RuleEngine';
 import CalculationEngine from '../services/CalculationEngine';
 import { getDraft, saveDraft } from '../services/api';
+import { toastInfo } from '../services/toast';
 
 /**
  * FormRenderer — enterprise dynamic form renderer with Conditional Rule Engine.
@@ -309,8 +310,6 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
 
   // ── Wizard Next — validate current page's visible dynamic fields then advance ─
   const handleNext = async () => {
-    if (isPreview) { setCurrentPage(p => Math.min(p + 1, totalPages - 1)); return; }
-
     // Mark only current page's dynamic fields as touched
     const currentDynamic = (pages[currentPage]?.items || []).filter(f => f._renderType === 'dynamic');
     const pageTouched = Object.fromEntries(currentDynamic.map(f => [f.fieldKey, true]));
@@ -360,7 +359,6 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   // ── onSubmit — full async validation, block if any errors ─────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isPreview) return;
 
     // Guard: never submit if there are more pages ahead (wizard safety net)
     if (isMultiStep && !isLastPage) {
@@ -404,6 +402,11 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     }
 
     // ── All valid — submit ───────────────────────────────────────────────────
+    if (isPreview) {
+      toastInfo("👁 Preview Mode: Form validation passed! Actual submission is disabled in preview mode.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const currentValues = valuesRef.current;
@@ -668,7 +671,6 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
                       onChange={(val) => handleChange(field, val)}
                       onBlur={(val) => handleBlur(field, val)}
                       disabled={
-                        isPreview ||
                         !!st.disabled ||
                         !!field.disabled ||
                         !!field.readOnly ||
@@ -725,7 +727,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
             type="button"
             id="form-submit-btn"
             className="form-submit-btn"
-            disabled={submitting || isPreview || fields.length === 0}
+            disabled={submitting || fields.length === 0}
             style={isMultiStep ? { marginLeft: 'auto' } : undefined}
             onClick={() => {
               const hidden = document.getElementById('__form-submit-hidden__');
