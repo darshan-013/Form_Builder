@@ -117,13 +117,15 @@ public class WorkflowController {
     }
 
     @GetMapping("/my-status")
-    public ResponseEntity<?> myStatus(Authentication auth) {
+    public ResponseEntity<?> myStatus(Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
-        if (!(roles.contains("Creator") || roles.contains("Viewer") || roles.contains("Admin"))) {
+        if (!(roles.contains("Creator") || roles.contains("Viewer") || roles.contains("Admin") || roles.contains("Builder"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Creator access required"));
+                    .body(Map.of("error", "Creator, Viewer, Admin, or Builder access required"));
         }
-        List<CreatorWorkflowStatusDTO> rows = workflowService.getCreatorStatuses(auth.getName());
+        
+        Integer userId = requireSessionUserId(session);
+        List<CreatorWorkflowStatusDTO> rows = workflowService.getCreatorStatuses(auth.getName(), userId);
         return ResponseEntity.ok(rows);
     }
 
@@ -136,8 +138,23 @@ public class WorkflowController {
         }
 
         Integer userId = requireSessionUserId(session);
-        List<BuilderReviewDTO> rows = workflowService.getPendingReviews(userId);
+        List<BuilderReviewDTO> rows = workflowService.getBuilderOverallReviews(userId);
         return ResponseEntity.ok(rows);
+    }
+
+    @GetMapping("/candidates")
+    public ResponseEntity<?> getCandidates(Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (!(roles.contains("Admin") || roles.contains("Builder") || roles.contains("Viewer"))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Access denied"));
+        }
+
+        Map<String, List<User>> candidates = workflowService.getWorkflowCandidates();
+        return ResponseEntity.ok(Map.of(
+                "builders", candidates.get("builders").stream().map(this::toUserSummary).toList(),
+                "authorities", candidates.get("authorities").stream().map(this::toUserSummary).toList()
+        ));
     }
 
     @PostMapping("/{workflowId}/approve")

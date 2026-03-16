@@ -6,6 +6,7 @@ import '../styles/form-renderer.css';
 import '../styles/responsive.css';
 import '../styles/roles.css';
 import '../styles/users.css';
+import '../styles/Sidebar.css';
 import { ThemeProvider } from '../context/ThemeContext';
 import { AuthProvider } from '../context/AuthContext';
 

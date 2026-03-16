@@ -108,7 +108,7 @@ public class FormController {
                     && (isAdmin || (isBuilder && isAssignedBuilder));
             map.put("canEdit", !isRoleAdmin && !isViewer && (isOwner || isAdmin));
             map.put("canDelete", !isRoleAdmin && (isOwner || isAdmin));
-            map.put("canPublish", !isRoleAdmin && isDraft && isBuilderCreated && (isAdmin || (isBuilder && isOwner)));
+            map.put("canPublish", !isRoleAdmin && isDraft && (isAdmin || (isBuilderCreated && isBuilder && isOwner)));
             map.put("canAssignBuilder", canAssignBuilder);
             map.put("canStartWorkflow", canStartWorkflow);
             map.put("canRequestWorkflow", canStartWorkflow);
@@ -233,7 +233,7 @@ public class FormController {
      * other users can preview only forms they can act on.
      */
     @GetMapping("/{id}/render/admin")
-    public ResponseEntity<?> renderAdmin(@PathVariable UUID id, Authentication auth) {
+    public ResponseEntity<?> renderAdmin(@PathVariable UUID id, Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
         boolean isRoleAdmin = roles.contains(ROLE_ROLE_ADMIN);
@@ -242,7 +242,20 @@ public class FormController {
             // Non-deleted only (findByIdWithFields)
             formService.getFormById(id);
         } else {
-            formService.getFormForAction(id, auth.getName(), false);
+            // Allow if owner OR involved in an active workflow
+            boolean isOwner = false;
+            try {
+                formService.getOwnedFormById(id, auth.getName());
+                isOwner = true;
+            } catch (Exception ignored) {}
+
+            if (!isOwner) {
+                Integer userId = (Integer) session.getAttribute("USER_ID");
+                boolean isInvolved = userId != null && workflowService.isUserInvolvedInActiveWorkflow(id, userId);
+                if (!isInvolved) {
+                    formService.getOwnedFormById(id, auth.getName()); // Throws 404/403
+                }
+            }
         }
 
         return ResponseEntity.ok(formRenderService.render(id));

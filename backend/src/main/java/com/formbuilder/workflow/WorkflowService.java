@@ -229,6 +229,18 @@ public class WorkflowService {
     }
 
     @Transactional(readOnly = true)
+    public boolean isUserInvolvedInActiveWorkflow(UUID formId, Integer userId) {
+        return instanceRepo.findByForm_IdAndStatus(formId, WorkflowInstanceStatus.ACTIVE)
+                .map(instance -> {
+                    if (Objects.equals(instance.getCreator().getId(), userId)) return true;
+                    if (Objects.equals(instance.getTargetBuilder().getId(), userId)) return true;
+                    return instance.getSteps().stream()
+                            .anyMatch(step -> Objects.equals(step.getApprover().getId(), userId));
+                })
+                .orElse(false);
+    }
+
+    @Transactional(readOnly = true)
     public Map<String, List<User>> getWorkflowCandidates() {
         List<User> users = userRepo.findAllWithRolesAndPermissions();
 
@@ -393,13 +405,20 @@ public class WorkflowService {
     }
 
     @Transactional(readOnly = true)
-    public List<CreatorWorkflowStatusDTO> getCreatorStatuses(String username) {
-        return instanceRepo.findByCreatorUsernameWithSteps(username).stream()
+    public List<CreatorWorkflowStatusDTO> getCreatorStatuses(String username, Integer userId) {
+        return instanceRepo.findByCreatorOrApproverWithSteps(username, userId).stream()
                 .map(this::toCreatorStatusDto)
                 .toList();
     }
 
     @Transactional(readOnly = true)
+    public List<BuilderReviewDTO> getBuilderOverallReviews(Integer userId) {
+        // Find all instances where user is target builder OR is an approver in any step
+        return instanceRepo.findByInvolvedUserWithSteps(userId).stream()
+                .map(this::toBuilderReviewDtoFromInstance)
+                .toList();
+    }
+
     public List<BuilderReviewDTO> getPendingReviews(Integer builderUserId) {
         return stepRepo.findMyPendingSteps(builderUserId).stream()
                 .map(this::toBuilderReviewDto)
@@ -462,10 +481,16 @@ public class WorkflowService {
     }
 
     private CreatorWorkflowStatusDTO toCreatorStatusDto(WorkflowInstance wi) {
+        String targetBuilderName = wi.getTargetBuilder().getName();
+        if (targetBuilderName == null || targetBuilderName.isBlank()) targetBuilderName = wi.getTargetBuilder().getUsername();
+
         return CreatorWorkflowStatusDTO.builder()
                 .workflowId(wi.getId())
+                .formId(wi.getForm().getId())
                 .formName(wi.getForm().getName())
                 .currentStep(wi.getCurrentStepIndex())
+                .totalSteps(wi.getTotalSteps())
+                .targetBuilderName(targetBuilderName)
                 .status(mapDecisionStatus(wi))
                 .submittedAt(wi.getCreatedAt())
                 .lastUpdatedAt(wi.getUpdatedAt())
@@ -473,17 +498,26 @@ public class WorkflowService {
     }
 
     private BuilderReviewDTO toBuilderReviewDto(WorkflowStep step) {
-        WorkflowInstance wi = step.getInstance();
+        return toBuilderReviewDtoFromInstance(step.getInstance());
+    }
+
+    private BuilderReviewDTO toBuilderReviewDtoFromInstance(WorkflowInstance wi) {
         String creatorName = wi.getCreator().getName();
         if (creatorName == null || creatorName.isBlank()) {
             creatorName = wi.getCreator().getUsername();
         }
 
+        String targetBuilderName = wi.getTargetBuilder().getName();
+        if (targetBuilderName == null || targetBuilderName.isBlank()) targetBuilderName = wi.getTargetBuilder().getUsername();
+
         return BuilderReviewDTO.builder()
                 .workflowId(wi.getId())
+                .formId(wi.getForm().getId())
                 .formName(wi.getForm().getName())
                 .creatorName(creatorName)
                 .currentStep(wi.getCurrentStepIndex())
+                .totalSteps(wi.getTotalSteps())
+                .targetBuilderName(targetBuilderName)
                 .submittedAt(wi.getCreatedAt())
                 .status(mapDecisionStatus(wi))
                 .build();
@@ -506,12 +540,18 @@ public class WorkflowService {
             }
         }
 
+        String targetBuilderName = wi.getTargetBuilder().getName();
+        if (targetBuilderName == null || targetBuilderName.isBlank()) targetBuilderName = wi.getTargetBuilder().getUsername();
+
         return AdminWorkflowStatusDTO.builder()
                 .workflowId(wi.getId())
+                .formId(wi.getForm().getId())
                 .formName(wi.getForm().getName())
                 .creator(creatorName)
                 .currentApprover(currentApprover)
                 .workflowStep(wi.getCurrentStepIndex())
+                .totalSteps(wi.getTotalSteps())
+                .targetBuilderName(targetBuilderName)
                 .status(mapDecisionStatus(wi))
                 .createdAt(wi.getCreatedAt())
                 .updatedAt(wi.getUpdatedAt())
@@ -521,6 +561,7 @@ public class WorkflowService {
     private String mapDecisionStatus(WorkflowInstance wi) {
         if (wi.getStatus() == WorkflowInstanceStatus.COMPLETED) return "APPROVED";
         if (wi.getStatus() == WorkflowInstanceStatus.REJECTED) return "REJECTED";
+        if (wi.getStatus() == WorkflowInstanceStatus.ACTIVE) return "ACTIVE";
         return "PENDING";
     }
 }

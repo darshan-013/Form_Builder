@@ -361,7 +361,7 @@ public class FormService {
         boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
                 .map(user -> user.getRoles().stream().anyMatch(role -> "Builder".equals(role.getRoleName())))
                 .orElse(false);
-        if (!creatorIsBuilder) {
+        if (!isAdmin && !creatorIsBuilder) {
             throw new IllegalStateException("Only draft forms created by Builder can be published.");
         }
 

@@ -360,3 +360,23 @@ export const getAdminWorkflowStatus = (filters = {}) => {
 
 export const getAllWorkflowStatus = () =>
     request('GET', '/workflows/all-status');
+
+// ── RBAC: Modules & Menu ──────────────────────────────────────
+
+export const getMenu = () =>
+    request('GET', '/menu');
+
+export const getAllModules = () =>
+    request('GET', '/modules');
+
+export const createModule = (data) =>
+    request('POST', '/modules', data);
+
+export const updateModule = (id, data) =>
+    request('PUT', `/modules/${id}`, data);
+
+export const assignModulesToRole = (roleId, moduleIds) =>
+    request('POST', `/modules/role/${roleId}`, moduleIds);
+
+export const getModulesByRole = (roleId) =>
+    request('GET', `/modules/role/${roleId}`);

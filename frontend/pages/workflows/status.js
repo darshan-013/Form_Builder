@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Navbar from '../../components/Navbar';
 import { getMyWorkflowStatus } from '../../services/api';
 import { toastError } from '../../services/toast';
+import WorkflowDiagram from '../../components/workflows/WorkflowDiagram';
 
 export default function WorkflowStatusPage() {
     const [rows, setRows] = useState([]);
@@ -21,6 +22,37 @@ export default function WorkflowStatusPage() {
         if (category === 'ALL') return rows;
         return rows.filter((r) => String(r.status || '').toUpperCase() === category);
     }, [rows, category]);
+
+    function buildSteps(row) {
+        const total = Number(row?.totalSteps || 0);
+        const targetName = row?.targetBuilderName || 'Target Builder';
+        const active = Number(row?.currentStep ?? 0);
+
+        const core = Array.from({ length: total }, (_, i) => {
+            const oneBased = i + 1;
+            let status = 'pending';
+            if (oneBased < active) status = 'completed';
+            else if (oneBased === active) {
+                status = (row.status === 'REJECTED') ? 'rejected' : 'active';
+            } else if (oneBased > active && row.status === 'APPROVED') {
+                status = 'completed';
+            }
+
+            return {
+                id: `step-${oneBased}`,
+                name: oneBased === total ? targetName : `Authority ${oneBased}`,
+                icon: oneBased === total ? 'builder' : 'check',
+                role: oneBased === total ? 'Builder' : `Approver ${oneBased}`,
+                status,
+            };
+        });
+
+        return [
+            { id: 'start', name: 'Start', icon: 'file', role: 'System', status: 'completed' },
+            ...core,
+            { id: 'end', name: 'End', icon: 'done', role: 'System', status: (row.status === 'APPROVED' ? 'completed' : 'pending') },
+        ];
+    }
 
     return (
         <>
@@ -75,6 +107,19 @@ export default function WorkflowStatusPage() {
                                 </div>
                                 <div className="workflow-quick-meta">
                                     <span>Last Updated <strong>{r.lastUpdatedAt ? new Date(r.lastUpdatedAt).toLocaleString('en-IN') : '-'}</strong></span>
+                                </div>
+
+                                <div className="workflow-visual-section" style={{ marginTop: 16 }}>
+                                    <WorkflowDiagram steps={buildSteps(r)} activeStepIndex={r.currentStep} />
+                                </div>
+
+                                <div style={{ marginTop: 14, textAlign: 'right' }}>
+                                    <Link 
+                                        href={`/preview/${r.formId}`} 
+                                        className="btn btn-outline btn-sm"
+                                    >
+                                        👁 Preview Form
+                                    </Link>
                                 </div>
                             </div>
                         ))}

@@ -56,6 +56,16 @@ public interface WorkflowInstanceRepository extends JpaRepository<WorkflowInstan
 
     @Query("SELECT DISTINCT wi FROM WorkflowInstance wi " +
             "JOIN FETCH wi.form f " +
+            "JOIN FETCH wi.creator c " +
+            "JOIN FETCH wi.targetBuilder tb " +
+            "LEFT JOIN FETCH wi.steps s " +
+            "LEFT JOIN FETCH s.approver a " +
+            "WHERE a.id = :userId OR tb.id = :userId " +
+            "ORDER BY wi.createdAt DESC")
+    List<WorkflowInstance> findByInvolvedUserWithSteps(@Param("userId") Integer userId);
+
+    @Query("SELECT DISTINCT wi FROM WorkflowInstance wi " +
+            "JOIN FETCH wi.form f " +
             "LEFT JOIN FETCH wi.steps s " +
             "LEFT JOIN FETCH s.approver " +
             "ORDER BY wi.createdAt DESC")

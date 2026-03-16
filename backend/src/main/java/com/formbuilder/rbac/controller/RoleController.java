@@ -38,271 +38,272 @@ import java.util.*;
 @RequirePermission("MANAGE")
 public class RoleController {
 
-    private final RoleService roleService;
-    private final AuditLogService auditLogService;
+        private final RoleService roleService;
+        private final AuditLogService auditLogService;
 
-    // ── GET /api/roles ───────────────────────────────────────────────────
+        // ── GET /api/roles ───────────────────────────────────────────────────
 
-    /**
-     * Returns all roles (system + custom) with their assigned permissions.
-     * System roles appear first, then alphabetical.
-     */
-    @GetMapping
-    public ResponseEntity<?> getAllRoles() {
-        List<Role> roles = roleService.getAllRoles();
+        /**
+         * Returns all roles (system + custom) with their assigned permissions.
+         * System roles appear first, then alphabetical.
+         */
+        @GetMapping
+        public ResponseEntity<?> getAllRoles() {
+                List<Role> roles = roleService.getAllRoles();
 
-        List<Map<String, Object>> response = roles.stream()
-                .map(this::toRoleResponse)
-                .toList();
+                List<Map<String, Object>> response = roles.stream()
+                                .map(this::toRoleResponse)
+                                .toList();
 
-        return ResponseEntity.ok(response);
-    }
-
-    // ── POST /api/roles ──────────────────────────────────────────────────
-
-    /**
-     * Creates a new custom role.
-     *
-     * Request body:
-     * <pre>
-     * {
-     *   "name": "Regional Auditor",
-     *   "permissions": ["READ", "EXPORT", "AUDIT"]
-     * }
-     * </pre>
-     *
-     * Validations (enforced by RoleService):
-     * 1. Role name must be unique
-     * 4. Actor cannot assign permissions they don't hold
-     */
-    @PostMapping
-    public ResponseEntity<?> createRole(@RequestBody CreateRoleRequest body,
-                                        Authentication auth,
-                                        HttpSession session) {
-
-        // Validate request body
-        if (body.name == null || body.name.trim().isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Role name is required"));
-        }
-        if (body.permissions == null || body.permissions.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "At least one permission is required"));
+                return ResponseEntity.ok(response);
         }
 
-        Integer actorUserId = (Integer) session.getAttribute("USER_ID");
-        String actorUsername = auth.getName();
+        // ── POST /api/roles ──────────────────────────────────────────────────
 
-        Role created = roleService.createRole(
-                body.name,
-                new LinkedHashSet<>(body.permissions),
-                actorUsername,
-                actorUserId
-        );
+        /**
+         * Creates a new custom role.
+         *
+         * Request body:
+         * 
+         * <pre>
+         * {
+         *   "name": "Regional Auditor",
+         *   "permissions": ["READ", "EXPORT", "AUDIT"]
+         * }
+         * </pre>
+         *
+         * Validations (enforced by RoleService):
+         * 1. Role name must be unique
+         * 4. Actor cannot assign permissions they don't hold
+         */
+        @PostMapping
+        public ResponseEntity<?> createRole(@RequestBody CreateRoleRequest body,
+                        Authentication auth,
+                        HttpSession session) {
 
-        // Reload with permissions for response
-        Role loaded = roleService.getRoleWithPermissions(created.getId());
+                // Validate request body
+                if (body.name == null || body.name.trim().isEmpty()) {
+                        return ResponseEntity.badRequest()
+                                        .body(Map.of("error", "Role name is required"));
+                }
+                if (body.permissions == null || body.permissions.isEmpty()) {
+                        return ResponseEntity.badRequest()
+                                        .body(Map.of("error", "At least one permission is required"));
+                }
 
-        auditLogService.logEvent(
-                "CREATE_ROLE",
-                actorUserId,
-                actorUsername,
-                "ROLE",
-                loaded.getId().toString(),
-                "User '" + actorUsername + "' created role '" + loaded.getRoleName() + "'.",
-                Map.of("permissions", loaded.getPermissions().stream().map(Permission::getPermissionKey).sorted().toList()),
-                loaded.getId(),
-                loaded.getRoleName(),
-                null,
-                null
-        );
+                Integer actorUserId = (Integer) session.getAttribute("USER_ID");
+                String actorUsername = auth.getName();
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(toRoleResponse(loaded));
-    }
+                Role created = roleService.createRole(
+                                body.name,
+                                new LinkedHashSet<>(body.permissions),
+                                actorUsername,
+                                actorUserId);
 
-    // ── PUT /api/roles/{id} ──────────────────────────────────────────────
+                // Reload with permissions for response
+                Role loaded = roleService.getRoleWithPermissions(created.getId());
 
-    /**
-     * Updates a custom role's name and/or permissions.
-     *
-     * Request body:
-     * <pre>
-     * {
-     *   "name": "Updated Name",         // optional — null keeps existing
-     *   "permissions": ["READ", "WRITE"] // optional — null keeps existing
-     * }
-     * </pre>
-     *
-     * Validations (enforced by RoleService):
-     * 1. Role name must be unique (if changed)
-     * 2. System roles cannot be edited
-     * 4. Actor cannot assign permissions they don't hold
-     */
-    @PutMapping("/{id}")
-    public ResponseEntity<?> updateRole(@PathVariable Integer id,
-                                        @RequestBody UpdateRoleRequest body,
-                                        Authentication auth,
-                                        HttpSession session) {
+                auditLogService.logEvent(
+                                "CREATE_ROLE",
+                                actorUserId,
+                                actorUsername,
+                                "ROLE",
+                                loaded.getId().toString(),
+                                "User '" + actorUsername + "' created role '" + loaded.getRoleName() + "'.",
+                                Map.of("permissions",
+                                                loaded.getPermissions().stream().map(Permission::getPermissionKey)
+                                                                .sorted().toList()),
+                                loaded.getId(),
+                                loaded.getRoleName(),
+                                null,
+                                null);
 
-        Set<String> permKeys = body.permissions != null
-                ? new LinkedHashSet<>(body.permissions)
-                : null;
-
-        Role updated = roleService.updateRole(id, body.name, permKeys, auth.getName());
-
-        // Reload with permissions for response
-        Role loaded = roleService.getRoleWithPermissions(updated.getId());
-
-        auditLogService.logEvent(
-                "UPDATE_ROLE",
-                (Integer) session.getAttribute("USER_ID"),
-                auth.getName(),
-                "ROLE",
-                loaded.getId().toString(),
-                "User '" + auth.getName() + "' updated role '" + loaded.getRoleName() + "'.",
-                Map.of("permissions", loaded.getPermissions().stream().map(Permission::getPermissionKey).sorted().toList()),
-                loaded.getId(),
-                loaded.getRoleName(),
-                null,
-                null
-        );
-
-        return ResponseEntity.ok(toRoleResponse(loaded));
-    }
-
-    // ── DELETE /api/roles/{id} ───────────────────────────────────────────
-
-    /**
-     * Deletes a custom role. System roles are protected.
-     *
-     * Validations (enforced by RoleService):
-     * 3. System roles cannot be deleted
-     */
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteRole(@PathVariable Integer id,
-                                        Authentication auth,
-                                        HttpSession session) {
-
-        Role roleBeforeDelete = roleService.getRoleWithPermissions(id);
-
-        roleService.deleteRole(id, auth.getName());
-
-        auditLogService.logEvent(
-                "DELETE_ROLE",
-                (Integer) session.getAttribute("USER_ID"),
-                auth.getName(),
-                "ROLE",
-                id.toString(),
-                "User '" + auth.getName() + "' deleted role '" + roleBeforeDelete.getRoleName() + "'.",
-                null,
-                roleBeforeDelete.getId(),
-                roleBeforeDelete.getRoleName(),
-                null,
-                null
-        );
-
-        return ResponseEntity.ok(Map.of("message", "Role deleted successfully"));
-    }
-
-    // ── POST /api/roles/{id}/permissions ─────────────────────────────────
-
-    /**
-     * Adds permissions to an existing custom role (additive — does not remove
-     * existing permissions).
-     *
-     * Request body:
-     * <pre>
-     * {
-     *   "permissions": ["EXPORT", "AUDIT"]
-     * }
-     * </pre>
-     *
-     * Validations (enforced by RoleService):
-     * 2. System roles cannot be edited
-     * 4. Actor cannot assign permissions they don't hold
-     */
-    @PostMapping("/{id}/permissions")
-    public ResponseEntity<?> assignPermissions(@PathVariable Integer id,
-                                               @RequestBody PermissionsRequest body,
-                                               Authentication auth,
-                                               HttpSession session) {
-
-        if (body.permissions == null || body.permissions.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "At least one permission is required"));
+                return ResponseEntity.status(HttpStatus.CREATED)
+                                .body(toRoleResponse(loaded));
         }
 
-        Role updated = roleService.assignPermissionsToRole(
-                id,
-                new LinkedHashSet<>(body.permissions),
-                auth.getName()
-        );
+        // ── PUT /api/roles/{id} ──────────────────────────────────────────────
 
-        // Reload with permissions for response
-        Role loaded = roleService.getRoleWithPermissions(updated.getId());
+        /**
+         * Updates a custom role's name and/or permissions.
+         *
+         * Request body:
+         * 
+         * <pre>
+         * {
+         *   "name": "Updated Name",         // optional — null keeps existing
+         *   "permissions": ["READ", "WRITE"] // optional — null keeps existing
+         * }
+         * </pre>
+         *
+         * Validations (enforced by RoleService):
+         * 1. Role name must be unique (if changed)
+         * 2. System roles cannot be edited
+         * 4. Actor cannot assign permissions they don't hold
+         */
+        @PutMapping("/{id}")
+        public ResponseEntity<?> updateRole(@PathVariable Integer id,
+                        @RequestBody UpdateRoleRequest body,
+                        Authentication auth,
+                        HttpSession session) {
 
-        auditLogService.logEvent(
-                "UPDATE_PERMISSION",
-                (Integer) session.getAttribute("USER_ID"),
-                auth.getName(),
-                "ROLE",
-                loaded.getId().toString(),
-                "User '" + auth.getName() + "' updated permissions for role '" + loaded.getRoleName() + "'.",
-                Map.of("permissions", loaded.getPermissions().stream().map(Permission::getPermissionKey).sorted().toList()),
-                loaded.getId(),
-                loaded.getRoleName(),
-                null,
-                null
-        );
+                Set<String> permKeys = body.permissions != null
+                                ? new LinkedHashSet<>(body.permissions)
+                                : null;
 
-        return ResponseEntity.ok(toRoleResponse(loaded));
-    }
+                Role updated = roleService.updateRole(id, body.name, permKeys, auth.getName());
 
-    // ═══════════════════════════════════════════════════════════════════════
-    //  RESPONSE BUILDER
-    // ═══════════════════════════════════════════════════════════════════════
+                // Reload with permissions for response
+                Role loaded = roleService.getRoleWithPermissions(updated.getId());
 
-    /**
-     * Converts a Role entity to a clean JSON-friendly map.
-     * Avoids exposing JPA internals / lazy proxy objects.
-     */
-    private Map<String, Object> toRoleResponse(Role role) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("id", role.getId());
-        map.put("roleName", role.getRoleName());
-        map.put("isSystemRole", role.isSystemRole());
-        map.put("createdBy", role.getCreatedBy());
-        map.put("createdAt", role.getCreatedAt());
-        map.put("updatedAt", role.getUpdatedAt());
-        map.put("permissions", role.getPermissions().stream()
-                .map(Permission::getPermissionKey)
-                .sorted()
-                .toList());
-        return map;
-    }
+                auditLogService.logEvent(
+                                "UPDATE_ROLE",
+                                (Integer) session.getAttribute("USER_ID"),
+                                auth.getName(),
+                                "ROLE",
+                                loaded.getId().toString(),
+                                "User '" + auth.getName() + "' updated role '" + loaded.getRoleName() + "'.",
+                                Map.of("permissions",
+                                                loaded.getPermissions().stream().map(Permission::getPermissionKey)
+                                                                .sorted().toList()),
+                                loaded.getId(),
+                                loaded.getRoleName(),
+                                null,
+                                null);
 
-    // ═══════════════════════════════════════════════════════════════════════
-    //  REQUEST DTOs (inner classes — scoped to this controller only)
-    // ═══════════════════════════════════════════════════════════════════════
+                return ResponseEntity.ok(toRoleResponse(loaded));
+        }
 
-    /** POST /api/roles request body. */
-    public static class CreateRoleRequest {
-        public String name;
-        public List<String> permissions;
-    }
+        // ── DELETE /api/roles/{id} ───────────────────────────────────────────
 
-    /** PUT /api/roles/{id} request body. */
-    public static class UpdateRoleRequest {
-        public String name;
-        public List<String> permissions;
-    }
+        /**
+         * Deletes a custom role. System roles are protected.
+         *
+         * Validations (enforced by RoleService):
+         * 3. System roles cannot be deleted
+         */
+        @DeleteMapping("/{id}")
+        public ResponseEntity<?> deleteRole(@PathVariable Integer id,
+                        Authentication auth,
+                        HttpSession session) {
 
-    /** POST /api/roles/{id}/permissions request body. */
-    public static class PermissionsRequest {
-        public List<String> permissions;
-    }
+                Role roleBeforeDelete = roleService.getRoleWithPermissions(id);
+
+                roleService.deleteRole(id, auth.getName());
+
+                auditLogService.logEvent(
+                                "DELETE_ROLE",
+                                (Integer) session.getAttribute("USER_ID"),
+                                auth.getName(),
+                                "ROLE",
+                                id.toString(),
+                                "User '" + auth.getName() + "' deleted role '" + roleBeforeDelete.getRoleName() + "'.",
+                                null,
+                                roleBeforeDelete.getId(),
+                                roleBeforeDelete.getRoleName(),
+                                null,
+                                null);
+
+                return ResponseEntity.ok(Map.of("message", "Role deleted successfully"));
+        }
+
+        // ── POST /api/roles/{id}/permissions ─────────────────────────────────
+
+        /**
+         * Adds permissions to an existing custom role (additive — does not remove
+         * existing permissions).
+         *
+         * Request body:
+         * 
+         * <pre>
+         * {
+         *   "permissions": ["EXPORT", "AUDIT"]
+         * }
+         * </pre>
+         *
+         * Validations (enforced by RoleService):
+         * 2. System roles cannot be edited
+         * 4. Actor cannot assign permissions they don't hold
+         */
+        @PostMapping("/{id}/permissions")
+        public ResponseEntity<?> assignPermissions(@PathVariable Integer id,
+                        @RequestBody PermissionsRequest body,
+                        Authentication auth,
+                        HttpSession session) {
+
+                if (body.permissions == null || body.permissions.isEmpty()) {
+                        return ResponseEntity.badRequest()
+                                        .body(Map.of("error", "At least one permission is required"));
+                }
+
+                Role updated = roleService.assignPermissionsToRole(
+                                id,
+                                new LinkedHashSet<>(body.permissions),
+                                auth.getName());
+
+                // Reload with permissions for response
+                Role loaded = roleService.getRoleWithPermissions(updated.getId());
+
+                auditLogService.logEvent(
+                                "UPDATE_PERMISSION",
+                                (Integer) session.getAttribute("USER_ID"),
+                                auth.getName(),
+                                "ROLE",
+                                loaded.getId().toString(),
+                                "User '" + auth.getName() + "' updated permissions for role '" + loaded.getRoleName()
+                                                + "'.",
+                                Map.of("permissions",
+                                                loaded.getPermissions().stream().map(Permission::getPermissionKey)
+                                                                .sorted().toList()),
+                                loaded.getId(),
+                                loaded.getRoleName(),
+                                null,
+                                null);
+
+                return ResponseEntity.ok(toRoleResponse(loaded));
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // RESPONSE BUILDER
+        // ═══════════════════════════════════════════════════════════════════════
+
+        /**
+         * Converts a Role entity to a clean JSON-friendly map.
+         * Avoids exposing JPA internals / lazy proxy objects.
+         */
+        private Map<String, Object> toRoleResponse(Role role) {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("id", role.getId());
+                map.put("roleName", role.getRoleName());
+                map.put("isSystemRole", role.isSystemRole());
+                map.put("createdBy", role.getCreatedBy());
+                map.put("createdAt", role.getCreatedAt());
+                map.put("updatedAt", role.getUpdatedAt());
+                map.put("permissions", role.getPermissions().stream()
+                                .map(Permission::getPermissionKey)
+                                .sorted()
+                                .toList());
+                return map;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // REQUEST DTOs (inner classes — scoped to this controller only)
+        // ═══════════════════════════════════════════════════════════════════════
+
+        /** POST /api/roles request body. */
+        public static class CreateRoleRequest {
+                public String name;
+                public List<String> permissions;
+        }
+
+        /** PUT /api/roles/{id} request body. */
+        public static class UpdateRoleRequest {
+                public String name;
+                public List<String> permissions;
+        }
+
+        /** POST /api/roles/{id}/permissions request body. */
+        public static class PermissionsRequest {
+                public List<String> permissions;
+        }
 }
-
-
-
