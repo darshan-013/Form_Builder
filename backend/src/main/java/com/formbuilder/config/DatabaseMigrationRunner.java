@@ -134,11 +134,12 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
                 """);
 
         // 8d. Seed system roles
-        for (String role : List.of("Viewer", "Employee", "Manager", "Approver",
+        for (String role : List.of("Viewer", "Manager", "Approver",
                 "Builder", "Role Administrator", "Admin")) {
             exec("INSERT INTO roles (role_name, is_system_role) VALUES ('"
                     + role + "', TRUE) ON CONFLICT (role_name) DO NOTHING");
         }
+        exec("DELETE FROM roles WHERE role_name = 'Employee'");
 
         // 8e. role_permissions junction table
         exec("""
@@ -222,11 +223,6 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         exec("INSERT INTO role_permissions (role_id, permission_id) " +
                 "SELECT r.id, p.id FROM roles r, permissions p " +
                 "WHERE r.role_name = 'Viewer' AND p.permission_key = 'READ' " +
-                "ON CONFLICT (role_id, permission_id) DO NOTHING");
-
-        exec("INSERT INTO role_permissions (role_id, permission_id) " +
-                "SELECT r.id, p.id FROM roles r, permissions p " +
-                "WHERE r.role_name = 'Employee' AND p.permission_key IN ('READ', 'WRITE') " +
                 "ON CONFLICT (role_id, permission_id) DO NOTHING");
 
         exec("INSERT INTO role_permissions (role_id, permission_id) " +

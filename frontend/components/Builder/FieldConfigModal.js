@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getForms, getForm, createSharedOptions, updateSharedOptions, getSharedOptions } from '../../services/api';
+import { toastError } from '../../services/toast';
 import RuleBuilder from './RuleBuilder';
 import CalculationEngine from '../../services/CalculationEngine';
 
@@ -166,8 +167,10 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
     const [saveError, setSaveError] = useState(null);
 
     const handleSave = async () => {
-        if (!local.label.trim()) return;
-        setSaving(true);
+        if (!local.label || !local.label.trim()) {
+            toastError("Field label is required.");
+            return;
+        }
         setSaving(true);
         setSaveError(null);
 
@@ -294,7 +297,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                             <input
                                 id="cfg-label"
                                 className="form-input"
-                                value={local.label}
+                                value={local.label || ''}
                                 onChange={handleLabelChange}
                                 placeholder="e.g. Full Name"
                                 autoFocus

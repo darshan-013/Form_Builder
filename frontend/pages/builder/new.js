@@ -177,9 +177,18 @@ export default function NewBuilderPage() {
 
     const handleSave = async () => {
         if (!formName.trim()) {
-            toastError('Please enter a form name before saving.');
+            toastError("Form name is required.");
             return;
         }
+
+        // Validate field labels
+        const dynamicFields = fields.filter(f => !STATIC_TYPES.has(f.fieldType));
+        const missingLabel = dynamicFields.some(f => !f.label || !f.label.trim());
+        if (missingLabel) {
+            toastError("All fields must have a label.");
+            return;
+        }
+
         const dto = buildDto();
 
         if (isViewer) {
@@ -481,7 +490,7 @@ export default function NewBuilderPage() {
                             id="save-form-btn"
                             className="btn btn-primary btn-sm"
                             onClick={handleSave}
-                            disabled={saving || !formName.trim()}
+                            disabled={saving}
                         >
                             {saving ? (
                                 <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</>

@@ -43,9 +43,19 @@ export function showToast(type, message) {
         });
     };
 
-    // If Butterup hasn't loaded yet (e.g. fast page load), retry once
+    // If Butterup hasn't loaded yet (e.g. fast page load), retry a few times
     if (!window.butterup) {
-        setTimeout(fire, 350);
+        let retries = 0;
+        const interval = setInterval(() => {
+            retries++;
+            if (window.butterup) {
+                fire();
+                clearInterval(interval);
+            } else if (retries > 10) {
+                console.error("Butterup toast library failed to load after 3 seconds.");
+                clearInterval(interval);
+            }
+        }, 300);
     } else {
         fire();
     }

@@ -90,7 +90,7 @@ INSERT INTO roles (role_name, is_system_role) VALUES
 ON CONFLICT (role_name) DO NOTHING^
 
 INSERT INTO roles (role_name, is_system_role) VALUES
-    ('Employee',           TRUE)
+    ('Viewer',             TRUE)
 ON CONFLICT (role_name) DO NOTHING^
 
 INSERT INTO roles (role_name, is_system_role) VALUES
@@ -198,10 +198,10 @@ SELECT r.id, p.id FROM roles r, permissions p
 WHERE r.role_name = 'Viewer' AND p.permission_key = 'READ'
 ON CONFLICT (role_id, permission_id) DO NOTHING^
 
--- Employee → READ, WRITE
+-- Viewer → READ
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r, permissions p
-WHERE r.role_name = 'Employee' AND p.permission_key IN ('READ', 'WRITE')
+WHERE r.role_name = 'Viewer' AND p.permission_key = 'READ'
 ON CONFLICT (role_id, permission_id) DO NOTHING^
 
 -- Manager → READ, EXPORT, VISIBILITY, AUDIT

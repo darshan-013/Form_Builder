@@ -61,15 +61,9 @@ export default function PreviewPage() {
                 <div className="form-page">
                     {/* Back + Share nav */}
                     <div className="form-page-nav animate-down">
-                        {!isRoleAdmin && !isViewer ? (
-                            <Link href={`/builder/${id}`} className="btn btn-secondary btn-sm">
-                                ← Edit Form
-                            </Link>
-                        ) : (
-                            <Link href="/dashboard" className="btn btn-secondary btn-sm">
-                                ← Back to Dashboard
-                            </Link>
-                        )}
+                        <Link href="/dashboard" className="btn btn-secondary btn-sm">
+                            ← Back to Dashboard
+                        </Link>
                         <div style={{ display: 'flex', gap: 10 }}>
                             <span className="badge badge-text" style={{ padding: '6px 14px', fontSize: 12 }}>
                                 👁 Preview Mode
