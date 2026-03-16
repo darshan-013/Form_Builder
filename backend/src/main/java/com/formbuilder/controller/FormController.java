@@ -89,26 +89,36 @@ public class FormController {
             boolean isBuilderCreated = form.getCreatedBy() != null
                     && creatorIsBuilderCache.computeIfAbsent(form.getCreatedBy(), creator -> {
                         try {
-                            return userRoleService.getUserRoleNames(creator).contains("Builder");
+                            Set<String> creatorRoles = userRoleService.getUserRoleNames(creator);
+                            return creatorRoles.contains("Builder") || creatorRoles.contains(ROLE_ADMIN);
                         } catch (Exception ex) {
                             return false;
                         }
                     });
             boolean hasActiveWorkflow = wf != null && wf.getStatus() == WorkflowInstanceStatus.ACTIVE;
             boolean viewerCanAssign = isViewer && isOwner && form.getAssignedBuilderId() == null;
+
+            // Forms created by Admin or Builder don't need "approval of builder" or workflow.
+            // They can be published directly if the user is an Admin or (Builder owner).
+            boolean canPublish = !isRoleAdmin && isDraft && (isAdmin || (isBuilderCreated && isBuilder && isOwner));
+
             boolean canAssignBuilder = !isRoleAdmin
+                    && !isBuilderCreated // Bypass workflow for privileged creators
                     && !hasActiveWorkflow
                     && form.getStatus() != FormEntity.FormStatus.PENDING_APPROVAL
                     && form.getStatus() != FormEntity.FormStatus.PUBLISHED
                     && (isAdmin || viewerCanAssign);
+
             boolean canStartWorkflow = !isRoleAdmin
+                    && !isBuilderCreated // Bypass workflow for privileged creators
                     && !hasActiveWorkflow
                     && form.getStatus() != FormEntity.FormStatus.PENDING_APPROVAL
                     && form.getStatus() != FormEntity.FormStatus.PUBLISHED
                     && (isAdmin || (isBuilder && isAssignedBuilder));
+
             map.put("canEdit", !isRoleAdmin && !isViewer && (isOwner || isAdmin));
             map.put("canDelete", !isRoleAdmin && (isOwner || isAdmin));
-            map.put("canPublish", !isRoleAdmin && isDraft && (isAdmin || (isBuilderCreated && isBuilder && isOwner)));
+            map.put("canPublish", canPublish);
             map.put("canAssignBuilder", canAssignBuilder);
             map.put("canStartWorkflow", canStartWorkflow);
             map.put("canRequestWorkflow", canStartWorkflow);
@@ -237,8 +247,10 @@ public class FormController {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
         boolean isRoleAdmin = roles.contains(ROLE_ROLE_ADMIN);
+        boolean isManager = roles.contains("Manager");
+        boolean isApprover = roles.contains("Approver");
 
-        if (isAdmin || isRoleAdmin) {
+        if (isAdmin || isRoleAdmin || isManager || isApprover) {
             // Non-deleted only (findByIdWithFields)
             formService.getFormById(id);
         } else {

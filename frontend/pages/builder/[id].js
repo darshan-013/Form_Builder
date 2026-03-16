@@ -177,9 +177,20 @@ export default function EditBuilderPage() {
     }, [id]);
 
     const handleSave = async () => {
-        if (!formName.trim()) { toastError('Form name is required.'); return; }
+        if (!formName.trim()) {
+            toastError("Form name is required.");
+            return;
+        }
 
-        const dynamicFields = [];
+        // Validate field labels
+        const dynamicFields = fields.filter(f => !STATIC_TYPES.has(f.fieldType));
+        const missingLabel = dynamicFields.some(f => !f.label || !f.label.trim());
+        if (missingLabel) {
+            toastError("All fields must have a label.");
+            return;
+        }
+
+        const dynamicFieldsList = [];
         const staticFields = [];
 
         fields.forEach((f, i) => {
@@ -191,7 +202,7 @@ export default function EditBuilderPage() {
                     fieldOrder: i,
                 });
             } else {
-                dynamicFields.push({
+                dynamicFieldsList.push({
                     id: f.id,
                     fieldKey: f.fieldKey || `field_${i}`,
                     label: f.label || `Field ${i + 1}`,
@@ -221,7 +232,7 @@ export default function EditBuilderPage() {
         const dto = {
             name: formName.trim(),
             description: formDescription.trim() || null,
-            fields: dynamicFields,
+            fields: dynamicFieldsList,
             staticFields: staticFields,
             groups: groups.map((g, i) => ({
                 id: g.id,

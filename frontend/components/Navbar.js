@@ -32,8 +32,8 @@ export default function Navbar() {
     <>
       <nav className="navbar">
         <div className="navbar-pill" role="navigation" aria-label="Main Navigation">
-          <button 
-            className="menu-toggle-btn" 
+          <button
+            className="menu-toggle-btn"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open Menu"
           >

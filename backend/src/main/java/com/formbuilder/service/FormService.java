@@ -57,6 +57,7 @@ public class FormService {
      */
     public List<FormEntity> getFormsForRole(String username, Set<String> roleNames) {
         Integer userId = userRepo.findByUsername(username).map(User::getId).orElse(null);
+        Map<String, Boolean> adminCreatorCache = new HashMap<>();
 
         if (roleNames.contains("Admin") || roleNames.contains("Role Administrator")) {
             return formRepo.findAllByOrderByCreatedAtDesc();
@@ -64,32 +65,58 @@ public class FormService {
 
         if (roleNames.contains("Builder")) {
             List<FormEntity> all = formRepo.findAllByOrderByCreatedAtDesc();
-            Set<UUID> publishedVisibleIds = filterPublishedByAccess(
-                    all.stream().filter(f -> f.getStatus() == FormEntity.FormStatus.PUBLISHED).toList(),
-                    username,
-                    userId)
-                    .stream().map(FormEntity::getId).collect(Collectors.toSet());
-
             return all.stream().filter(f -> {
+                // 1. Own forms
                 if (username.equals(f.getCreatedBy())) return true;
-                if (publishedVisibleIds.contains(f.getId())) return true;
-                return f.getStatus() != FormEntity.FormStatus.PUBLISHED
-                        && f.getAssignedBuilderUsername() != null
-                        && username.equals(f.getAssignedBuilderUsername());
+                
+                // 2. Assigned forms
+                if (username.equals(f.getAssignedBuilderUsername())) return true;
+
+                // 3. Admin forms (special requirement: only Builders can see Admin forms)
+                if (isCreatedByAdmin(f.getCreatedBy(), adminCreatorCache)) return true;
+
+                // 4. Explicitly shared via allowed_users
+                if (hasExplicitUserAccess(f, username, userId)) return true;
+
+                return false;
             }).collect(Collectors.toList());
         }
 
-        if (roleNames.contains("Viewer")) {
+        if (roleNames.contains("Manager") || roleNames.contains("Viewer") || roleNames.contains("Approver")) {
             List<FormEntity> all = formRepo.findAllByOrderByCreatedAtDesc();
-            return all.stream().filter(f ->
-                    username.equals(f.getCreatedBy())
-                            || (f.getStatus() == FormEntity.FormStatus.PUBLISHED
-                            && hasExplicitUserAccess(f, username, userId))
-            ).collect(Collectors.toList());
+            return all.stream().filter(f -> {
+                boolean isOwner = username.equals(f.getCreatedBy());
+                boolean isPublishedVisible = f.getStatus() == FormEntity.FormStatus.PUBLISHED
+                        && hasExplicitUserAccess(f, username, userId);
+                
+                if (!isOwner && !isPublishedVisible) return false;
+
+                // Restriction: Viewers, Managers and Approvers cannot see forms created by Admins
+                if (isCreatedByAdmin(f.getCreatedBy(), adminCreatorCache)) {
+                    return false;
+                }
+                return true;
+            }).collect(Collectors.toList());
         }
 
         List<FormEntity> published = formRepo.findPublishedAccessibleForms();
-        return filterPublishedByAccess(published, username, userId);
+        // For any other roles (e.g., Guest), hide Admin-created forms entirely.
+        return filterPublishedByAccess(published, username, userId).stream()
+                .filter(f -> !isCreatedByAdmin(f.getCreatedBy(), adminCreatorCache))
+                .collect(Collectors.toList());
+    }
+
+    private boolean isCreatedByAdmin(String creatorUsername, Map<String, Boolean> cache) {
+        if (creatorUsername == null) return false;
+        return cache.computeIfAbsent(creatorUsername, u -> {
+            try {
+                return userRepo.findByUsernameWithRolesAndPermissions(u)
+                        .map(user -> user.getRoles().stream().anyMatch(r -> "Admin".equals(r.getRoleName())))
+                        .orElse(false);
+            } catch (Exception e) {
+                return false;
+            }
+        });
     }
 
     /**

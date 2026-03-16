@@ -84,7 +84,7 @@ export default function RoleAssignmentLogsPage() {
                     </div>
                 </div>
 
-                <form onSubmit={applyFilters} className="user-form-card" style={{ marginBottom: 16 }}>
+                <form onSubmit={applyFilters} className="user-form-card" style={{ marginBottom: 16, maxWidth: '100%' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(140px, 1fr))', gap: 10 }}>
                         <select
                             className="form-input"

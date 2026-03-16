@@ -23,7 +23,7 @@ export default function Sidebar({ isOpen, onClose }) {
         try {
             const data = await getMenu();
             setMenuData(data || []);
-            
+
             // Initialize expanded items for segments that contain the active path
             const initialExpanded = {};
             data?.forEach(section => {
@@ -71,14 +71,14 @@ export default function Sidebar({ isOpen, onClose }) {
 
         return (
             <div key={item.href + item.label} className="sb-menu-group">
-                <div 
-                    className={`sb-menu-item ${isActive ? 'active' : ''} ${isExpanded ? 'expanded' : ''} level-${level}`} 
-                    onClick={() => { 
+                <div
+                    className={`sb-menu-item ${isActive ? 'active' : ''} ${isExpanded ? 'expanded' : ''} level-${level}`}
+                    onClick={() => {
                         if (hasSubItems) {
                             toggleExpand(item.label);
                         } else if (item.href) {
-                            router.push(item.href); 
-                            onClose(); 
+                            router.push(item.href);
+                            onClose();
                         }
                     }}
                 >
