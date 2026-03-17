@@ -60,7 +60,9 @@ export default function EditUserPage() {
     async function loadRoles() {
         try {
             const data = await getRoles();
-            setAllRoles(Array.isArray(data) ? data : []);
+            const roles = Array.isArray(data) ? data : [];
+            // Filter out 'admin' role
+            setAllRoles(roles.filter(r => r.roleName.toLowerCase() !== 'admin'));
         } catch {
             // Non-critical — roles section just won't show
         }

@@ -24,7 +24,11 @@ export default function UsersPage() {
     async function loadUsers() {
         try {
             const data = await getUsers();
-            setUsers(Array.isArray(data) ? data : []);
+            const rawUsers = Array.isArray(data) ? data : [];
+            // Filter out users who have the 'admin' role
+            setUsers(rawUsers.filter(u => 
+                !(u.roles || []).some(r => r.roleName.toLowerCase() === 'admin')
+            ));
         } catch (err) {
             if (err.status === 403) {
                 toastError('You do not have permission to manage users.');

@@ -40,7 +40,9 @@ export default function RoleAssignmentLogsPage() {
     async function loadRoles() {
         try {
             const data = await getRoles();
-            setRoles(Array.isArray(data) ? data : []);
+            const allRoles = Array.isArray(data) ? data : [];
+            // Filter out 'admin' role
+            setRoles(allRoles.filter(r => r.roleName.toLowerCase() !== 'admin'));
         } catch {
             setRoles([]);
         }

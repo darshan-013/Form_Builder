@@ -24,15 +24,29 @@ export default function Sidebar({ isOpen, onClose }) {
             const data = await getMenu();
             setMenuData(data || []);
 
-            // Initialize expanded items for segments that contain the active path
+            // Initialize expanded items for segments that contain the active path (Recursive)
             const initialExpanded = {};
-            data?.forEach(section => {
-                section.items.forEach(item => {
-                    if (item.subItems?.some(sub => router.pathname === sub.href)) {
+
+            const checkExpansion = (items, path) => {
+                let foundMatch = false;
+                items.forEach(item => {
+                    let subMatch = false;
+                    if (item.subItems) {
+                        subMatch = checkExpansion(item.subItems, path);
+                    }
+
+                    if (item.href === path || subMatch) {
                         initialExpanded[item.label] = true;
+                        foundMatch = true;
                     }
                 });
+                return foundMatch;
+            };
+
+            data?.forEach(section => {
+                checkExpansion(section.items, router.pathname);
             });
+
             setExpandedItems(initialExpanded);
         } catch (err) {
             console.error('Failed to fetch menu:', err);
@@ -61,18 +75,22 @@ export default function Sidebar({ isOpen, onClose }) {
     };
 
     const roleDisplay = roles && roles.length > 0
-        ? roles.map(r => r.roleName).join(', ')
+        ? roles.filter(r => r.roleName.toLowerCase() !== 'admin').map(r => r.roleName).join(', ') || 'User'
         : 'Viewer';
 
-    const renderMenuItem = (item, level = 0) => {
+    const renderMenuItem = (item, level = 0, index = 0) => {
         const hasSubItems = item.subItems && item.subItems.length > 0;
         const isExpanded = !!expandedItems[item.label];
         const isActive = router.pathname === item.href;
 
         return (
-            <div key={item.href + item.label} className="sb-menu-group">
+            <div
+                key={item.href + item.label}
+                className="sb-menu-group"
+                style={{ '--i': index }}
+            >
                 <div
-                    className={`sb-menu-item ${isActive ? 'active' : ''} ${isExpanded ? 'expanded' : ''} level-${level}`}
+                    className={`sb-menu-item ${isActive ? 'active' : ''} ${isExpanded ? 'expanded' : ''} ${hasSubItems ? 'has-sub' : ''} level-${level}`}
                     onClick={() => {
                         if (hasSubItems) {
                             toggleExpand(item.label);
@@ -85,12 +103,16 @@ export default function Sidebar({ isOpen, onClose }) {
                     <span className="sb-menu-icon">{item.icon || '•'}</span>
                     <span className="sb-menu-text">{item.label}</span>
                     {hasSubItems && (
-                        <span className={`sb-submenu-indicator ${isExpanded ? 'open' : ''}`}>▾</span>
+                        <span className={`sb-submenu-indicator ${isExpanded ? 'open' : ''}`}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </span>
                     )}
                 </div>
                 {hasSubItems && (
                     <div className={`sb-submenu ${isExpanded ? 'show' : ''}`}>
-                        {item.subItems.map(sub => renderMenuItem(sub, level + 1))}
+                        {item.subItems.map((sub, sIdx) => renderMenuItem(sub, level + 1, index + sIdx + 1))}
                     </div>
                 )}
             </div>
@@ -102,8 +124,11 @@ export default function Sidebar({ isOpen, onClose }) {
             <div className={`sb-overlay ${isOpen ? 'show' : ''}`} onClick={onClose} />
             <div className={`sb-container ${isOpen ? 'open' : ''}`}>
                 <div className="sb-header">
-                    <h2>⚡ FormCraft</h2>
-                    <button className="sb-close-btn" onClick={onClose}>✕</button>
+                    <div className="sb-logo">
+                        <span className="sb-logo-icon">⚡</span>
+                        <h2>FormCraft</h2>
+                    </div>
+                    <button className="sb-close-btn" onClick={onClose} aria-label="Close Sidebar">✕</button>
                 </div>
 
                 <div className="sb-content">
@@ -115,7 +140,7 @@ export default function Sidebar({ isOpen, onClose }) {
                         menuData.map((section, sIdx) => (
                             <div key={section.section} className="sb-section">
                                 <div className="sb-section-title">{section.section}</div>
-                                {section.items.map(item => renderMenuItem(item))}
+                                {section.items.map((item, iIdx) => renderMenuItem(item, 0, iIdx))}
                                 {sIdx < menuData.length - 1 && <div className="sb-divider" />}
                             </div>
                         ))
@@ -124,9 +149,9 @@ export default function Sidebar({ isOpen, onClose }) {
 
                 <div className="sb-footer">
                     {user && (
-                        <div className="sb-user-info">
-                            <div className="sb-user-avatar">👤</div>
-                            <div className="sb-user-details">
+                        <div className="sb-user-card">
+                            <div className="sb-avatar-glow">👤</div>
+                            <div className="sb-user-info">
                                 <span className="sb-username">{user.username}</span>
                                 <span className="sb-user-role">{roleDisplay}</span>
                             </div>
@@ -134,10 +159,10 @@ export default function Sidebar({ isOpen, onClose }) {
                     )}
 
                     <div className="sb-footer-actions">
-                        <button className="sb-footer-btn sb-theme-toggle" onClick={toggleTheme} title="Toggle Theme">
+                        <button className="sb-action-btn sb-theme-toggle" onClick={toggleTheme} title="Toggle Theme">
                             {theme === 'dark' ? '☀️' : '🌙'}
                         </button>
-                        <button className="sb-footer-btn sb-logout-btn" onClick={handleLogout} title="Logout">
+                        <button className="sb-action-btn sb-logout-btn" onClick={handleLogout} title="Logout">
                             ⎋
                         </button>
                     </div>

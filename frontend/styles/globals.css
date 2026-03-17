@@ -1534,10 +1534,16 @@ body::after,
   backdrop-filter: blur(20px);
 }
 
-[data-theme="light"] .navbar-user {
+[data-theme="light"] .navbar-pill {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+[data-theme="light"] .navbar-user-chip {
   background: rgba(0, 0, 0, 0.04);
   border-color: rgba(0, 0, 0, 0.08);
-  color: #374151;
+  color: var(--text-secondary);
 }
 
 /* ── Light card ──────────────────────────────────────────────── */

@@ -103,30 +103,47 @@ public class MenuService {
 
     private void addDynamicItems(List<MenuDto> menu, List<String> roleNames) {
         List<RoleModule> roleModules = roleModuleRepository.findByRoleRoleNameIn(roleNames);
-        List<Module> modules = roleModules.stream()
+        List<Module> allowedModules = roleModules.stream()
                 .map(RoleModule::getModule)
                 .distinct()
                 .collect(Collectors.toList());
 
-        if (modules.isEmpty()) return;
+        if (allowedModules.isEmpty()) return;
 
-        // Group by parent/sub-parent to build hierarchy
-        Map<Long, List<Module>> childrenMap = roleModuleRepository.findAll().stream() // Simplified for now, in practice filter by active
+        // Fetch all active modules to build the full tree structure
+        // In a real app, you'd filter by active=true here
+        List<Module> allModules = roleModuleRepository.findAll().stream()
                 .map(RoleModule::getModule)
                 .distinct()
-                .filter(m -> m.getParent() != null || m.getSubParent() != null)
-                .collect(Collectors.groupingBy(m -> m.getSubParent() != null ? m.getSubParent().getId() : m.getParent().getId()));
+                .filter(m -> m.getActive() != null && m.getActive())
+                .collect(Collectors.toList());
 
-        // We'll use a "Custom Modules" section for dynamic items
+        // Group modules by their parent (could be parent_id or sub_parent_id)
+        // We prioritize sub_parent_id for L3 linking
+        Map<Long, List<Module>> childrenMap = new HashMap<>();
+        for (Module m : allModules) {
+            Long parentId = null;
+            if (m.getSubParent() != null) {
+                parentId = m.getSubParent().getId();
+            } else if (m.getParent() != null) {
+                parentId = m.getParent().getId();
+            }
+            
+            if (parentId != null) {
+                childrenMap.computeIfAbsent(parentId, k -> new ArrayList<>()).add(m);
+            }
+        }
+
+        // We'll use a "Features" section for dynamic items
         MenuDto customSection = MenuDto.builder().section("Features").items(new ArrayList<>()).build();
 
-        // Filter for top-level modules assigned to roles
-        List<Module> topLevel = modules.stream()
+        // Get Top Level (L1) modules assigned to roles
+        List<Module> topLevel = allowedModules.stream()
                 .filter(m -> m.getParent() == null && m.getSubParent() == null)
                 .collect(Collectors.toList());
 
         for (Module m : topLevel) {
-            customSection.getItems().add(mapToDto(m, modules));
+            customSection.getItems().add(mapToDto(m, allowedModules, childrenMap));
         }
 
         if (!customSection.getItems().isEmpty()) {
@@ -134,35 +151,15 @@ public class MenuService {
         }
     }
 
-    private MenuDto.MenuItemDto mapToDto(Module module, List<Module> allowedModules) {
+    private MenuDto.MenuItemDto mapToDto(Module module, List<Module> allowedModules, Map<Long, List<Module>> childrenMap) {
         List<MenuDto.MenuItemDto> subItems = new ArrayList<>();
         
-        // Find children of this module
-        // A child of 'module' is one where:
-        // 1. If 'module' is Level 1: child.parent == module && child.subParent == null
-        // 2. If 'module' is Level 2: child.parent == module.parent && child.subParent == module
-        
-        if (module.getSubModules() != null) {
-            for (Module child : module.getSubModules()) {
-                boolean isDirectChild = false;
-                
-                if (module.getParent() == null) {
-                    // Current module is Top Level (L1)
-                    if (child.getSubParent() == null) {
-                        isDirectChild = true; // L2 child
-                    }
-                } else if (module.getSubParent() == null) {
-                    // Current module is SubParent (L2)
-                    if (child.getSubParent() != null && child.getSubParent().getId().equals(module.getId())) {
-                        isDirectChild = true; // L3 child
-                    }
-                }
-
-                if (isDirectChild) {
-                    if (allowedModules.contains(child) || isParentOfAllowed(child, allowedModules)) {
-                        subItems.add(mapToDto(child, allowedModules));
-                    }
-                }
+        List<Module> children = childrenMap.getOrDefault(module.getId(), Collections.emptyList());
+        for (Module child : children) {
+            // A child is allowed if it's explicitly assigned to the role
+            // OR if it's a parent of something explicitly assigned to the role
+            if (allowedModules.contains(child) || isParentOfAllowed(child, allowedModules, childrenMap)) {
+                subItems.add(mapToDto(child, allowedModules, childrenMap));
             }
         }
 
@@ -174,10 +171,12 @@ public class MenuService {
                 .build();
     }
 
-    private boolean isParentOfAllowed(Module parent, List<Module> allowedModules) {
-        if (parent.getSubModules() == null) return false;
-        for (Module child : parent.getSubModules()) {
-            if (allowedModules.contains(child) || isParentOfAllowed(child, allowedModules)) return true;
+    private boolean isParentOfAllowed(Module parent, List<Module> allowedModules, Map<Long, List<Module>> childrenMap) {
+        List<Module> children = childrenMap.getOrDefault(parent.getId(), Collections.emptyList());
+        for (Module child : children) {
+            if (allowedModules.contains(child) || isParentOfAllowed(child, allowedModules, childrenMap)) {
+                return true;
+            }
         }
         return false;
     }

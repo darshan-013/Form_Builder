@@ -13,15 +13,6 @@ export default function Document() {
           href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800;900&display=swap"
           rel="stylesheet"
         />
-        {/* Butterup Toast — async load so window.butterup is ready as early as possible */}
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/butterup@1.0.7/dist/butterup.css"
-        />
-        <script
-          src="https://cdn.jsdelivr.net/npm/butterup@1.0.7/dist/butterup.js"
-          async
-        ></script>
 
       </Head>
       <body>

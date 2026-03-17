@@ -11,6 +11,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Module {
 
     @Id
@@ -40,10 +41,12 @@ public class Module {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"parent", "subParent", "subModules", "hibernateLazyInitializer", "handler"})
     private Module parent;
-
+    
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sub_parent_id")
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"parent", "subParent", "subModules", "hibernateLazyInitializer", "handler"})
     private Module subParent;
 
     @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)

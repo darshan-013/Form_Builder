@@ -31,8 +31,7 @@ const TITLES = {
 export function showToast(type, message) {
     if (typeof window === 'undefined') return;
 
-    const fire = () => {
-        if (!window.butterup) return;
+    if (window.butterup) {
         window.butterup.toast({
             title: TITLES[type] || 'Notice',
             message,
@@ -41,23 +40,9 @@ export function showToast(type, message) {
             icon: true,
             dismissable: true,
         });
-    };
-
-    // If Butterup hasn't loaded yet (e.g. fast page load), retry a few times
-    if (!window.butterup) {
-        let retries = 0;
-        const interval = setInterval(() => {
-            retries++;
-            if (window.butterup) {
-                fire();
-                clearInterval(interval);
-            } else if (retries > 10) {
-                console.error("Butterup toast library failed to load after 3 seconds.");
-                clearInterval(interval);
-            }
-        }, 300);
     } else {
-        fire();
+        // Fallback or early-call buffering if needed
+        console.warn('Toast called before library ready:', message);
     }
 }
 
