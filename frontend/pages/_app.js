@@ -9,11 +9,13 @@ import '../styles/users.css';
 import '../styles/Sidebar.css';
 import { ThemeProvider } from '../context/ThemeContext';
 import { AuthProvider } from '../context/AuthContext';
+import LocalToast from '../components/LocalToast';
 
 export default function App({ Component, pageProps }) {
   return (
     <AuthProvider>
       <ThemeProvider>
+        <LocalToast />
         <Component {...pageProps} />
       </ThemeProvider>
     </AuthProvider>

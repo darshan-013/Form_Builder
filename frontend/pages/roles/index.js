@@ -25,7 +25,9 @@ export default function RolesPage() {
     async function loadRoles() {
         try {
             const data = await getRoles();
-            setRoles(Array.isArray(data) ? data : []);
+            const allRoles = Array.isArray(data) ? data : [];
+            // Filter out 'admin' role
+            setRoles(allRoles.filter(r => r.roleName.toLowerCase() !== 'admin'));
         } catch (err) {
             if (err.status === 403) {
                 toastError('You do not have permission to manage roles.');

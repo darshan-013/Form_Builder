@@ -558,10 +558,10 @@ public class WorkflowService {
                 .build();
     }
 
-    private String mapDecisionStatus(WorkflowInstance wi) {
-        if (wi.getStatus() == WorkflowInstanceStatus.COMPLETED) return "APPROVED";
-        if (wi.getStatus() == WorkflowInstanceStatus.REJECTED) return "REJECTED";
-        if (wi.getStatus() == WorkflowInstanceStatus.ACTIVE) return "ACTIVE";
+    private String mapDecisionStatus(WorkflowInstance status) {
+        if (status.getStatus() == WorkflowInstanceStatus.COMPLETED) return "APPROVED";
+        if (status.getStatus() == WorkflowInstanceStatus.REJECTED) return "REJECTED";
+        if (status.getStatus() == WorkflowInstanceStatus.ACTIVE) return "PENDING";
         return "PENDING";
     }
 }

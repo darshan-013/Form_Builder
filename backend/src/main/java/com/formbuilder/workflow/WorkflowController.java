@@ -138,7 +138,7 @@ public class WorkflowController {
         }
 
         Integer userId = requireSessionUserId(session);
-        List<BuilderReviewDTO> rows = workflowService.getBuilderOverallReviews(userId);
+        List<BuilderReviewDTO> rows = workflowService.getPendingReviews(userId);
         return ResponseEntity.ok(rows);
     }
 

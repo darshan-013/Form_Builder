@@ -19,14 +19,20 @@ public class ModuleService {
     private final RoleModuleRepository roleModuleRepository;
     private final RoleRepository roleRepository;
 
+    @Transactional(readOnly = true)
     public List<Module> getAllModules() {
-        return moduleRepository.findAll();
+        List<Module> modules = moduleRepository.findAll();
+        modules.forEach(this::initializeParents);
+        return modules;
     }
 
+    @Transactional
     public Module createModule(Module module) {
-        return moduleRepository.save(module);
+        Module saved = moduleRepository.save(module);
+        return initializeParents(saved);
     }
 
+    @Transactional
     public Module updateModule(Long id, Module moduleDetails) {
         Module module = moduleRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Module not found: " + id));
@@ -39,7 +45,19 @@ public class ModuleService {
         module.setParent(moduleDetails.getParent());
         module.setSubParent(moduleDetails.getSubParent());
         
-        return moduleRepository.save(module);
+        Module saved = moduleRepository.save(module);
+        return initializeParents(saved);
+    }
+
+    private Module initializeParents(Module m) {
+        if (m == null) return null;
+        if (m.getParent() != null) {
+            org.hibernate.Hibernate.initialize(m.getParent());
+        }
+        if (m.getSubParent() != null) {
+            org.hibernate.Hibernate.initialize(m.getSubParent());
+        }
+        return m;
     }
 
     @Transactional

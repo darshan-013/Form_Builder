@@ -21,7 +21,8 @@ export default function RoleModuleMappingPage() {
                 getRoles(),
                 getAllModules()
             ]);
-            setRoles(rolesData || []);
+            // Filter out 'admin' role
+            setRoles((rolesData || []).filter(r => r.roleName.toLowerCase() !== 'admin'));
             setModules(modulesData || []);
         } catch (err) {
             toastError('Failed to fetch data');
@@ -52,9 +53,9 @@ export default function RoleModuleMappingPage() {
     };
 
     const toggleModule = (moduleId) => {
-        setMappedModuleIds(prev => 
-            prev.includes(moduleId) 
-                ? prev.filter(id => id !== moduleId) 
+        setMappedModuleIds(prev =>
+            prev.includes(moduleId)
+                ? prev.filter(id => id !== moduleId)
                 : [...prev, moduleId]
         );
     };
@@ -95,8 +96,8 @@ export default function RoleModuleMappingPage() {
                             <div className="card-header">Select a Role</div>
                             <div className="role-list">
                                 {roles.map(role => (
-                                    <div 
-                                        key={role.id} 
+                                    <div
+                                        key={role.id}
                                         className={`role-item ${selectedRole?.id === role.id ? 'active' : ''}`}
                                         onClick={() => handleRoleChange(role.id)}
                                     >
@@ -124,9 +125,9 @@ export default function RoleModuleMappingPage() {
                             <div className="content-card">
                                 <div className="card-header sticky">
                                     <span>Mapping for: <strong>{selectedRole.roleName}</strong></span>
-                                    <button 
-                                        className="primary-btn sm" 
-                                        disabled={saving} 
+                                    <button
+                                        className="primary-btn sm"
+                                        disabled={saving}
                                         onClick={handleSave}
                                     >
                                         {saving ? 'Saving...' : 'Save Mappings'}
@@ -139,8 +140,8 @@ export default function RoleModuleMappingPage() {
                                         topLevel.map(m => (
                                             <div key={m.id} className="module-group">
                                                 <label className="checkbox-item parent">
-                                                    <input 
-                                                        type="checkbox" 
+                                                    <input
+                                                        type="checkbox"
                                                         checked={mappedModuleIds.includes(m.id)}
                                                         onChange={() => toggleModule(m.id)}
                                                     />
@@ -154,8 +155,8 @@ export default function RoleModuleMappingPage() {
                                                     {getSubParents(m.id).map(sp => (
                                                         <div key={sp.id} className="sub-group">
                                                             <label className="checkbox-item sub-parent">
-                                                                <input 
-                                                                    type="checkbox" 
+                                                                <input
+                                                                    type="checkbox"
                                                                     checked={mappedModuleIds.includes(sp.id)}
                                                                     onChange={() => toggleModule(sp.id)}
                                                                 />
@@ -168,8 +169,8 @@ export default function RoleModuleMappingPage() {
                                                             <div className="children-container">
                                                                 {getSubs(sp.id).map(s => (
                                                                     <label key={s.id} className="checkbox-item child">
-                                                                        <input 
-                                                                            type="checkbox" 
+                                                                        <input
+                                                                            type="checkbox"
                                                                             checked={mappedModuleIds.includes(s.id)}
                                                                             onChange={() => toggleModule(s.id)}
                                                                         />
