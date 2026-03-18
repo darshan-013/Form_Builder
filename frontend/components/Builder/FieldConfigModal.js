@@ -276,7 +276,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
 
     return (
         <>
-            <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+            <div className="config-panel-container">
                 <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
                     {/* Header */}
                     <div className="modal-header">

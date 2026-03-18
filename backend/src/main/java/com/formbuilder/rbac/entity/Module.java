@@ -7,6 +7,7 @@ import java.util.List;
 
 @Entity
 @Table(name = "modules")
+@org.hibernate.annotations.SQLRestriction("is_deleted = false")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -38,6 +39,9 @@ public class Module {
 
     @Column(name = "active")
     private Boolean active = true;
+
+    @Column(name = "is_deleted")
+    private Boolean isDeleted = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")

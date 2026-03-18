@@ -21,5 +21,6 @@ public class BuilderReviewDTO {
     private String targetBuilderName;
     private LocalDateTime submittedAt;
     private String status;
+    private Boolean canAction;
 }
 

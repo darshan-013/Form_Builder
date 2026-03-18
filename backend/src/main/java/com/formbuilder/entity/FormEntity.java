@@ -9,6 +9,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
 /**
  * JPA entity for the fixed 'forms' metadata table.
  * Submission data is stored in a SEPARATE dynamic table (form_<name>_<id>)
@@ -46,12 +50,16 @@ public class FormEntity {
     private UUID id;
 
     @Column(name = "name", nullable = false, length = 150)
+    @NotBlank(message = "Form name cannot be blank")
+    @Size(max = 150, message = "Form name must not exceed 150 characters")
     private String name;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
     @Column(name = "table_name", nullable = false, unique = true, length = 150)
+    @NotBlank(message = "Table name cannot be blank")
+    @Size(max = 150, message = "Table name must not exceed 150 characters")
     private String tableName;
 
     /**
@@ -62,6 +70,7 @@ public class FormEntity {
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
+    @NotNull(message = "Form status cannot be null")
     @Builder.Default
     private FormStatus status = FormStatus.DRAFT;
 
@@ -73,6 +82,7 @@ public class FormEntity {
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "visibility", nullable = false, length = 20)
+    @NotNull(message = "Form visibility cannot be null")
     @Builder.Default
     private FormVisibility visibility = FormVisibility.PUBLIC;
 
@@ -99,9 +109,11 @@ public class FormEntity {
     private String assignedBuilderUsername;
 
     @Column(name = "created_at", nullable = false, updatable = false)
+    @NotNull(message = "Creation timestamp cannot be null")
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
+    @NotNull(message = "Update timestamp cannot be null")
     private LocalDateTime updatedAt;
 
     /**

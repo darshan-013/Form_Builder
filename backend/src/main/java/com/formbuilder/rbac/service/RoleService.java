@@ -153,9 +153,10 @@ public class RoleService {
                             + "System roles are managed by the platform.");
         }
 
-        // CASCADE in DB handles role_permissions and user_roles cleanup
-        roleRepo.delete(role);
-        log.info("Role '{}' (id={}) deleted by '{}'", role.getRoleName(), roleId, actorUsername);
+        // Soft delete the role
+        role.setDeleted(true);
+        roleRepo.save(role);
+        log.info("Role '{}' (id={}) soft-deleted by '{}'", role.getRoleName(), roleId, actorUsername);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

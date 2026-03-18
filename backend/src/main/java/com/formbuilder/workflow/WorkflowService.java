@@ -415,7 +415,7 @@ public class WorkflowService {
     public List<BuilderReviewDTO> getBuilderOverallReviews(Integer userId) {
         // Find all instances where user is target builder OR is an approver in any step
         return instanceRepo.findByInvolvedUserWithSteps(userId).stream()
-                .map(this::toBuilderReviewDtoFromInstance)
+                .map(wi -> toBuilderReviewDtoFromInstance(wi, userId))
                 .toList();
     }
 
@@ -498,10 +498,10 @@ public class WorkflowService {
     }
 
     private BuilderReviewDTO toBuilderReviewDto(WorkflowStep step) {
-        return toBuilderReviewDtoFromInstance(step.getInstance());
+        return toBuilderReviewDtoFromInstance(step.getInstance(), step.getApprover().getId());
     }
 
-    private BuilderReviewDTO toBuilderReviewDtoFromInstance(WorkflowInstance wi) {
+    private BuilderReviewDTO toBuilderReviewDtoFromInstance(WorkflowInstance wi, Integer actorUserId) {
         String creatorName = wi.getCreator().getName();
         if (creatorName == null || creatorName.isBlank()) {
             creatorName = wi.getCreator().getUsername();
@@ -520,7 +520,16 @@ public class WorkflowService {
                 .targetBuilderName(targetBuilderName)
                 .submittedAt(wi.getCreatedAt())
                 .status(mapDecisionStatus(wi))
+                .canAction(isCurrentApprover(wi, actorUserId))
                 .build();
+    }
+
+    private boolean isCurrentApprover(WorkflowInstance wi, Integer userId) {
+        if (wi.getStatus() != WorkflowInstanceStatus.ACTIVE) return false;
+        return wi.getSteps().stream()
+                .anyMatch(s -> Objects.equals(s.getStepIndex(), wi.getCurrentStepIndex())
+                        && Objects.equals(s.getApprover().getId(), userId)
+                        && s.getStatus() == WorkflowStepStatus.PENDING);
     }
 
     private AdminWorkflowStatusDTO toAdminStatusDto(WorkflowInstance wi) {

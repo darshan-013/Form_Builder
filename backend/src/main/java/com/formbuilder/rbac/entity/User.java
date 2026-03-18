@@ -9,6 +9,10 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 /**
  * JPA entity for the 'rbac_users' table.
  *
@@ -22,6 +26,7 @@ import java.util.stream.Collectors;
         @Index(name = "idx_rbac_users_email",    columnList = "email",    unique = true),
         @Index(name = "idx_rbac_users_username",  columnList = "username", unique = true)
 })
+@org.hibernate.annotations.SQLRestriction("is_deleted = false")
 @Data
 @Builder
 @NoArgsConstructor
@@ -37,11 +42,15 @@ public class User {
     private Integer id;
 
     @Column(name = "username", nullable = false, unique = true, length = 100)
+    @NotBlank(message = "Username cannot be blank")
+    @Size(max = 100, message = "Username must not exceed 100 characters")
     @EqualsAndHashCode.Include
     private String username;
 
     /** BCrypt-encoded password. */
     @Column(name = "password", nullable = false, length = 255)
+    @NotBlank(message = "Password cannot be blank")
+    @Size(max = 255, message = "Password must not exceed 255 characters")
     @JsonIgnore
     private String password;
 
@@ -50,12 +59,21 @@ public class User {
     @Builder.Default
     private boolean enabled = true;
 
+    /** Whether this account is soft-deleted. */
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private boolean isDeleted = false;
+
     /** Display name (e.g. "Darshan Patel"). */
     @Column(name = "name", length = 100)
+    @Size(max = 100, message = "Name must not exceed 100 characters")
     private String name;
 
     /** Unique email for notifications / contact. */
     @Column(name = "email", unique = true, length = 150)
+    @NotBlank(message = "Email cannot be blank")
+    @Size(max = 150, message = "Email must not exceed 150 characters")
+    @Email(message = "Invalid email format")
     private String email;
 
     @Column(name = "created_at", nullable = false, updatable = false)

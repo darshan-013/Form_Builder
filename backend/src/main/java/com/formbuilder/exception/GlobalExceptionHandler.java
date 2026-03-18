@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.validation.FieldError;
 
 @Slf4j
 @RestControllerAdvice
@@ -32,6 +34,18 @@ public class GlobalExceptionHandler {
         }
 
         return ResponseEntity.badRequest().body(response);
+    }
+
+    /**
+     * Spring Bean Validation errors (e.g., from @Valid @RequestBody)
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, String>> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
+        String errorMessage = ex.getBindingResult().getFieldErrors().stream()
+                .map(FieldError::getDefaultMessage)
+                .findFirst()
+                .orElse("Validation failed");
+        return ResponseEntity.badRequest().body(Map.of("error", errorMessage));
     }
 
     @ExceptionHandler(NoSuchElementException.class)
