@@ -6,7 +6,7 @@
 .builder-page {
   display: grid;
   grid-template-rows: 60px 1fr;
-  grid-template-columns: 264px 1fr;
+  grid-template-columns: 264px 1fr 340px; /* 3-panel layout */
   height: 100vh;
   overflow: hidden;
 }
@@ -311,6 +311,41 @@
   font-size: 13px;
 }
 
+/* ── Right Config Panel ───────────────────────────── */
+.builder-right-panel {
+  grid-row: 2;
+  grid-column: 3;
+  overflow-y: auto;
+  background: rgba(8, 6, 20, 0.7);
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(20px);
+  box-shadow: -2px 0 20px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.right-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  text-align: center;
+  gap: 14px;
+  padding: 30px;
+}
+
+.right-panel-empty-icon {
+  font-size: 40px;
+  opacity: 0.3;
+}
+
+.right-panel-empty p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* ── Field Card (canvas) ──────────────────────────── */
 .field-card {
   display: flex;
@@ -443,47 +478,36 @@
   transform: scale(1.05);
 }
 
-/* ── Field Config Modal ───────────────────────────── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+/* ── Field Config Panel (was Modal) ───────────────────────────── */
+/* We remove overlay styling to fit into the right panel */
+.config-panel-container {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-  padding: 20px;
-  animation: fadeIn 0.2s ease;
-}
-
-.modal-box {
-  background: rgba(12, 10, 28, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-lg);
-  box-shadow:
-    0 32px 80px rgba(0, 0, 0, 0.75),
-    0 0 0 1px rgba(139, 92, 246, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  flex-direction: column;
+  height: 100%;
   width: 100%;
-  max-width: 500px;
-  animation: scaleIn 0.28s cubic-bezier(0.34, 1.35, 0.64, 1);
-  position: relative;
+  background: transparent;
+  animation: fadeIn 0.2s ease;
   overflow: hidden;
-  backdrop-filter: blur(40px);
 }
 
-/* Gradient accent stripe at top */
-.modal-box::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--accent-grad);
-  box-shadow: 0 0 16px rgba(139, 92, 246, 0.4);
+.config-panel-container .modal-box {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
+  animation: none;
+  backdrop-filter: none;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Gradient accent stripe removed from right panel context but kept class for compatibility if needed */
+.config-panel-container .modal-box::before {
+  display: none;
 }
 
 .modal-header {
@@ -528,11 +552,11 @@
 }
 
 .modal-body {
-  padding: 24px 26px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-height: calc(90vh - 160px);
+  flex: 1; /* Stretch to fill panel space */
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -551,13 +575,13 @@
 }
 
 .modal-footer {
-  padding: 16px 26px;
+  padding: 16px 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   display: flex;
   gap: 10px;
   justify-content: flex-end;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
 }
 
 .modal-type-badge {
@@ -1222,26 +1246,36 @@
   box-shadow: 0 0 6px rgba(236, 72, 153, 0.4);
 }
 
-/* Field config modal */
-[data-theme="light"] .field-config-modal {
+/* Field config / right panel */
+[data-theme="light"] .builder-right-panel {
   background: #FFFFFF;
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.15);
+  border-left-color: rgba(0, 0, 0, 0.08);
+  box-shadow: -2px 0 20px rgba(0, 0, 0, 0.05);
 }
 
-[data-theme="light"] .field-config-header {
+[data-theme="light"] .right-panel-empty {
+  color: #6B7280;
+}
+
+[data-theme="light"] .config-panel-container .modal-box {
+  background: transparent;
+  border-color: transparent;
+}
+
+[data-theme="light"] .config-panel-container .modal-header {
   border-bottom-color: #F3F4F6;
+  background: #FFFFFF;
 }
 
-[data-theme="light"] .field-config-title {
+[data-theme="light"] .config-panel-container .modal-title {
   color: #111827;
 }
 
-[data-theme="light"] .field-config-body {
+[data-theme="light"] .config-panel-container .modal-body {
   background: #FAFAFA;
 }
 
-[data-theme="light"] .field-config-footer {
+[data-theme="light"] .config-panel-container .modal-footer {
   border-top-color: #F3F4F6;
   background: #F9FAFB;
 }

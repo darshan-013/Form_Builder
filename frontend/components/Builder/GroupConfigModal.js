@@ -9,8 +9,8 @@ export default function GroupConfigModal({ group, onSave, onClose, siblingFields
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose} style={{ zIndex: 99999 }}>
-            <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+        <div className="config-panel-container">
+            <div className="modal-box">
                 <div className="modal-header">
                     <div className="modal-title">
                         Configure Section Rules

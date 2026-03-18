@@ -341,6 +341,9 @@ export const getMyWorkflowStatus = () =>
 export const getPendingWorkflowReviews = () =>
     request('GET', '/workflows/pending-reviews');
 
+export const getOverallWorkflowReviews = () =>
+    request('GET', '/workflows/overall-reviews');
+
 export const approveWorkflowById = (workflowId, comments) =>
     request('POST', `/workflows/${workflowId}/approve`, { comments: comments || null });
 

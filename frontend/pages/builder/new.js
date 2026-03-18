@@ -4,6 +4,9 @@ import Head from 'next/head';
 import Link from 'next/link';
 import FieldPalette from '../../components/Builder/FieldPalette';
 import Canvas from '../../components/Builder/Canvas';
+import FieldConfigModal from '../../components/Builder/FieldConfigModal';
+import StaticFieldModal from '../../components/Builder/StaticFieldModal';
+import GroupConfigModal from '../../components/Builder/GroupConfigModal';
 import { assignBuilder, createForm, getVisibilityCandidates, getWorkflowCandidates } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -26,6 +29,26 @@ export default function NewBuilderPage() {
     const [expiresAt, setExpiresAt] = useState('');
     const [visibility, setVisibility] = useState('PUBLIC');
     const [showSettings, setShowSettings] = useState(false);
+
+    // active configuration tracking
+    const [editField, setEditFieldState] = useState(null);
+    const [editStaticField, setEditStaticFieldState] = useState(null);
+    const [editGroupConfig, setEditGroupConfigState] = useState(null);
+
+    const setEditField = (f) => {
+        setEditFieldState(f);
+        if (f) { setEditStaticFieldState(null); setEditGroupConfigState(null); }
+    };
+
+    const setEditStaticField = (f) => {
+        setEditStaticFieldState(f);
+        if (f) { setEditFieldState(null); setEditGroupConfigState(null); }
+    };
+
+    const setEditGroupConfig = (g) => {
+        setEditGroupConfigState(g);
+        if (g) { setEditFieldState(null); setEditStaticFieldState(null); }
+    };
 
     // ── Role-based form access ──
     const [builderCandidates, setBuilderCandidates] = useState([]);
@@ -174,6 +197,21 @@ export default function NewBuilderPage() {
             setSaving(false);
         }
     }
+
+    const updateField = (updated) => {
+        setFields((prev) => prev.map((f) => (f.id === updated.id ? { ...updated } : f)));
+        setEditField(null);
+    };
+
+    const updateStaticField = (updated) => {
+        setFields((prev) => prev.map((f) => (f.id === updated.id ? { ...updated } : f)));
+        setEditStaticField(null);
+    };
+
+    const updateGroup = (updatedGroup) => {
+        setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? { ...updatedGroup } : g)));
+        setEditGroupConfig(null);
+    };
 
     const handleSave = async () => {
         if (!formName.trim()) {
@@ -506,8 +544,43 @@ export default function NewBuilderPage() {
 
                 {/* ── Canvas ───────────────────────────────────────────── */}
                 <main className="builder-canvas-wrap">
-                    <Canvas fields={fields} setFields={setFields} groups={groups} setGroups={setGroups} />
+                    <Canvas
+                        fields={fields} setFields={setFields}
+                        groups={groups} setGroups={setGroups}
+                        setEditField={setEditField}
+                        setEditStaticField={setEditStaticField}
+                        setEditGroupConfig={setEditGroupConfig}
+                    />
                 </main>
+                <aside className="builder-right-panel">
+                    {editField ? (
+                        <FieldConfigModal
+                            field={editField}
+                            onSave={updateField}
+                            onClose={() => setEditField(null)}
+                            siblingFields={fields.filter(f => f.id !== editField.id)}
+                        />
+                    ) : editStaticField ? (
+                        <StaticFieldModal
+                            field={editStaticField}
+                            onSave={updateStaticField}
+                            onClose={() => setEditStaticField(null)}
+                        />
+                    ) : editGroupConfig ? (
+                        <GroupConfigModal
+                            group={editGroupConfig}
+                            onSave={updateGroup}
+                            onClose={() => setEditGroupConfig(null)}
+                            siblingFields={fields}
+                        />
+                    ) : (
+                        <div className="right-panel-empty">
+                            <div className="right-panel-empty-icon">⚙️</div>
+                            <h3>Field Settings</h3>
+                            <p>Select a field or section on the canvas to configure its properties.</p>
+                        </div>
+                    )}
+                </aside>
             </div>
         </>
     );

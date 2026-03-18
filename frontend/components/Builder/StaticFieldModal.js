@@ -29,8 +29,8 @@ export default function StaticFieldModal({ field, onSave, onClose }) {
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose} onKeyDown={handleKey}>
-            <div className="modal-box static-field-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="config-panel-container" onKeyDown={handleKey}>
+            <div className="modal-box static-field-modal">
                 {/* Header */}
                 <div className="modal-header">
                     <h2 className="modal-title">

@@ -19,6 +19,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -98,7 +100,8 @@ public class FormController {
             boolean hasActiveWorkflow = wf != null && wf.getStatus() == WorkflowInstanceStatus.ACTIVE;
             boolean viewerCanAssign = isViewer && isOwner && form.getAssignedBuilderId() == null;
 
-            // Forms created by Admin or Builder don't need "approval of builder" or workflow.
+            // Forms created by Admin or Builder don't need "approval of builder" or
+            // workflow.
             // They can be published directly if the user is an Admin or (Builder owner).
             boolean canPublish = !isRoleAdmin && isDraft && (isAdmin || (isBuilderCreated && isBuilder && isOwner));
 
@@ -150,7 +153,8 @@ public class FormController {
         String currentFlowView = ordered.stream().map(step -> {
             String name = step.getApprover().getName();
             String label = (name != null && !name.isBlank()) ? name : step.getApprover().getUsername();
-            if (wf.getStatus() == WorkflowInstanceStatus.ACTIVE && Objects.equals(step.getStepIndex(), wf.getCurrentStepIndex())) {
+            if (wf.getStatus() == WorkflowInstanceStatus.ACTIVE
+                    && Objects.equals(step.getStepIndex(), wf.getCurrentStepIndex())) {
                 return "[" + label + "]";
             }
             return label;
@@ -259,7 +263,8 @@ public class FormController {
             try {
                 formService.getOwnedFormById(id, auth.getName());
                 isOwner = true;
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             if (!isOwner) {
                 Integer userId = (Integer) session.getAttribute("USER_ID");
@@ -275,7 +280,8 @@ public class FormController {
 
     /** Create a form — owner is set to the authenticated user. */
     @PostMapping
-    public ResponseEntity<FormEntity> create(@RequestBody FormDTO dto, Authentication auth, HttpSession session) {
+    public ResponseEntity<FormEntity> create(@Valid @RequestBody FormDTO dto, Authentication auth,
+            HttpSession session) {
         FormEntity created = formService.createForm(dto, auth.getName());
         auditLogService.logEvent(
                 "CREATE_FORM",
@@ -288,17 +294,18 @@ public class FormController {
                 null,
                 null,
                 null,
-                null
-        );
+                null);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    /** Assign/Reassign Builder before workflow starts. Viewer owner or Admin only. */
+    /**
+     * Assign/Reassign Builder before workflow starts. Viewer owner or Admin only.
+     */
     @PatchMapping("/{id}/assign-builder")
     public ResponseEntity<Map<String, Object>> assignBuilder(@PathVariable UUID id,
-                                                             @RequestBody AssignBuilderRequest req,
-                                                             Authentication auth,
-                                                             HttpSession session) {
+            @Valid @RequestBody AssignBuilderRequest req,
+            Authentication auth,
+            HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
         boolean isViewer = roles.contains("Viewer");
@@ -319,28 +326,28 @@ public class FormController {
                 auth.getName(),
                 "FORM",
                 form.getId().toString(),
-                "User '" + auth.getName() + "' assigned Builder '" + form.getAssignedBuilderUsername() + "' to form '" + form.getName() + "'.",
-                Map.of("assignedBuilderId", form.getAssignedBuilderId(), "assignedBuilderUsername", form.getAssignedBuilderUsername()),
+                "User '" + auth.getName() + "' assigned Builder '" + form.getAssignedBuilderUsername() + "' to form '"
+                        + form.getName() + "'.",
+                Map.of("assignedBuilderId", form.getAssignedBuilderId(), "assignedBuilderUsername",
+                        form.getAssignedBuilderUsername()),
                 null,
                 null,
                 null,
-                null
-        );
+                null);
 
         return ResponseEntity.ok(Map.of(
                 "formId", form.getId(),
                 "status", form.getStatus().name(),
                 "assignedBuilderId", form.getAssignedBuilderId(),
                 "assignedBuilderUsername", form.getAssignedBuilderUsername(),
-                "message", "Builder assigned successfully"
-        ));
+                "message", "Builder assigned successfully"));
     }
 
     /** Update — owner or Admin can edit a form. */
     @PutMapping("/{id}")
     public ResponseEntity<FormEntity> update(
             @PathVariable UUID id,
-            @RequestBody FormDTO dto,
+            @Valid @RequestBody FormDTO dto,
             Authentication auth,
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -363,8 +370,7 @@ public class FormController {
                 null,
                 null,
                 null,
-                null
-        );
+                null);
         return ResponseEntity.ok(updated);
     }
 
@@ -389,14 +395,14 @@ public class FormController {
                 null,
                 null,
                 null,
-                null
-        );
+                null);
         return ResponseEntity.noContent().build();
     }
 
     /** Publish — owner or Admin can publish a form. */
     @PatchMapping("/{id}/publish")
-    public ResponseEntity<Map<String, Object>> publish(@PathVariable UUID id, Authentication auth, HttpSession session) {
+    public ResponseEntity<Map<String, Object>> publish(@PathVariable UUID id, Authentication auth,
+            HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         if (roles.contains(ROLE_ROLE_ADMIN)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -415,8 +421,7 @@ public class FormController {
                 null,
                 null,
                 null,
-                null
-        );
+                null);
         return ResponseEntity.ok(Map.of(
                 "id", id.toString(),
                 "status", "PUBLISHED",
@@ -425,7 +430,8 @@ public class FormController {
 
     /** Unpublish — owner or Admin can unpublish a form. */
     @PatchMapping("/{id}/unpublish")
-    public ResponseEntity<Map<String, Object>> unpublish(@PathVariable UUID id, Authentication auth, HttpSession session) {
+    public ResponseEntity<Map<String, Object>> unpublish(@PathVariable UUID id, Authentication auth,
+            HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         if (roles.contains(ROLE_ROLE_ADMIN)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -443,8 +449,7 @@ public class FormController {
                 null,
                 null,
                 null,
-                null
-        );
+                null);
         return ResponseEntity.ok(Map.of(
                 "id", id.toString(),
                 "status", "DRAFT",
@@ -475,6 +480,7 @@ public class FormController {
     }
 
     public static class AssignBuilderRequest {
+        @NotNull(message = "Builder ID is required")
         public Integer builderId;
     }
 }

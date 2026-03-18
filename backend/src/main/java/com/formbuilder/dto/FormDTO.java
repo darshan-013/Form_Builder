@@ -4,16 +4,27 @@ import lombok.Data;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 @Data
 public class FormDTO {
+    @NotBlank(message = "Form name cannot be blank")
+    @Size(max = 150, message = "Form name must not exceed 150 characters")
     private String name;
+
     private String description;
+
+    @Valid
     private List<FormFieldDTO> fields;
+
     /** Static UI-only elements (section_header, label_text, description_block) */
+    @Valid
     private List<StaticFieldDTO> staticFields;
 
     /** Section groups — visual containers for grouped fields */
+    @Valid
     private List<GroupDTO> groups;
 
     /**

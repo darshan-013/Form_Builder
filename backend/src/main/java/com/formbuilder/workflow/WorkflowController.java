@@ -142,6 +142,19 @@ public class WorkflowController {
         return ResponseEntity.ok(rows);
     }
 
+    @GetMapping("/overall-reviews")
+    public ResponseEntity<?> overallReviews(Authentication auth, HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (!(roles.contains("Builder") || roles.contains("Admin"))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Builder access required"));
+        }
+
+        Integer userId = requireSessionUserId(session);
+        List<BuilderReviewDTO> rows = workflowService.getBuilderOverallReviews(userId);
+        return ResponseEntity.ok(rows);
+    }
+
     @GetMapping("/candidates")
     public ResponseEntity<?> getCandidates(Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());

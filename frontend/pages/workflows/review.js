@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
-import { approveWorkflowById, getPendingWorkflowReviews, rejectWorkflowById } from '../../services/api';
+import { approveWorkflowById, getOverallWorkflowReviews, rejectWorkflowById } from '../../services/api';
 import { toastError, toastSuccess } from '../../services/toast';
 import WorkflowDiagram from '../../components/workflows/WorkflowDiagram';
 
@@ -13,7 +13,7 @@ export default function WorkflowReviewPage() {
     const [category, setCategory] = useState('ALL');
 
     useEffect(() => {
-        getPendingWorkflowReviews()
+        getOverallWorkflowReviews()
             .then((data) => setRows(Array.isArray(data) ? data : []))
             .catch((err) => toastError(err.message || 'Failed to load workflow reviews.'))
             .finally(() => setLoading(false));
@@ -140,7 +140,7 @@ export default function WorkflowReviewPage() {
                                 </div>
 
                                 <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                                    {r.status === 'PENDING' && (
+                                    {r.canAction && (
                                         <>
                                             <button
                                                 className="btn btn-primary btn-sm"

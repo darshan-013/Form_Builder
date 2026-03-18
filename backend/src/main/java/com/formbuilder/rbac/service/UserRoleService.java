@@ -138,8 +138,12 @@ public class UserRoleService {
                     user.getUsername(), id, rejected, movedCreatorRefs, movedTargetRefs, movedStepRefs);
         }
 
-        userRepo.delete(user);
-        log.info("RBAC user profile deleted for '{}' (id={})", user.getUsername(), id);
+        // Soft delete the user
+        user.setDeleted(true);
+        user.setEnabled(false);
+        userRepo.save(user);
+        
+        log.info("RBAC user profile soft-deleted for '{}' (id={})", user.getUsername(), id);
 
         return DeleteUserImpact.builder()
                 .deletedUserId(id)

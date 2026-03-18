@@ -14,6 +14,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.*;
 
@@ -34,19 +35,7 @@ public class AuthController {
      */
     @PostMapping("/register")
     @Transactional
-    public ResponseEntity<?> register(@RequestBody RegisterRequest req) {
-        if (req.getUsername() == null || req.getUsername().isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Username is required"));
-        }
-        if (req.getEmail() == null || req.getEmail().isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Email is required"));
-        }
-        if (req.getPassword() == null || req.getPassword().length() < 6) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Password must be at least 6 characters"));
-        }
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest req) {
 
         if (userRepo.existsByUsername(req.getUsername())) {
             return ResponseEntity.badRequest()

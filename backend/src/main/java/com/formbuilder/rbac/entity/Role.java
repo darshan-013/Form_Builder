@@ -21,6 +21,7 @@ import java.util.Set;
 @Table(name = "roles", indexes = {
         @Index(name = "idx_roles_name", columnList = "role_name", unique = true)
 })
+@org.hibernate.annotations.SQLRestriction("is_deleted = false")
 @Data
 @Builder
 @NoArgsConstructor
@@ -47,6 +48,13 @@ public class Role {
     @Column(name = "is_system_role", nullable = false)
     @Builder.Default
     private boolean systemRole = false;
+
+    /**
+     * TRUE = soft-deleted. Do not return in standard queries.
+     */
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private boolean isDeleted = false;
 
     /**
      * ID of the rbac_users row that created this role.

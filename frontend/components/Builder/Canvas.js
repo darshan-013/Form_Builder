@@ -1,9 +1,6 @@
 import { useState, useRef } from 'react';
 import FieldCard from './FieldCard';
-import FieldConfigModal from './FieldConfigModal';
-import StaticFieldModal from './StaticFieldModal';
 import GroupContainer from './GroupContainer';
-import GroupConfigModal from './GroupConfigModal';
 
 const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
 
@@ -16,14 +13,15 @@ const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block
  *   4. Edit modal (FieldConfigModal / StaticFieldModal)
  *   5. Remove field / group
  */
-export default function Canvas({ fields, setFields, groups = [], setGroups = () => { } }) {
+export default function Canvas({ 
+    fields, setFields, 
+    groups = [], setGroups = () => { },
+    setEditField, setEditStaticField, setEditGroupConfig
+}) {
     const [isOverCanvas, setIsOverCanvas] = useState(false);
     const [draggingIndex, setDraggingIndex] = useState(null);
     const [dropIndex, setDropIndex] = useState(null);
     const [dropPos, setDropPos] = useState(null);
-    const [editField, setEditField] = useState(null);
-    const [editStaticField, setEditStaticField] = useState(null);
-    const [editGroupConfig, setEditGroupConfig] = useState(null);
     const canvasRef = useRef(null);
 
     // ── Group operations ──────────────────────────────────────────────────────
@@ -128,20 +126,6 @@ export default function Canvas({ fields, setFields, groups = [], setGroups = () 
 
     const removeField = (id) => {
         setFields((prev) => prev.filter((f) => f.id !== id).map((f, i) => ({ ...f, fieldOrder: i })));
-    };
-
-    const updateField = (updated) => {
-        setFields((prev) =>
-            prev.map((f) => (f.id === updated.id ? { ...updated } : f))
-        );
-        setEditField(null);
-    };
-
-    const updateStaticField = (updated) => {
-        setFields((prev) =>
-            prev.map((f) => (f.id === updated.id ? { ...updated } : f))
-        );
-        setEditStaticField(null);
     };
 
     // ── Drop field into group ─────────────────────────────────────────────────
@@ -355,37 +339,6 @@ export default function Canvas({ fields, setFields, groups = [], setGroups = () 
                 )}
             </div>
 
-            {/* Field configuration modal */}
-            {editField && (
-                <FieldConfigModal
-                    field={editField}
-                    onSave={updateField}
-                    onClose={() => setEditField(null)}
-                    siblingFields={fields.filter(f => f.id !== editField?.id)}
-                />
-            )}
-
-            {/* Static field configuration modal */}
-            {editStaticField && (
-                <StaticFieldModal
-                    field={editStaticField}
-                    onSave={updateStaticField}
-                    onClose={() => setEditStaticField(null)}
-                />
-            )}
-
-            {/* Group rules configuration modal */}
-            {editGroupConfig && (
-                <GroupConfigModal
-                    group={editGroupConfig}
-                    onSave={(updatedGroup) => {
-                        updateGroup(updatedGroup);
-                        setEditGroupConfig(null);
-                    }}
-                    onClose={() => setEditGroupConfig(null)}
-                    siblingFields={fields}
-                />
-            )}
         </>
     );
 }

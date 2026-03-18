@@ -75,7 +75,7 @@ export default function Sidebar({ isOpen, onClose }) {
     };
 
     const roleDisplay = roles && roles.length > 0
-        ? roles.filter(r => r.roleName.toLowerCase() !== 'admin').map(r => r.roleName).join(', ') || 'User'
+        ? roles.map(r => r.roleName).join(', ')
         : 'Viewer';
 
     const renderMenuItem = (item, level = 0, index = 0) => {

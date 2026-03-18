@@ -25,7 +25,7 @@ export default function Navbar() {
   };
 
   const roleDisplay = roles && roles.length > 0
-    ? roles.filter(r => r.roleName.toLowerCase() !== 'admin').map(r => r.roleName).join(', ') || 'User'
+    ? roles.map(r => r.roleName).join(', ')
     : 'Viewer';
 
   return (

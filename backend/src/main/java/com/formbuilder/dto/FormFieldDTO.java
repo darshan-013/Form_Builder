@@ -2,13 +2,20 @@ package com.formbuilder.dto;
 
 import lombok.Data;
 import java.util.UUID;
+import jakarta.validation.constraints.NotBlank;
 
 @Data
 public class FormFieldDTO {
     private UUID id;
+    @NotBlank(message = "Field key cannot be blank")
     private String fieldKey;
+
+    @NotBlank(message = "Label cannot be blank")
     private String label;
+
+    @NotBlank(message = "Field type cannot be blank")
     private String fieldType;
+
     private boolean required;
     private boolean disabled;
     private boolean readOnly;
