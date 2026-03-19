@@ -37,12 +37,6 @@ public class FormEntity {
         PUBLISHED
     }
 
-    /** Visibility level — controls which roles can see this form. */
-    public enum FormVisibility {
-        PUBLIC,      // Visible to all authenticated users
-        RESTRICTED,  // Visible to specific roles (Manager, Approver, Builder, Admin)
-        PRIVATE      // Visible only to the creator and Admin
-    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -74,17 +68,6 @@ public class FormEntity {
     @Builder.Default
     private FormStatus status = FormStatus.DRAFT;
 
-    /**
-     * Form visibility level.
-     * PUBLIC = all authenticated users can see it.
-     * RESTRICTED = only certain elevated roles can see it.
-     * PRIVATE = only the creator and Admin.
-     */
-    @Enumerated(EnumType.STRING)
-    @Column(name = "visibility", nullable = false, length = 20)
-    @NotNull(message = "Form visibility cannot be null")
-    @Builder.Default
-    private FormVisibility visibility = FormVisibility.PUBLIC;
 
     /**
      * JSON array of explicit user access entries.

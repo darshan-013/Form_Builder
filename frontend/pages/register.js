@@ -53,7 +53,7 @@ export default function RegisterPage() {
             </Head>
 
             <div className="auth-page">
-                <div className="auth-card animate-in">
+                <div className="auth-card animate-scale-in">
                     <div className="auth-logo">
                         <div className="auth-logo-icon">✦</div>
                         <h1 className="auth-title">Create Account</h1>

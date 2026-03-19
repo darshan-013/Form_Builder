@@ -88,7 +88,10 @@ export default function DataTable({
                         {paginatedData.map((row, idx) => {
                             const isSelected = selectedIds.has(row.id);
                             return (
-                                <tr key={row.id || idx} className={isSelected ? 'row-selected' : ''}>
+                                <tr key={row.id || idx} 
+                                    className={`animate-fade-in stagger-item ${isSelected ? 'row-selected' : ''}`}
+                                    style={{ animationDelay: `${idx * 0.05}s` }}
+                                >
                                     {onToggleSelection && (
                                         <td>
                                             <input

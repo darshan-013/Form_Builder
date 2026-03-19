@@ -81,8 +81,12 @@ export default function RolesPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {roleList.map(role => (
-                                <tr key={role.id}>
+                            {roleList.map((role, idx) => (
+                                <tr 
+                                    key={role.id}
+                                    className="animate-fade-in stagger-item"
+                                    style={{ animationDelay: `${idx * 0.05}s` }}
+                                >
                                     <td data-label="Role">
                                         <div className="role-name-cell">
                                             <div className={`role-icon ${role.isSystemRole ? 'system' : 'custom'}`}>

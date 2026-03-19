@@ -132,12 +132,12 @@ export default function ModuleManagerPage() {
             <Navbar />
             
             <main className="container">
-                <header className="page-header">
+                <header className="page-header animate-slide-up">
                     <div className="header-text">
                         <h1>Module Management</h1>
                         <p>Define and organize dynamic sidebar menu items</p>
                     </div>
-                    <button className="primary-btn" onClick={() => handleOpenModal()}>
+                    <button className="primary-btn hover-premium" onClick={() => handleOpenModal()}>
                         <span>+</span> New Module
                     </button>
                 </header>
@@ -148,7 +148,7 @@ export default function ModuleManagerPage() {
                             <div className="spinner"></div>
                         </div>
                     ) : (
-                        <div className="table-wrapper">
+                        <div className="table-wrapper animate-fade-in">
                             <table className="admin-table">
                                 <thead>
                                     <tr>
@@ -165,12 +165,16 @@ export default function ModuleManagerPage() {
                                             <td colSpan="5" className="empty-state">No modules found. Create your first one!</td>
                                         </tr>
                                     ) : (
-                                        nestedModules.map(mod => (
-                                            <tr key={mod.id} className={`depth-${mod.depth}`}>
+                                        nestedModules.map((mod, idx) => (
+                                            <tr 
+                                                key={mod.id} 
+                                                className={`depth-${mod.depth} animate-fade-in stagger-item`}
+                                                style={{ animationDelay: `${idx * 0.04}s` }}
+                                            >
                                                 <td>
                                                     <div className="module-info" style={{ paddingLeft: mod.depth * 32 + 'px' }}>
                                                         {mod.depth > 0 && <span className="nest-indicator">{mod.depth === 2 ? '└─ └─' : '└─'}</span>}
-                                                        <span className="mod-icon">{mod.iconCss || '•'}</span>
+                                                        <span className="mod-icon animate-scale-in">{mod.iconCss || '•'}</span>
                                                         <div className="mod-text">
                                                             <strong>{mod.moduleName}</strong>
                                                             <small>{mod.moduleDescription}</small>
@@ -191,7 +195,7 @@ export default function ModuleManagerPage() {
                                                     </span>
                                                 </td>
                                                 <td className="actions-cell">
-                                                    <button className="icon-btn edit" onClick={() => handleOpenModal(mod)} title="Edit">✎</button>
+                                                    <button className="icon-btn edit hover-premium" onClick={() => handleOpenModal(mod)} title="Edit">✎</button>
                                                 </td>
                                             </tr>
                                         ))

@@ -14,6 +14,9 @@ import com.formbuilder.repository.FormGroupRepository;
 import com.formbuilder.repository.FormJpaRepository;
 import com.formbuilder.repository.SharedOptionsRepository;
 import com.formbuilder.repository.StaticFormFieldRepository;
+import com.formbuilder.workflow.WorkflowInstance;
+import com.formbuilder.workflow.WorkflowInstanceRepository;
+import com.formbuilder.workflow.WorkflowInstanceStatus;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +39,7 @@ public class FormService {
     private final FormGroupRepository groupRepo;
     private final DynamicTableService dynamicTable;
     private final UserRepository userRepo;
+    private final WorkflowInstanceRepository workflowInstanceRepo;
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -49,61 +53,41 @@ public class FormService {
     /**
      * Returns forms visible to the user based on their RBAC roles.
      *
-     * Access model:
-     * - Admin / Role Administrator: all active forms
-     * - Builder: own forms, assigned draft forms, and published forms explicitly assigned via allowed_users
-     * - Viewer: own forms and published forms explicitly assigned via allowed_users
-     * - Others: only published forms explicitly assigned via allowed_users
+     * Access model (Updated):
+     * - Admin / Role Administrator: all forms
+     * - Others: Own forms (creator), assigned forms (builder), forms where user is currently an approver,
+     *   or forms explicitly shared via allowed_users.
      */
     public List<FormEntity> getFormsForRole(String username, Set<String> roleNames) {
-        Integer userId = userRepo.findByUsername(username).map(User::getId).orElse(null);
-        Map<String, Boolean> adminCreatorCache = new HashMap<>();
-
         if (roleNames.contains("Admin") || roleNames.contains("Role Administrator")) {
             return formRepo.findAllByOrderByCreatedAtDesc();
         }
 
-        if (roleNames.contains("Builder")) {
-            List<FormEntity> all = formRepo.findAllByOrderByCreatedAtDesc();
-            return all.stream().filter(f -> {
-                // 1. Own forms
-                if (username.equals(f.getCreatedBy())) return true;
-                
-                // 2. Assigned forms
-                if (username.equals(f.getAssignedBuilderUsername())) return true;
+        User user = userRepo.findByUsername(username).orElse(null);
+        if (user == null) return List.of();
+        Integer userId = user.getId();
 
-                // 3. Admin forms (special requirement: only Builders can see Admin forms)
-                if (isCreatedByAdmin(f.getCreatedBy(), adminCreatorCache)) return true;
+        // Forms where the user is involved in an active workflow (as creator, target builder, or current/future approver)
+        Set<UUID> involvedInWorkflowIds = workflowInstanceRepo.findActiveInvolvingUser(userId).stream()
+                .map(wi -> wi.getForm().getId())
+                .collect(Collectors.toSet());
 
-                // 4. Explicitly shared via allowed_users
-                if (hasExplicitUserAccess(f, username, userId)) return true;
+        List<FormEntity> all = formRepo.findAllByOrderByCreatedAtDesc();
+        return all.stream().filter(f -> {
+            // 1. Owner (Creator)
+            if (username.equalsIgnoreCase(f.getCreatedBy())) return true;
 
-                return false;
-            }).collect(Collectors.toList());
-        }
+            // 2. Assigned Builder
+            if (username.equalsIgnoreCase(f.getAssignedBuilderUsername())) return true;
 
-        if (roleNames.contains("Manager") || roleNames.contains("Viewer") || roleNames.contains("Approver")) {
-            List<FormEntity> all = formRepo.findAllByOrderByCreatedAtDesc();
-            return all.stream().filter(f -> {
-                boolean isOwner = username.equals(f.getCreatedBy());
-                boolean isPublishedVisible = f.getStatus() == FormEntity.FormStatus.PUBLISHED
-                        && hasExplicitUserAccess(f, username, userId);
-                
-                if (!isOwner && !isPublishedVisible) return false;
+            // 3. Workflow Involvement
+            if (involvedInWorkflowIds.contains(f.getId())) return true;
 
-                // Restriction: Viewers, Managers and Approvers cannot see forms created by Admins
-                if (isCreatedByAdmin(f.getCreatedBy(), adminCreatorCache)) {
-                    return false;
-                }
-                return true;
-            }).collect(Collectors.toList());
-        }
+            // 4. Explicit Granular Access (Allowed Users)
+            if (hasExplicitUserAccess(f, username, userId)) return true;
 
-        List<FormEntity> published = formRepo.findPublishedAccessibleForms();
-        // For any other roles (e.g., Guest), hide Admin-created forms entirely.
-        return filterPublishedByAccess(published, username, userId).stream()
-                .filter(f -> !isCreatedByAdmin(f.getCreatedBy(), adminCreatorCache))
-                .collect(Collectors.toList());
+            return false;
+        }).collect(Collectors.toList());
     }
 
     private boolean isCreatedByAdmin(String creatorUsername, Map<String, Boolean> cache) {
@@ -136,7 +120,7 @@ public class FormService {
         }).collect(Collectors.toList());
     }
 
-    private boolean hasExplicitUserAccess(FormEntity form, String username, Integer userId) {
+    public boolean hasExplicitUserAccess(FormEntity form, String username, Integer userId) {
         List<AllowedUserEntry> allowedUsers = deserializeUserList(form.getAllowedUsers());
         if (allowedUsers.isEmpty()) return false;
         return matchesAllowedUser(allowedUsers, username, userId);
@@ -214,7 +198,7 @@ public class FormService {
     }
 
     /**
-     * Returns a form by ID — allows access if the user is the owner OR has Admin role.
+     * Returns a form by ID — allows access if the user is the owner, the assigned builder, or has Admin role.
      * Used by edit, delete, publish, unpublish, render/admin endpoints.
      */
     public FormEntity getFormForAction(UUID id, String username, boolean isAdmin) {
@@ -222,8 +206,35 @@ public class FormService {
             return formRepo.findByIdWithFields(id)
                     .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
         }
-        return formRepo.findByIdAndCreatedBy(id, username)
+        FormEntity form = formRepo.findByIdWithFields(id)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
+
+        // 1. Owner (Creator) or Assigned Builder
+        if (username.equalsIgnoreCase(form.getCreatedBy()) ||
+            username.equalsIgnoreCase(form.getAssignedBuilderUsername())) {
+            return form;
+        }
+
+        User user = userRepo.findByUsername(username).orElse(null);
+        if (user == null) {
+            throw new NoSuchElementException("Form not found or access denied: " + id);
+        }
+        Integer userId = user.getId();
+
+        // 2. Explicit Granular Access (Allowed Users)
+        if (hasExplicitUserAccess(form, username, userId)) {
+            return form;
+        }
+
+        // 3. Workflow Involvement
+        Set<UUID> involvedInWorkflowIds = workflowInstanceRepo.findActiveInvolvingUser(userId).stream()
+                .map(wi -> wi.getForm().getId())
+                .collect(Collectors.toSet());
+        if (involvedInWorkflowIds.contains(form.getId())) {
+            return form;
+        }
+
+        throw new NoSuchElementException("Form not found or access denied: " + id);
     }
 
     // ── Create ────────────────────────────────────────────────────────────────
@@ -238,7 +249,6 @@ public class FormService {
                 .description(dto.getDescription())
                 .tableName(tableName)
                 .createdBy(owner)
-                .visibility(parseVisibility(dto.getVisibility()))
                 .allowedUsers(serializeUserList(dto.getAllowedUsers()))
                 .allowMultipleSubmissions(
                         dto.getAllowMultipleSubmissions() == null ? true : dto.getAllowMultipleSubmissions())
@@ -320,9 +330,6 @@ public class FormService {
         // 3. Update form metadata and fields
         existing.setName(dto.getName());
         existing.setDescription(dto.getDescription());
-        if (dto.getVisibility() != null) {
-            existing.setVisibility(parseVisibility(dto.getVisibility()));
-        }
         if (dto.getAllowedUsers() != null) {
             existing.setAllowedUsers(serializeUserList(dto.getAllowedUsers()));
         }
@@ -554,17 +561,6 @@ public class FormService {
         }
     }
 
-    /** Safely parse visibility string to enum. Returns PUBLIC if null/invalid. */
-    private FormEntity.FormVisibility parseVisibility(String visibility) {
-        if (visibility == null || visibility.isBlank()) {
-            return FormEntity.FormVisibility.PUBLIC;
-        }
-        try {
-            return FormEntity.FormVisibility.valueOf(visibility.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return FormEntity.FormVisibility.PUBLIC;
-        }
-    }
 
     private static final class AllowedUserEntry {
         public Integer id;

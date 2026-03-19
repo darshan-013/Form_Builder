@@ -91,14 +91,15 @@ export default function RoleModuleMappingPage() {
                 </header>
 
                 <div className="mapping-grid">
-                    <section className="role-sidebar">
-                        <div className="content-card">
+                    <section className="role-sidebar animate-slide-up">
+                        <div className="content-card hover-premium">
                             <div className="card-header">Select a Role</div>
                             <div className="role-list">
-                                {roles.map(role => (
+                                {roles.map((role, idx) => (
                                     <div
                                         key={role.id}
-                                        className={`role-item ${selectedRole?.id === role.id ? 'active' : ''}`}
+                                        className={`role-item animate-fade-in ${selectedRole?.id === role.id ? 'active' : ''}`}
+                                        style={{ animationDelay: `${idx * 0.05}s` }}
                                         onClick={() => handleRoleChange(role.id)}
                                     >
                                         <span className="role-name">{role.roleName}</span>
@@ -111,22 +112,22 @@ export default function RoleModuleMappingPage() {
 
                     <section className="modules-panel">
                         {loading ? (
-                            <div className="panel-loading">
+                            <div className="panel-loading animate-fade-in">
                                 <div className="spinner"></div>
                                 <p>Loading modules...</p>
                             </div>
                         ) : !selectedRole ? (
-                            <div className="empty-selection">
+                            <div className="empty-selection animate-scale-in">
                                 <div className="icon">🛡️</div>
                                 <h2>No Role Selected</h2>
                                 <p>Select a role from the left to start mapping modules.</p>
                             </div>
                         ) : (
-                            <div className="content-card">
+                            <div className="content-card animate-slide-up">
                                 <div className="card-header sticky">
                                     <span>Mapping for: <strong>{selectedRole.roleName}</strong></span>
                                     <button
-                                        className="primary-btn sm"
+                                        className="primary-btn sm animate-scale-in"
                                         disabled={saving}
                                         onClick={handleSave}
                                     >

@@ -131,8 +131,12 @@ export default function AdminLogsPage() {
                                 <tr><td colSpan={5}>Loading logs...</td></tr>
                             ) : rows.length === 0 ? (
                                 <tr><td colSpan={5}>No logs found.</td></tr>
-                            ) : rows.map((r) => (
-                                <tr key={r.id}>
+                            ) : rows.map((r, idx) => (
+                                <tr 
+                                    key={r.id}
+                                    className="animate-fade-in stagger-item"
+                                    style={{ animationDelay: `${idx * 0.05}s` }}
+                                >
                                     <td>{r.created_at ? new Date(r.created_at).toLocaleString() : '-'}</td>
                                     <td>{r.performed_by_username || '-'}</td>
                                     <td><span className="perm-tag">{r.action}</span></td>

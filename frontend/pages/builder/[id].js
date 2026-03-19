@@ -32,8 +32,42 @@ export default function EditBuilderPage() {
     const [loading, setLoading] = useState(true);
     const [allowMultipleSubmissions, setAllowMultipleSubmissions] = useState(true);
     const [expiresAt, setExpiresAt] = useState(''); // ISO string or ''
-    const [visibility, setVisibility] = useState('PUBLIC');
+    // removed visibility state
     const [showSettings, setShowSettings] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
+
+    // Resizable panels state
+    const [leftWidth, setLeftWidth] = useState(264);
+    const [rightWidth, setRightWidth] = useState(340);
+    const [resizing, setResizing] = useState(null); // 'left' or 'right'
+
+    useEffect(() => {
+        if (!resizing) return;
+
+        const handleMouseMove = (e) => {
+            if (resizing === 'left') {
+                const newWidth = Math.max(160, Math.min(450, e.clientX));
+                setLeftWidth(newWidth);
+            } else if (resizing === 'right') {
+                const newWidth = Math.max(280, Math.min(500, window.innerWidth - e.clientX));
+                setRightWidth(newWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setResizing(null);
+            document.body.classList.remove('is-resizing');
+        };
+
+        document.body.classList.add('is-resizing');
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [resizing]);
+
 
     // active configuration tracking
     const [editField, setEditFieldState] = useState(null);
@@ -115,7 +149,6 @@ export default function EditBuilderPage() {
                 setFormName(form.name || '');
                 setFormDescription(form.description || '');
                 setAllowMultipleSubmissions(form.allowMultipleSubmissions ?? true);
-                setVisibility(form.visibility || 'PUBLIC');
 
                 // Load allowed users from form data
                 if (form.allowedUsers) {
@@ -280,7 +313,6 @@ export default function EditBuilderPage() {
                 rulesJson: g.rulesJson || null,
             })),
             allowMultipleSubmissions: allowMultipleSubmissions,
-            visibility: visibility,
             allowedUsers: allowedUsers,
             showTimestamp: true, // always recorded — compulsory
             expiresAt: expiresAt ? expiresAt : null,
@@ -289,14 +321,17 @@ export default function EditBuilderPage() {
         setSaving(true);
         try {
             await updateForm(id, dto);
+            setSaveSuccess(true);
             toastSuccess('Form Updated Successfully! ✓');
-            router.push('/dashboard');
+            setTimeout(() => {
+                router.push('/dashboard');
+            }, 800);
         } catch (err) {
             toastError(err.message || 'Failed to update form.');
-        } finally {
             setSaving(false);
         }
     };
+
 
     if (loading) {
         return (
@@ -315,7 +350,7 @@ export default function EditBuilderPage() {
         <>
             <Head><title>Edit Form — FormCraft Builder</title></Head>
 
-            <div className="builder-page">
+            <div className="builder-page" style={{ gridTemplateColumns: `${leftWidth}px 1fr ${rightWidth}px` }}>
                 <header className="builder-topbar">
                     <Link href="/dashboard" className="builder-topbar-brand">⚡ FormCraft</Link>
 
@@ -486,17 +521,22 @@ export default function EditBuilderPage() {
                         <Link href={`/preview/${id}`} className="btn btn-secondary btn-sm">👁 Preview</Link>
                         <button
                             id="update-form-btn"
-                            className="btn btn-primary btn-sm"
+                            className={`btn btn-primary btn-sm ${saveSuccess ? 'btn-success-anim' : ''}`}
                             onClick={handleSave}
-                            disabled={saving}
+                            disabled={saving || saveSuccess}
                         >
-                            {saving
+                            {saveSuccess ? '✓ Saved!' : saving
                                 ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</>
                                 : '💾 Save Changes'}
                         </button>
                     </div>
                 </header>
 
+
+                <div 
+                    className={`panel-resizer left-resizer ${resizing === 'left' ? 'resizing' : ''}`}
+                    onMouseDown={() => setResizing('left')}
+                />
                 <FieldPalette />
                 <main className="builder-canvas-wrap">
                     <Canvas
@@ -507,6 +547,10 @@ export default function EditBuilderPage() {
                         setEditGroupConfig={setEditGroupConfig}
                     />
                 </main>
+                <div 
+                    className={`panel-resizer right-resizer ${resizing === 'right' ? 'resizing' : ''}`}
+                    onMouseDown={() => setResizing('right')}
+                />
                 <aside className="builder-right-panel">
                     {editField ? (
                         <FieldConfigModal

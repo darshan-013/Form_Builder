@@ -10,8 +10,8 @@ const OVERVIEW_POINTS = [
         text: 'Empower Admin and Role Administrator workflows with clean, dedicated management surfaces.',
     },
     {
-        heading: 'Visibility by Design',
-        text: 'Configure role-based form visibility while preserving privileged oversight where required.',
+        heading: 'Granular Access Control',
+        text: 'Configure role-based form access with explicit user permissions while preserving privileged oversight.',
     },
 ];
 

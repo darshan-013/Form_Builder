@@ -26,8 +26,8 @@ public class WorkflowController {
 
     @PostMapping("/initiate")
     public ResponseEntity<?> initiate(@RequestBody InitiateWorkflowRequest req,
-                                      Authentication auth,
-                                      HttpSession session) {
+            Authentication auth,
+            HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         if (!(roles.contains("Builder") || roles.contains("Admin"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -51,8 +51,7 @@ public class WorkflowController {
                 null,
                 null,
                 null,
-                null
-        );
+                null);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(toInstanceSummary(instance));
     }
@@ -68,9 +67,9 @@ public class WorkflowController {
 
     @PostMapping("/steps/{stepId}/approve")
     public ResponseEntity<?> approve(@PathVariable Long stepId,
-                                     @RequestBody(required = false) DecideRequest req,
-                                     Authentication auth,
-                                     HttpSession session) {
+            @RequestBody(required = false) DecideRequest req,
+            Authentication auth,
+            HttpSession session) {
         Integer userId = requireSessionUserId(session);
         WorkflowStep step = workflowService.approveStep(stepId, userId, req != null ? req.comments : null);
 
@@ -85,17 +84,16 @@ public class WorkflowController {
                 null,
                 null,
                 null,
-                null
-        );
+                null);
 
         return ResponseEntity.ok(toPendingRow(step));
     }
 
     @PostMapping("/steps/{stepId}/reject")
     public ResponseEntity<?> reject(@PathVariable Long stepId,
-                                    @RequestBody(required = false) DecideRequest req,
-                                    Authentication auth,
-                                    HttpSession session) {
+            @RequestBody(required = false) DecideRequest req,
+            Authentication auth,
+            HttpSession session) {
         Integer userId = requireSessionUserId(session);
         WorkflowStep step = workflowService.rejectStep(stepId, userId, req != null ? req.comments : null);
 
@@ -110,8 +108,7 @@ public class WorkflowController {
                 null,
                 null,
                 null,
-                null
-        );
+                null);
 
         return ResponseEntity.ok(toPendingRow(step));
     }
@@ -119,11 +116,14 @@ public class WorkflowController {
     @GetMapping("/my-status")
     public ResponseEntity<?> myStatus(Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
-        if (!(roles.contains("Creator") || roles.contains("Viewer") || roles.contains("Admin") || roles.contains("Builder"))) {
+        boolean isAuthorized = roles.stream().anyMatch(r -> 
+            List.of("Creator", "Viewer", "Admin", "Builder", "Approver", "Manager", "Role Administrator").contains(r));
+            
+        if (!isAuthorized) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Creator, Viewer, Admin, or Builder access required"));
+                    .body(Map.of("error", "You do not have permission to view workflow status."));
         }
-        
+
         Integer userId = requireSessionUserId(session);
         List<CreatorWorkflowStatusDTO> rows = workflowService.getCreatorStatuses(auth.getName(), userId);
         return ResponseEntity.ok(rows);
@@ -132,9 +132,9 @@ public class WorkflowController {
     @GetMapping("/pending-reviews")
     public ResponseEntity<?> pendingReviews(Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
-        if (!(roles.contains("Builder") || roles.contains("Admin"))) {
+        if (!(roles.contains("Builder") || roles.contains("Admin") || roles.contains("Approver") || roles.contains("Manager"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Builder access required"));
+                    .body(Map.of("error", "Access denied. Builder or Authority role required."));
         }
 
         Integer userId = requireSessionUserId(session);
@@ -145,9 +145,9 @@ public class WorkflowController {
     @GetMapping("/overall-reviews")
     public ResponseEntity<?> overallReviews(Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
-        if (!(roles.contains("Builder") || roles.contains("Admin"))) {
+        if (!(roles.contains("Builder") || roles.contains("Admin") || roles.contains("Approver") || roles.contains("Manager"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Builder access required"));
+                    .body(Map.of("error", "Access denied. Builder or Authority role required."));
         }
 
         Integer userId = requireSessionUserId(session);
@@ -166,15 +166,14 @@ public class WorkflowController {
         Map<String, List<User>> candidates = workflowService.getWorkflowCandidates();
         return ResponseEntity.ok(Map.of(
                 "builders", candidates.get("builders").stream().map(this::toUserSummary).toList(),
-                "authorities", candidates.get("authorities").stream().map(this::toUserSummary).toList()
-        ));
+                "authorities", candidates.get("authorities").stream().map(this::toUserSummary).toList()));
     }
 
     @PostMapping("/{workflowId}/approve")
     public ResponseEntity<?> approveWorkflow(@PathVariable Long workflowId,
-                                             @RequestBody(required = false) DecideRequest req,
-                                             Authentication auth,
-                                             HttpSession session) {
+            @RequestBody(required = false) DecideRequest req,
+            Authentication auth,
+            HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         if (!(roles.contains("Builder") || roles.contains("Admin"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -188,9 +187,9 @@ public class WorkflowController {
 
     @PostMapping("/{workflowId}/reject")
     public ResponseEntity<?> rejectWorkflow(@PathVariable Long workflowId,
-                                            @RequestBody(required = false) DecideRequest req,
-                                            Authentication auth,
-                                            HttpSession session) {
+            @RequestBody(required = false) DecideRequest req,
+            Authentication auth,
+            HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         if (!(roles.contains("Builder") || roles.contains("Admin"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -224,6 +223,7 @@ public class WorkflowController {
         map.put("stepStatus", step.getStatus());
         map.put("comments", step.getComments());
         map.put("targetBuilder", toUserSummary(instance.getTargetBuilder()));
+        map.put("canAction", Objects.equals(step.getStepIndex(), instance.getCurrentStepIndex()));
         return map;
     }
 
@@ -258,7 +258,8 @@ public class WorkflowController {
                 .map(s -> {
                     User u = s.getApprover();
                     String label = (u.getName() != null && !u.getName().isBlank()) ? u.getName() : u.getUsername();
-                    if (Objects.equals(s.getStepIndex(), instance.getCurrentStepIndex()) && instance.getStatus() == WorkflowInstanceStatus.ACTIVE) {
+                    if (Objects.equals(s.getStepIndex(), instance.getCurrentStepIndex())
+                            && instance.getStatus() == WorkflowInstanceStatus.ACTIVE) {
                         return "[" + label + "]";
                     }
                     return label;
@@ -292,8 +293,7 @@ public class WorkflowController {
                 "id", step.getId(),
                 "stepIndex", step.getStepIndex(),
                 "status", step.getStatus(),
-                "approver", toUserSummary(step.getApprover())
-        )).collect(Collectors.toList()));
+                "approver", toUserSummary(step.getApprover()))).collect(Collectors.toList()));
         return map;
     }
 
@@ -316,10 +316,3 @@ public class WorkflowController {
         public String comments;
     }
 }
-
-
-
-
-
-
-
