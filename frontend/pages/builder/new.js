@@ -27,8 +27,42 @@ export default function NewBuilderPage() {
     const [saving, setSaving] = useState(false);
     const [allowMultipleSubmissions, setAllowMultipleSubmissions] = useState(true);
     const [expiresAt, setExpiresAt] = useState('');
-    const [visibility, setVisibility] = useState('PUBLIC');
+    // removed visibility state
     const [showSettings, setShowSettings] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
+
+    // Resizable panels state
+    const [leftWidth, setLeftWidth] = useState(264);
+    const [rightWidth, setRightWidth] = useState(340);
+    const [resizing, setResizing] = useState(null); // 'left' or 'right'
+
+    useEffect(() => {
+        if (!resizing) return;
+
+        const handleMouseMove = (e) => {
+            if (resizing === 'left') {
+                const newWidth = Math.max(160, Math.min(450, e.clientX));
+                setLeftWidth(newWidth);
+            } else if (resizing === 'right') {
+                const newWidth = Math.max(280, Math.min(500, window.innerWidth - e.clientX));
+                setRightWidth(newWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setResizing(null);
+            document.body.classList.remove('is-resizing');
+        };
+
+        document.body.classList.add('is-resizing');
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [resizing]);
+
 
     // active configuration tracking
     const [editField, setEditFieldState] = useState(null);
@@ -171,7 +205,6 @@ export default function NewBuilderPage() {
                 rulesJson: g.rulesJson || null,
             })),
             allowMultipleSubmissions,
-            visibility,
             allowedUsers,
             showTimestamp: true,
             expiresAt: expiresAt ? expiresAt : null,
@@ -185,18 +218,20 @@ export default function NewBuilderPage() {
 
             if (isViewer) {
                 await assignBuilder(created.id, Number(builderIdForViewer));
-                toastSuccess('Form created and assigned to Builder successfully! 🎉');
-            } else {
-                toastSuccess('Form Created Successfully! 🎉');
             }
 
-            router.push('/dashboard');
+            setSaveSuccess(true);
+            toastSuccess('Form Created Successfully! 🎉');
+
+            setTimeout(() => {
+                router.push('/dashboard');
+            }, 800);
         } catch (err) {
             toastError(err.message || 'Failed to create form.');
-        } finally {
             setSaving(false);
         }
     }
+
 
     const updateField = (updated) => {
         setFields((prev) => prev.map((f) => (f.id === updated.id ? { ...updated } : f)));
@@ -271,7 +306,7 @@ export default function NewBuilderPage() {
                 <title>New Form — FormCraft Builder</title>
             </Head>
 
-            <div className="builder-page">
+            <div className="builder-page" style={{ gridTemplateColumns: `${leftWidth}px 1fr ${rightWidth}px` }}>
                 {showBuilderModal && (
                     <div className="confirm-dialog" onClick={() => !saving && setShowBuilderModal(false)}>
                         <div className="confirm-box builder-assign-modal" onClick={(e) => e.stopPropagation()}>
@@ -415,31 +450,6 @@ export default function NewBuilderPage() {
 
                                             {!isViewer && (
                                                 <>
-                                                    {/* Visibility selector */}
-                                                    <div className="form-settings-expiry">
-                                                        <div className="form-settings-expiry-info">
-                                                            <span className="form-settings-toggle-label">👁️ Form visibility</span>
-                                                            <span className="form-settings-toggle-desc">
-                                                                {visibility === 'PUBLIC' && 'PUBLIC: authenticated users can see this form. Admin and Role Administrator always have access.'}
-                                                                {visibility === 'RESTRICTED' && 'RESTRICTED: explicit users selected below can see this form. Admin and Role Administrator always have access.'}
-                                                                {visibility === 'PRIVATE' && 'PRIVATE: only the form owner plus Admin and Role Administrator can see this form.'}
-                                                            </span>
-                                                        </div>
-                                                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                                            <select
-                                                                className="form-input"
-                                                                value={visibility}
-                                                                onChange={(e) => setVisibility(e.target.value)}
-                                                                title="Select form visibility"
-                                                                style={{ minWidth: 220 }}
-                                                            >
-                                                                <option value="PUBLIC">Public</option>
-                                                                <option value="RESTRICTED">Restricted</option>
-                                                                <option value="PRIVATE">Private</option>
-                                                            </select>
-                                                        </div>
-                                                    </div>
-
                                                     {/* User-based form access */}
                                                     <div className="form-settings-expiry">
                                                         <div className="form-settings-expiry-info">
@@ -526,11 +536,11 @@ export default function NewBuilderPage() {
 
                         <button
                             id="save-form-btn"
-                            className="btn btn-primary btn-sm"
+                            className={`btn btn-primary btn-sm ${saveSuccess ? 'btn-success-anim' : ''}`}
                             onClick={handleSave}
-                            disabled={saving}
+                            disabled={saving || saveSuccess}
                         >
-                            {saving ? (
+                            {saveSuccess ? '✓ Saved!' : saving ? (
                                 <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</>
                             ) : (
                                 '💾 Save Form'
@@ -540,6 +550,10 @@ export default function NewBuilderPage() {
                 </header>
 
                 {/* ── Left Palette ─────────────────────────────────────── */}
+                <div 
+                    className={`panel-resizer left-resizer ${resizing === 'left' ? 'resizing' : ''}`}
+                    onMouseDown={() => setResizing('left')}
+                />
                 <FieldPalette />
 
                 {/* ── Canvas ───────────────────────────────────────────── */}
@@ -552,6 +566,10 @@ export default function NewBuilderPage() {
                         setEditGroupConfig={setEditGroupConfig}
                     />
                 </main>
+                <div 
+                    className={`panel-resizer right-resizer ${resizing === 'right' ? 'resizing' : ''}`}
+                    onMouseDown={() => setResizing('right')}
+                />
                 <aside className="builder-right-panel">
                     {editField ? (
                         <FieldConfigModal

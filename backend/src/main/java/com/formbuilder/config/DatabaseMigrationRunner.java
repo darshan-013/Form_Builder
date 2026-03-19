@@ -83,8 +83,8 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
                 REFERENCES form_groups(id) ON DELETE SET NULL
                 """);
 
-        // ── 7b. Form visibility column ───────────────────────────────────────
-        exec("ALTER TABLE forms ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'PUBLIC'");
+        // ── 7b. Drop obsolete visibility column ───────────────────────────────────────
+        exec("ALTER TABLE forms DROP COLUMN IF EXISTS visibility");
 
         // ── 7c. Remove legacy per-form allowed roles column ─────────────────
         exec("ALTER TABLE forms DROP COLUMN IF EXISTS allowed_roles");

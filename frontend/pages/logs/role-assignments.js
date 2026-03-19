@@ -143,8 +143,12 @@ export default function RoleAssignmentLogsPage() {
                                 <tr><td colSpan={5}>Loading logs...</td></tr>
                             ) : rows.length === 0 ? (
                                 <tr><td colSpan={5}>No logs found.</td></tr>
-                            ) : rows.map((r) => (
-                                <tr key={r.id}>
+                            ) : rows.map((r, idx) => (
+                                <tr 
+                                    key={r.id}
+                                    className="animate-fade-in stagger-item"
+                                    style={{ animationDelay: `${idx * 0.05}s` }}
+                                >
                                     <td>{r.created_at ? new Date(r.created_at).toLocaleString() : '-'}</td>
                                     <td>{r.related_role_name || (r.related_role_id ? `Role #${r.related_role_id}` : '-')}</td>
                                     <td>{r.related_username || '-'}</td>

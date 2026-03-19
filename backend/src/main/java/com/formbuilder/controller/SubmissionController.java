@@ -251,9 +251,10 @@ public class SubmissionController {
         return unique;
     }
 
-    /** Check if the authenticated user has Admin role. */
+    /** Check if the authenticated user has Admin role or Role Administrator role. */
     private boolean isAdmin(Authentication auth) {
-        return userRoleService.getUserRoleNames(auth.getName()).contains("Admin");
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        return roles.contains("Admin") || roles.contains("Role Administrator");
     }
 
     @GetMapping("/{id}/submissions")

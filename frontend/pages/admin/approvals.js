@@ -141,19 +141,28 @@ export default function ApprovalsInboxPage() {
                                     <WorkflowDiagram steps={buildSteps(row)} activeStepIndex={row.currentStepIndex} />
 
                                     <div className="workflow-inbox-actions">
-                                        <button className="btn btn-primary btn-sm" onClick={() => handleApprove(row)} disabled={busy}>
-                                            {busy ? 'Working...' : 'Approve'}
-                                        </button>
-                                        <button
-                                            className="btn btn-danger btn-sm"
-                                            onClick={() => {
-                                                setRejectTarget(row);
-                                                setRejectReason('');
-                                            }}
-                                            disabled={busy}
-                                        >
-                                            Reject
-                                        </button>
+                                        {row.canAction ? (
+                                            <>
+                                                <button className="btn btn-primary btn-sm" onClick={() => handleApprove(row)} disabled={busy}>
+                                                    {busy ? 'Working...' : 'Approve'}
+                                                </button>
+                                                <button
+                                                    className="btn btn-danger btn-sm"
+                                                    onClick={() => {
+                                                        setRejectTarget(row);
+                                                        setRejectReason('');
+                                                    }}
+                                                    disabled={busy}
+                                                >
+                                                    Reject
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <div className="workflow-waiting-banner">
+                                                <span className="waiting-spinner"></span>
+                                                <span>Waiting for previous steps...</span>
+                                            </div>
+                                        )}
                                         <Link href={`/preview/${row.formId}`} className="btn btn-secondary btn-sm">Preview</Link>
                                     </div>
                                 </div>

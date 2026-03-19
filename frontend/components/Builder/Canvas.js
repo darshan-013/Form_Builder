@@ -143,18 +143,11 @@ export default function Canvas({
         }
 
         // Existing field being moved into group
-        const fieldIndex = e.dataTransfer.getData('application/x-field-index') || e.dataTransfer.getData('dragIndex');
-        if (fieldIndex !== '' && fieldIndex !== null) {
-            const idx = parseInt(fieldIndex, 10);
-            if (!isNaN(idx)) {
-                setFields((prev) => {
-                    const copy = [...prev];
-                    if (copy[idx]) {
-                        copy[idx] = { ...copy[idx], groupId, parentGroupKey: null };
-                    }
-                    return copy;
-                });
-            }
+        const draggingFieldId = e.dataTransfer.getData('field-id');
+        if (draggingFieldId) {
+            setFields((prev) => prev.map((f) => 
+                f.id === draggingFieldId ? { ...f, groupId, parentGroupKey: null } : f
+            ));
         }
     };
 
@@ -178,6 +171,23 @@ export default function Canvas({
         if (source === 'palette') {
             const fieldType = e.dataTransfer.getData('fieldType') || e.dataTransfer.getData('application/x-field-type');
             if (fieldType) addField(fieldType, null);
+        } else if (source === 'canvas') {
+            // Dragged out of a group onto the main canvas background
+            const fromIndex = parseInt(e.dataTransfer.getData('dragIndex'), 10);
+            if (!isNaN(fromIndex)) {
+                setFields((prev) => {
+                    const copy = [...prev];
+                    if (copy[fromIndex]) {
+                        // Remove from group and move to the end of top-level
+                        const [moved] = copy.splice(fromIndex, 1);
+                        moved.groupId = null;
+                        moved.parentGroupKey = null;
+                        copy.push(moved);
+                        return copy.map((f, i) => ({ ...f, fieldOrder: i }));
+                    }
+                    return prev;
+                });
+            }
         }
     };
 
@@ -189,15 +199,21 @@ export default function Canvas({
 
     // ── Card drag (REORDER) ───────────────────────────────────────────────────
 
-    const handleCardDragStart = (e, fieldOrIndex) => {
-        const index = typeof fieldOrIndex === 'number'
-            ? fieldOrIndex
-            : fields.findIndex((f) => f.id === fieldOrIndex.id || f.fieldKey === fieldOrIndex.fieldKey);
+    const handleCardDragStart = (e, item, isGroup = false) => {
+        if (isGroup) {
+            e.dataTransfer.setData('source', 'canvas-group');
+            e.dataTransfer.setData('application/x-group-id', item.id);
+            e.dataTransfer.effectAllowed = 'move';
+            setDraggingIndex('group-' + item.id);
+            return;
+        }
+
         e.dataTransfer.setData('source', 'canvas');
-        e.dataTransfer.setData('dragIndex', String(index));
-        e.dataTransfer.setData('application/x-field-index', String(index));
+        e.dataTransfer.setData('field-id', item.id);
         e.dataTransfer.effectAllowed = 'move';
-        setDraggingIndex(index);
+        // Use a stable identifier for draggingIndex state
+        const fieldIndex = fields.findIndex(f => f.id === item.id);
+        setDraggingIndex(fieldIndex);
     };
 
     const handleCardDragOver = (e, index) => {
@@ -214,28 +230,63 @@ export default function Canvas({
         e.dataTransfer.dropEffect = 'move';
     };
 
-    const handleCardDrop = (e, toIndex, targetGroupId = null) => {
+    const handleCardDrop = (e, toVisualIndex, targetGroupId = null) => {
         e.preventDefault();
         e.stopPropagation();
         const source = e.dataTransfer.getData('source');
-        const fromIndex = parseInt(e.dataTransfer.getData('dragIndex'), 10);
 
         if (source === 'palette') {
             const fieldType = e.dataTransfer.getData('fieldType') || e.dataTransfer.getData('application/x-field-type');
             if (fieldType) addField(fieldType, targetGroupId);
-        } else if (source === 'canvas' && !isNaN(fromIndex) && fromIndex !== toIndex) {
-            setFields((prev) => {
-                const copy = [...prev];
-                const [moved] = copy.splice(fromIndex, 1);
-                const insertAt = fromIndex < toIndex && dropPos === 'top' ? toIndex - 1 : toIndex;
-                // If dropping into a group, set the groupId
-                if (targetGroupId !== undefined && targetGroupId !== null) {
-                    moved.groupId = targetGroupId;
-                    moved.parentGroupKey = null;
-                }
-                copy.splice(insertAt, 0, moved);
-                return copy.map((f, i) => ({ ...f, fieldOrder: i }));
-            });
+        } else if (source === 'canvas' || source === 'canvas-group') {
+            // Build the current visual list of top-level items
+            const currentTopItems = [
+                ...fields.filter(f => !f.groupId).map(f => ({ type: 'field', id: f.id, order: f.fieldOrder ?? 0 })),
+                ...groups.map(g => ({ type: 'group', id: g.id, order: g.groupOrder ?? 0 }))
+            ].sort((a, b) => a.order - b.order);
+
+            let fromVisualIndex = -1;
+            if (source === 'canvas') {
+                const draggingFieldId = e.dataTransfer.getData('field-id');
+                fromVisualIndex = currentTopItems.findIndex(item => item.type === 'field' && item.id === draggingFieldId);
+            } else {
+                const movingGroupId = e.dataTransfer.getData('application/x-group-id');
+                fromVisualIndex = currentTopItems.findIndex(item => item.type === 'group' && item.id === movingGroupId);
+            }
+
+            if (fromVisualIndex !== -1 && fromVisualIndex !== toVisualIndex) {
+                const [moved] = currentTopItems.splice(fromVisualIndex, 1);
+                
+                // Calculate correct insertion point in the merged list
+                let insertAt = toVisualIndex;
+                if (fromVisualIndex < toVisualIndex && dropPos === 'top') insertAt = toVisualIndex - 1;
+                if (fromVisualIndex > toVisualIndex && dropPos === 'bottom') insertAt = toVisualIndex + 1;
+                
+                currentTopItems.splice(insertAt, 0, moved);
+
+                // Now sync orders back to both states
+                const newFieldOrders = {};
+                const newGroupOrders = {};
+                currentTopItems.forEach((item, i) => {
+                    if (item.type === 'field') newFieldOrders[item.id] = i;
+                    else newGroupOrders[item.id] = i;
+                });
+
+                setFields(prev => prev.map(f => {
+                    if (f.groupId) return f; // child fields keep their order relative to group
+                    const newOrder = newFieldOrders[f.id];
+                    return newOrder !== undefined ? { ...f, fieldOrder: newOrder, groupId: targetGroupId || null, parentGroupKey: null } : f;
+                }));
+
+                setGroups(prev => prev.map(g => {
+                    const newOrder = newGroupOrders[g.id];
+                    return newOrder !== undefined ? { ...g, groupOrder: newOrder } : g;
+                }));
+            } else if (fromVisualIndex !== -1 && source === 'canvas' && targetGroupId) {
+                // Moving into a group 
+                const draggingFieldId = e.dataTransfer.getData('field-id');
+                setFields(prev => prev.map((f) => f.id === draggingFieldId ? { ...f, groupId: targetGroupId, parentGroupKey: null } : f));
+            }
         }
 
         setDropIndex(null);
@@ -313,26 +364,30 @@ export default function Canvas({
                                     onFieldDrop={handleCardDrop}
                                     onDropFieldIntoGroup={handleDropFieldIntoGroup}
                                     onConfigureRules={(g) => setEditGroupConfig(g)}
+                                    // Header reordering props
+                                    onGroupDragStart={(e) => handleCardDragStart(e, group, true)}
+                                    onGroupDragOver={(e) => handleCardDragOver(e, idx)}
+                                    onGroupDrop={(e) => handleCardDrop(e, idx)}
+                                    dropPosition={dropIndex === idx && draggingIndex !== 'group-' + group.id ? dropPos : null}
                                 />
                             );
                         }
 
                         // Regular field card
                         const field = item.data;
-                        const fieldIndex = fields.findIndex((f) => f.id === field.id);
                         return (
                             <FieldCard
                                 key={field.id}
                                 field={field}
-                                index={fieldIndex}
+                                index={idx} // Using the visual index here
                                 onEdit={(f) => f.isStatic ? setEditStaticField(f) : setEditField(f)}
                                 onRemove={removeField}
-                                onDragStart={handleCardDragStart}
-                                onDragOver={handleCardDragOver}
-                                onDrop={handleCardDrop}
+                                onDragStart={(e) => handleCardDragStart(e, field, false)} // Pass the whole field object
+                                onDragOver={(e) => handleCardDragOver(e, idx)}
+                                onDrop={(e) => handleCardDrop(e, idx)}
                                 onDragEnd={handleCardDragEnd}
-                                isDragging={draggingIndex === fieldIndex}
-                                dropPosition={dropIndex === fieldIndex ? dropPos : null}
+                                isDragging={draggingIndex === idx}
+                                dropPosition={dropIndex === idx && draggingIndex !== idx ? dropPos : null}
                             />
                         );
                     })

@@ -25,13 +25,6 @@ public interface FormJpaRepository extends JpaRepository<FormEntity, UUID> {
     @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.createdBy = :owner AND f.softDeleted = false ORDER BY f.createdAt DESC")
     List<FormEntity> findAllByCreatedByOrderByCreatedAtDesc(@Param("owner") String owner);
 
-    /**
-     * Returns all non-deleted PUBLISHED forms (for Role Administrator view).
-     */
-    @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields " +
-           "WHERE f.softDeleted = false AND f.status = 'PUBLISHED' " +
-           "ORDER BY f.createdAt DESC")
-    List<FormEntity> findPublishedPublicForms();
 
     /**
      * Returns all non-deleted PUBLISHED forms.
@@ -42,16 +35,6 @@ public interface FormJpaRepository extends JpaRepository<FormEntity, UUID> {
            "ORDER BY f.createdAt DESC")
     List<FormEntity> findPublishedAccessibleForms();
 
-    /**
-     * Returns own forms (any status) + PUBLISHED PUBLIC/RESTRICTED forms by others.
-     * For Builder role.
-     */
-    @Query("SELECT DISTINCT f FROM FormEntity f LEFT JOIN FETCH f.fields " +
-           "WHERE f.softDeleted = false AND (" +
-           "  f.createdBy = :owner " +
-           "  OR (f.status = 'PUBLISHED' AND f.visibility IN ('PUBLIC', 'RESTRICTED'))" +
-           ") ORDER BY f.createdAt DESC")
-    List<FormEntity> findFormsForBuilder(@Param("owner") String owner);
 
     /** Find active form by ID with fields eagerly loaded. */
     @Query("SELECT f FROM FormEntity f LEFT JOIN FETCH f.fields WHERE f.id = :id AND f.softDeleted = false")

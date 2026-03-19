@@ -27,11 +27,6 @@ public class FormDTO {
     @Valid
     private List<GroupDTO> groups;
 
-    /**
-     * Form visibility: PUBLIC, RESTRICTED, PRIVATE.
-     * Defaults to PUBLIC if not specified.
-     */
-    private String visibility;
 
     /**
      * Explicit users allowed to see this form.

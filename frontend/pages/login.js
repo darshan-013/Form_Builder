@@ -51,7 +51,7 @@ export default function LoginPage() {
             </Head>
 
             <div className="auth-page">
-                <div className="auth-card animate-in">
+                <div className="auth-card animate-scale-in">
                     {/* Brand */}
                     <div className="auth-logo">
                         <div className="auth-logo-icon">⚡</div>

@@ -18,6 +18,10 @@ export default function GroupContainer({
     onFieldDrop,
     onDropFieldIntoGroup,
     onConfigureRules,
+    onGroupDragStart,
+    onGroupDragOver,
+    onGroupDrop,
+    dropPosition,
 }) {
     const [collapsed, setCollapsed] = useState(false);
     const [editingTitle, setEditingTitle] = useState(false);
@@ -30,18 +34,17 @@ export default function GroupContainer({
         setEditingTitle(false);
     };
 
-    const handleDragStart = (e) => {
-        e.dataTransfer.setData('application/x-group-id', group.id);
-        e.dataTransfer.effectAllowed = 'move';
-    };
 
     const handleDragOver = (e) => {
         e.preventDefault();
         e.stopPropagation();
         // Accept field drops (from palette or canvas)
-        if (e.dataTransfer.types.includes('application/x-field-type') ||
-            e.dataTransfer.types.includes('application/x-field-index')) {
-            e.dataTransfer.dropEffect = 'move';
+        const types = e.dataTransfer.types;
+        if (types.includes('application/x-field-type') || 
+            types.includes('application/x-field-index') ||
+            types.includes('fieldType') ||
+            types.includes('dragIndex')) {
+            e.dataTransfer.dropEffect = 'copy';
             setDragOver(true);
         }
     };
@@ -62,9 +65,11 @@ export default function GroupContainer({
 
     return (
         <div
-            className={`group-container ${dragOver ? 'group-container--drag-over' : ''}`}
+            className={`group-container ${dragOver ? 'group-container--drag-over' : ''} ${dropPosition === 'top' ? 'drag-over-top' : ''} ${dropPosition === 'bottom' ? 'drag-over-bottom' : ''}`}
             draggable
-            onDragStart={handleDragStart}
+            onDragStart={onGroupDragStart}
+            onDragOver={onGroupDragOver}
+            onDrop={onGroupDrop}
         >
             {/* ── Header ──────────────────────────────────────────────────── */}
             <div className="group-container-header">

@@ -62,7 +62,6 @@ public class FormController {
             map.put("description", form.getDescription());
             map.put("tableName", form.getTableName());
             map.put("status", form.getStatus());
-            map.put("visibility", form.getVisibility());
             map.put("allowedUsers", form.getAllowedUsers());
             map.put("createdBy", form.getCreatedBy());
             map.put("assignedBuilderId", form.getAssignedBuilderId());
@@ -161,13 +160,24 @@ public class FormController {
         }).collect(Collectors.joining(" -> "));
         map.put("currentFlowView", currentFlowView);
 
+        // Add currentApproverId for frontend redirection logic
+        WorkflowStep currentStep = ordered.stream()
+                .filter(s -> Objects.equals(s.getStepIndex(), wf.getCurrentStepIndex()))
+                .findFirst()
+                .orElse(null);
+        if (currentStep != null) {
+            map.put("currentApproverId", currentStep.getApprover().getId());
+        }
+
         return map;
     }
 
     /** Single form with static fields bundled — used by builder edit page. */
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> getById(@PathVariable UUID id) {
-        FormEntity form = formService.getFormById(id);
+    public ResponseEntity<Map<String, Object>> getById(@PathVariable UUID id, Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
+        FormEntity form = formService.getFormForAction(id, auth.getName(), isAdmin);
         List<StaticFormFieldEntity> statics = formService.getStaticFields(id);
 
         // Convert statics to simple maps for JSON response
@@ -188,7 +198,6 @@ public class FormController {
         response.put("description", form.getDescription());
         response.put("tableName", form.getTableName());
         response.put("status", form.getStatus());
-        response.put("visibility", form.getVisibility());
         response.put("allowedUsers", form.getAllowedUsers());
         response.put("createdBy", form.getCreatedBy());
         response.put("assignedBuilderId", form.getAssignedBuilderId());
@@ -251,26 +260,23 @@ public class FormController {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
         boolean isRoleAdmin = roles.contains(ROLE_ROLE_ADMIN);
-        boolean isManager = roles.contains("Manager");
-        boolean isApprover = roles.contains("Approver");
 
-        if (isAdmin || isRoleAdmin || isManager || isApprover) {
-            // Non-deleted only (findByIdWithFields)
+        if (isAdmin || isRoleAdmin) {
+            // Admin can preview any non-deleted form
             formService.getFormById(id);
         } else {
-            // Allow if owner OR involved in an active workflow
-            boolean isOwner = false;
-            try {
-                formService.getOwnedFormById(id, auth.getName());
-                isOwner = true;
-            } catch (Exception ignored) {
-            }
+            // Non-admins (Manager, Approver, Builder, Viewer) can only preview forms they are involved in
+            FormEntity form = formService.getFormById(id);
+            boolean isOwner = auth.getName().equalsIgnoreCase(form.getCreatedBy());
+            boolean isAssignedBuilder = auth.getName().equalsIgnoreCase(form.getAssignedBuilderUsername());
+            
+            Integer userId = (Integer) session.getAttribute("USER_ID");
+            boolean isInvolved = userId != null && workflowService.isUserInvolvedInActiveWorkflow(id, userId);
 
-            if (!isOwner) {
-                Integer userId = (Integer) session.getAttribute("USER_ID");
-                boolean isInvolved = userId != null && workflowService.isUserInvolvedInActiveWorkflow(id, userId);
-                if (!isInvolved) {
-                    formService.getOwnedFormById(id, auth.getName()); // Throws 404/403
+            if (!isOwner && !isAssignedBuilder && !isInvolved) {
+                // Secondary check: Explicit granular access
+                if (!formService.hasExplicitUserAccess(form, auth.getName(), userId)) {
+                    throw new NoSuchElementException("Form not found or access denied: " + id);
                 }
             }
         }
@@ -465,8 +471,8 @@ public class FormController {
         }
 
         List<Map<String, Object>> users = userRoleService.getAllUsersLite().stream()
-                .map(this::toVisibilityUserSummary)
-                .toList();
+           .map(this::toVisibilityUserSummary)
+           .toList();
 
         return ResponseEntity.ok(Map.of("users", users));
     }

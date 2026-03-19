@@ -136,8 +136,12 @@ export default function UsersPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filtered.map(user => (
-                                        <tr key={user.id}>
+                                    {filtered.map((user, idx) => (
+                                        <tr 
+                                            key={user.id}
+                                            className="animate-fade-in stagger-item"
+                                            style={{ animationDelay: `${idx * 0.05}s` }}
+                                        >
                                             <td data-label="User">
                                                 <div className="user-name-cell">
                                                     <div className="user-avatar">

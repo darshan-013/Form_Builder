@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
@@ -7,9 +8,23 @@ import { toastError } from '../../services/toast';
 import WorkflowDiagram from '../../components/workflows/WorkflowDiagram';
 
 export default function WorkflowStatusPage() {
+    const router = useRouter();
+    const { workflowId: queryWorkflowId } = router.query;
+    
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [category, setCategory] = useState('ALL');
+    const [focusedId, setFocusedId] = useState(null);
+
+    useEffect(() => {
+        const stored = sessionStorage.getItem('focusedWorkflowId');
+        if (stored) {
+            setFocusedId(stored);
+            sessionStorage.removeItem('focusedWorkflowId');
+        } else if (queryWorkflowId) {
+            setFocusedId(queryWorkflowId);
+        }
+    }, [queryWorkflowId]);
 
     useEffect(() => {
         getMyWorkflowStatus()
@@ -19,9 +34,13 @@ export default function WorkflowStatusPage() {
     }, []);
 
     const filteredRows = useMemo(() => {
-        if (category === 'ALL') return rows;
-        return rows.filter((r) => String(r.status || '').toUpperCase() === category);
-    }, [rows, category]);
+        let list = rows;
+        if (focusedId) {
+            list = list.filter(r => String(r.workflowId) === String(focusedId));
+        }
+        if (category === 'ALL') return list;
+        return list.filter((r) => String(r.status || '').toUpperCase() === category);
+    }, [rows, category, focusedId]);
 
     function buildSteps(row) {
         const total = Number(row?.totalSteps || 0);
@@ -89,8 +108,11 @@ export default function WorkflowStatusPage() {
                     </div>
                 ) : (
                     <div className="workflow-status-grid">
-                        {filteredRows.map((r) => (
-                            <div key={r.workflowId} className="form-card workflow-status-card">
+                        {filteredRows.map((r, i) => (
+                            <div key={r.workflowId} 
+                                className="form-card workflow-status-card animate-slide-up stagger-item hover-premium"
+                                style={{ animationDelay: `${i * 0.08}s` }}
+                            >
                                 <div className="form-card-header workflow-card-head">
                                     <div>
                                         <div className="form-card-name" style={{ marginBottom: 2 }}>{r.formName}</div>

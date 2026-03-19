@@ -1,0 +1,66 @@
+/* ── Premium Admin Tables ──────────────────────────────────── */
+.users-table, .roles-table, .admin-table {
+  border-collapse: separate !important;
+  border-spacing: 0 8px !important;
+  background: transparent !important;
+}
+
+.users-table thead th, .roles-table thead th, .admin-table thead th {
+  background: transparent !important;
+  border: none !important;
+  padding: 12px 24px !important;
+  font-size: 0.75rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  color: var(--text-muted) !important;
+}
+
+.users-table tbody tr, .roles-table tbody tr, .admin-table tbody tr {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.users-table tbody td, .roles-table tbody td, .admin-table tbody td {
+  padding: 16px 24px !important;
+  border-top: 1px solid var(--border) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.users-table tbody td:first-child, .roles-table tbody td:first-child, .admin-table tbody td:first-child {
+  border-left: 1px solid var(--border) !important;
+  border-top-left-radius: 16px !important;
+  border-bottom-left-radius: 16px !important;
+}
+
+.users-table tbody td:last-child, .roles-table tbody td:last-child, .admin-table tbody td:last-child {
+  border-right: 1px solid var(--border) !important;
+  border-top-right-radius: 16px !important;
+  border-bottom-right-radius: 16px !important;
+}
+
+/* Interactive Table Rows */
+.users-table tbody tr:hover, .roles-table tbody tr:hover, .admin-table tbody tr:hover {
+  transform: translateY(-2px) scale(1.005) !important;
+  background: var(--bg-card-hover) !important;
+  border-color: var(--accent-soft) !important;
+  box-shadow: var(--shadow-glow) !important;
+  z-index: 10;
+  position: relative;
+}
+
+/* Specific Admin Tool refinements */
+.mapping-grid .content-card, .admin-modules .content-card {
+  border-radius: 24px !important;
+  backdrop-filter: blur(12px) !important;
+  background: rgba(var(--bg-card-rgb, 20, 20, 25), 0.8) !important;
+}
+
+/* Row entrance animations */
+.users-table tr, .roles-table tr, .admin-table tr {
+  opacity: 0;
+}
+.users-table tr.animate-fade-in, .roles-table tr.animate-fade-in, .admin-table tr.animate-fade-in {
+  opacity: 1;
+}

@@ -26,7 +26,6 @@ public interface WorkflowStepRepository extends JpaRepository<WorkflowStep, Long
             "WHERE ws.approver.id = :approverId " +
             "AND ws.status = 'PENDING' " +
             "AND wi.status = 'ACTIVE' " +
-            "AND ws.stepIndex = wi.currentStepIndex " +
             "ORDER BY wi.updatedAt DESC")
     List<WorkflowStep> findMyPendingSteps(@Param("approverId") Integer approverId);
 

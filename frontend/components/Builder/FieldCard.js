@@ -62,8 +62,8 @@ export default function FieldCard({
                     <div className="page-break-card-line" />
                 </div>
                 <div className="field-card-actions">
-                    <button className="field-action-btn edit" onClick={() => onEdit(field)} title="Configure">✎</button>
-                    <button className="field-action-btn remove" onClick={() => onRemove(field.id)} title="Remove">✕</button>
+                    <button className="field-action-btn edit" onClick={(e) => { e.stopPropagation(); onEdit(field); }} title="Configure">✎</button>
+                    <button className="field-action-btn remove" onClick={(e) => { e.stopPropagation(); onRemove(field.id); }} title="Remove">✕</button>
                 </div>
             </div>
         );
@@ -78,6 +78,7 @@ export default function FieldCard({
             onDragOver={(e) => onDragOver(e, index)}
             onDrop={(e) => onDrop(e, index)}
             onDragEnd={onDragEnd}
+            onClick={() => onEdit(field)}
         >
             {/* Drag handle */}
             <span className="field-card-drag-handle" title="Drag to reorder">⠿</span>
@@ -106,9 +107,10 @@ export default function FieldCard({
 
             {/* Actions */}
             <div className="field-card-actions">
-                <button className="field-action-btn edit" onClick={() => onEdit(field)} title="Configure">✎</button>
-                <button className="field-action-btn remove" onClick={() => onRemove(field.id)} title="Remove">✕</button>
+                <button className="field-action-btn edit" onClick={(e) => { e.stopPropagation(); onEdit(field); }} title="Configure">✎</button>
+                <button className="field-action-btn remove" onClick={(e) => { e.stopPropagation(); onRemove(field.id); }} title="Remove">✕</button>
             </div>
         </div>
     );
 }
+
