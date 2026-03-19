@@ -1,3 +1,4 @@
+/*
 -- =============================================================
 --  Dynamic Form Builder — Users / Auth Schema
 --  PostgreSQL 17
@@ -32,3 +33,4 @@ CREATE TABLE IF NOT EXISTS authorities (
 
 COMMENT ON TABLE users       IS 'Admin accounts managed by Spring Security JdbcUserDetailsManager.'^
 COMMENT ON TABLE authorities IS 'Roles/permissions per user. Spring Security reads this via UserDetailsService.'^
+*/

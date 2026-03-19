@@ -1,3 +1,4 @@
+/*
 -- Migration script to add options_json column to existing form_fields table
 -- Run this manually if the table already exists
 
@@ -15,4 +16,5 @@ CHECK (field_type IN ('text', 'number', 'date', 'boolean', 'dropdown', 'radio', 
 
 -- Add comment
 COMMENT ON COLUMN form_fields.options_json IS 'JSON array of options for dropdown/radio fields (e.g., ["Option 1", "Option 2"])';
+*/
 
