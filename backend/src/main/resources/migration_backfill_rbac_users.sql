@@ -1,3 +1,4 @@
+/*
 -- =============================================================
 --  RBAC Backfill Migration
 --  Date: 2026-03-12
@@ -31,3 +32,4 @@ WHERE r.role_name = 'Viewer'
       SELECT 1 FROM user_roles ur WHERE ur.user_id = ru.id
   )
 ON CONFLICT (user_id, role_id) DO NOTHING^
+*/

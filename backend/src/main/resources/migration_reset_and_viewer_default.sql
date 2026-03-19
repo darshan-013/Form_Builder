@@ -1,3 +1,4 @@
+/*
 -- =============================================================
 --  RESET MIGRATION — Clean Slate + Viewer Default
 --  Date: 2026-03-12
@@ -54,3 +55,4 @@ BEGIN
     INSERT INTO _migration_flags (flag_name) VALUES ('reset_viewer_default_v1');
 END;
 $$^
+*/

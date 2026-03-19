@@ -1,3 +1,4 @@
+/*
 -- =====================================================
 -- MIGRATION — formbuilder DB
 -- Run in pgAdmin → Query Tool against: formbuilder
@@ -39,3 +40,4 @@ SELECT tablename
 FROM pg_tables
 WHERE schemaname = 'public'
 ORDER BY tablename;
+*/
