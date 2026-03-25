@@ -32,15 +32,19 @@ public class Module {
     private String iconCss;
 
     @Column(name = "is_parent")
+    @Builder.Default
     private Boolean isParent = false;
 
     @Column(name = "is_sub_parent")
+    @Builder.Default
     private Boolean isSubParent = false;
 
     @Column(name = "active")
+    @Builder.Default
     private Boolean active = true;
 
     @Column(name = "is_deleted")
+    @Builder.Default
     private Boolean isDeleted = false;
 
     @ManyToOne(fetch = FetchType.LAZY)

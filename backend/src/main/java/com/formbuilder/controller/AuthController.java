@@ -37,11 +37,14 @@ public class AuthController {
     @Transactional
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest req) {
 
-        if (userRepo.existsByUsername(req.getUsername())) {
+        String username = req.getUsername().trim();
+        String email = req.getEmail().trim();
+
+        if (userRepo.existsByUsername(username)) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Username already taken"));
         }
-        if (userRepo.existsByEmail(req.getEmail().trim())) {
+        if (userRepo.existsByEmail(email)) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Email already in use"));
         }
@@ -90,6 +93,7 @@ public class AuthController {
                     response.put("userId", rbacUser.getId());
                     response.put("name", rbacUser.getName());
                     response.put("email", rbacUser.getEmail());
+                    response.put("profilePic", rbacUser.getProfilePic());
 
                     response.put("roles", rbacUser.getRoles().stream()
                             .sorted(Comparator.comparing(Role::getRoleName))

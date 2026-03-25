@@ -5,8 +5,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.validation.constraints.NotBlank;
@@ -15,7 +15,7 @@ import jakarta.validation.constraints.Size;
 
 /**
  * JPA entity for the fixed 'forms' metadata table.
- * Submission data is stored in a SEPARATE dynamic table (form_<name>_<id>)
+ * Submission data is stored in a SEPARATE dynamic table (form_data_<form_code>)
  * managed by DynamicTableService — NOT by Hibernate.
  */
 @Entity
@@ -24,8 +24,8 @@ import jakarta.validation.constraints.Size;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = "fields")
-@ToString(exclude = "fields")
+@EqualsAndHashCode(exclude = "versions")
+@ToString(exclude = "versions")
 public class FormEntity {
 
     /** Lifecycle status stored as VARCHAR in DB. */
@@ -37,7 +37,6 @@ public class FormEntity {
         PUBLISHED
     }
 
-
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false, nullable = false, columnDefinition = "UUID")
@@ -47,6 +46,11 @@ public class FormEntity {
     @NotBlank(message = "Form name cannot be blank")
     @Size(max = 150, message = "Form name must not exceed 150 characters")
     private String name;
+
+    @Column(name = "form_code", nullable = false, unique = true, length = 50)
+    @NotBlank(message = "Form code cannot be blank")
+    @Size(max = 50, message = "Form code must not exceed 50 characters")
+    private String formCode;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
@@ -67,7 +71,6 @@ public class FormEntity {
     @NotNull(message = "Form status cannot be null")
     @Builder.Default
     private FormStatus status = FormStatus.DRAFT;
-
 
     /**
      * JSON array of explicit user access entries.
@@ -128,14 +131,35 @@ public class FormEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    // ── Relationship ────────────────────────────────────────────────────────
-    // CascadeType.ALL + orphanRemoval = JPA owns field lifecycle.
-    // DynamicTableService owns the DDL lifecycle separately.
-    @OneToMany(mappedBy = "form", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @OrderBy("fieldOrder ASC")
-    @JsonManagedReference
+    @OneToMany(mappedBy = "form", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @Builder.Default
-    private List<FormFieldEntity> fields = new ArrayList<>();
+    @com.fasterxml.jackson.annotation.JsonManagedReference
+    private List<FormVersionEntity> versions = new ArrayList<>();
+
+    // Helper to get active version (latest if multiple exist)
+    public Optional<FormVersionEntity> getActiveVersion() {
+        return versions.stream()
+                .filter(v -> !v.isSoftDeleted())
+                .filter(FormVersionEntity::isActive)
+                .max(Comparator.comparingInt(FormVersionEntity::getVersionNumber));
+    }
+
+    // Alias for backward compatibility with existing code
+    public Optional<FormVersionEntity> getPublishedVersion() {
+        return getActiveVersion();
+    }
+
+    // Helper to get draft (not active, latest version)
+    // Note: In our model, only one is active. All others are DRAFTs.
+    // Requirement 4: activación generates activation of new version, discard of
+    // drafts.
+    // Helper to get draft (status = DRAFT)
+    public Optional<FormVersionEntity> getDraftVersion() {
+        return versions.stream()
+                .filter(v -> !v.isSoftDeleted())
+                .filter(v -> v.getStatus() == FormVersionEntity.FormVersionStatus.DRAFT)
+                .max(Comparator.comparingInt(FormVersionEntity::getVersionNumber));
+    }
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
 

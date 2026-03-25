@@ -1,14 +1,19 @@
 package com.formbuilder.service;
 
 import com.formbuilder.entity.FormFieldEntity;
+import com.formbuilder.exception.SchemaDriftException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Set;
+import java.util.HashSet;
 
 /**
  * Core DDL service — creates / alters / drops the physical submission table
@@ -33,16 +38,18 @@ public class DynamicTableService {
     private static final Map<String, String> SQL_TYPE = Map.ofEntries(
             Map.entry("text", "TEXT"),
             Map.entry("number", "INTEGER"),
+            Map.entry("decimal", "NUMERIC"), // New support for NUMERIC type
+            Map.entry("numeric", "NUMERIC"), // New support for NUMERIC type
             Map.entry("date", "DATE"),
             Map.entry("boolean", "BOOLEAN"),
-            Map.entry("dropdown", "TEXT"), // Changed from VARCHAR(255) to TEXT to support JSON arrays
+            Map.entry("dropdown", "TEXT"),
             Map.entry("radio", "VARCHAR(255)"),
             Map.entry("multiple_choice", "TEXT"),
             Map.entry("linear_scale", "INTEGER"),
             Map.entry("file", "TEXT"),
             Map.entry("multiple_choice_grid", "TEXT"),
-            Map.entry("star_rating", "INTEGER"), // 1–5 stars, stored as integer
-            Map.entry("checkbox_grid", "TEXT") // JSON {"Row":["ColA","ColB"]}
+            Map.entry("star_rating", "INTEGER"),
+            Map.entry("checkbox_grid", "TEXT")
     );
 
     private final JdbcTemplate jdbc;
@@ -50,21 +57,17 @@ public class DynamicTableService {
     // ── Table Name Generation ─────────────────────────────────────────────────
 
     /**
-     * Converts a human-readable form name to a safe PostgreSQL table name.
-     * Format: form_<sanitized>_<6-char-hex>
+     * Converts a human-readable form name or code to a safe PostgreSQL table name.
+     * Format: form_data_<form_code>
      */
-    public String generateTableName(String formName) {
-        String sanitized = formName.toLowerCase()
-                .replaceAll("[^a-z0-9]+", "_") // replace non-alphanumeric runs with _
-                .replaceAll("^_+|_+$", ""); // trim leading/trailing underscores
-        if (sanitized.length() > 20) {
-            sanitized = sanitized.substring(0, 20);
-        }
+    public String generateTableName(String formCode) {
+        String sanitized = formCode.toLowerCase()
+                .replaceAll("[^a-z0-9]+", "_")
+                .replaceAll("^_+|_+$", "");
         if (sanitized.isEmpty()) {
-            sanitized = "form";
+            sanitized = "generic_form";
         }
-        String shortId = UUID.randomUUID().toString().replace("-", "").substring(0, 6);
-        return "form_" + sanitized + "_" + shortId;
+        return "form_data_" + sanitized;
     }
 
     // ── Public DDL API ────────────────────────────────────────────────────────
@@ -78,11 +81,12 @@ public class DynamicTableService {
         String create = """
                 CREATE TABLE %s (
                     id              UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+                    form_version_id UUID      NOT NULL,
                     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
                     updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+                    is_draft        BOOLEAN   NOT NULL DEFAULT TRUE,
                     is_soft_deleted BOOLEAN   NOT NULL DEFAULT FALSE,
                     deleted_at      TIMESTAMP,
-                    status          VARCHAR(20) NOT NULL DEFAULT 'DRAFTED',
                     user_id         VARCHAR(255)
                 )
                 """.formatted(q(tableName));
@@ -103,12 +107,14 @@ public class DynamicTableService {
     public void addDraftColumnsIfMissing(String tableName) {
         try {
             jdbc.execute("ALTER TABLE " + q(tableName) +
-                    " ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'DRAFTED'");
+                    " ADD COLUMN IF NOT EXISTS form_version_id UUID");
+            jdbc.execute("ALTER TABLE " + q(tableName) +
+                    " ADD COLUMN IF NOT EXISTS is_draft BOOLEAN NOT NULL DEFAULT TRUE");
             jdbc.execute("ALTER TABLE " + q(tableName) +
                     " ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)");
-            log.debug("Draft columns ensured for table: {}", tableName);
+            log.debug("Standard columns ensured for table: {}", tableName);
         } catch (Exception e) {
-            log.warn("Could not add draft columns to {}: {}", tableName, e.getMessage());
+            log.warn("Could not add standard columns to {}: {}", tableName, e.getMessage());
         }
     }
 
@@ -140,6 +146,10 @@ public class DynamicTableService {
         jdbc.execute(sql);
     }
 
+    public void addColumnIfMissing(String tableName, String fieldKey, String fieldType) {
+        addColumn(tableName, fieldKey, fieldType);
+    }
+
     /** ALTER TABLE <tableName> DROP COLUMN <fieldKey> */
     public void dropColumn(String tableName, String fieldKey) {
         String sql = "ALTER TABLE " + q(tableName) + " DROP COLUMN IF EXISTS " + q(fieldKey);
@@ -168,6 +178,81 @@ public class DynamicTableService {
         jdbc.execute(sql);
     }
 
+    /**
+     * S1 — Draft deletion logic.
+     * 1. Query form_submission_meta to find linked rows in dynamic tables.
+     * 2. Delete linked dynamic rows.
+     * 3. Delete meta rows.
+     */
+    @Transactional
+    public void deleteAllDrafts(UUID formId) {
+        String queryMeta = "SELECT id, submission_table, submission_row_id FROM form_submission_meta " +
+                           "WHERE form_id = ? AND status = 'DRAFT'";
+        List<Map<String, Object>> drafts = jdbc.queryForList(queryMeta, formId);
+
+        for (Map<String, Object> draft : drafts) {
+            String rawTable = (String) draft.get("submission_table");
+            UUID rowId = (UUID) draft.get("submission_row_id");
+            
+            // System Rule: Use String.format() with pre-validated table names only
+            String sqlDeleteData = String.format("DELETE FROM %s WHERE id = ?", q(rawTable));
+            jdbc.update(sqlDeleteData, rowId);
+        }
+
+        String sqlDeleteMeta = "DELETE FROM form_submission_meta WHERE form_id = ? AND status = 'DRAFT'";
+        jdbc.update(sqlDeleteMeta, formId);
+        log.info("S1: Cleaned up {} drafts for formId={}", drafts.size(), formId);
+    }
+
+    /**
+     * S2 — Passive drift detection (Decision 4.3).
+     * Throws SchemaDriftException if metadata and physical schema disagree.
+     */
+    public void validateSchema(String tableName, UUID versionId) {
+        // 1. Get metadata fields
+        List<Map<String, Object>> metadataFields = jdbc.queryForList(
+                "SELECT field_key FROM form_fields WHERE form_version_id = ?", versionId);
+
+        // 2. Get actual columns
+        Set<String> actualColumns = new HashSet<>(jdbc.queryForList(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+                String.class, tableName));
+
+        for (Map<String, Object> field : metadataFields) {
+            String fieldKey = (String) field.get("field_key");
+            if (!actualColumns.contains(fieldKey)) {
+                throw new SchemaDriftException(String.format(
+                    "Decision 4.3 Violation: Physical table '%s' is missing column '%s' required by version %s. Submission blocked.",
+                    tableName, fieldKey, versionId));
+            }
+        }
+    }
+
+    /**
+     * S3 — Integrity check queries.
+     * Query 1: Version mismatch between meta and data table.
+     */
+    public List<Map<String, Object>> checkVersionMismatches(String tableName) {
+        String sql = String.format(
+            "SELECT m.id as meta_id, m.form_version_id as meta_v, d.form_version_id as data_v " +
+            "FROM form_submission_meta m " +
+            "JOIN %s d ON m.submission_row_id = d.id " +
+            "WHERE m.form_version_id != d.form_version_id", q(tableName));
+        return jdbc.queryForList(sql);
+    }
+
+    /**
+     * S3 — Integrity check queries.
+     * Query 2: Orphaned meta rows.
+     */
+    public List<Map<String, Object>> checkOrphanedMeta(String tableName) {
+        String sql = String.format(
+            "SELECT m.id, m.submission_row_id FROM form_submission_meta m " +
+            "LEFT JOIN %s d ON m.submission_row_id = d.id " +
+            "WHERE m.submission_table = ? AND d.id IS NULL", q(tableName));
+        return jdbc.queryForList(sql, tableName);
+    }
+
     /** Check whether a dynamic submission table exists in the database. */
     public boolean tableExists(String tableName) {
         Integer count = jdbc.queryForObject(
@@ -188,7 +273,9 @@ public class DynamicTableService {
         log.warn("Submission table '{}' missing — recreating from form_fields for formId={}", tableName, formId);
         // Fetch field definitions via JDBC (no JPA dependency)
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
-                "SELECT field_key, field_type FROM form_fields WHERE form_id = ? ORDER BY field_order ASC",
+                "SELECT DISTINCT field_key, field_type FROM form_fields ff " +
+                "JOIN form_versions fv ON ff.form_version_id = fv.id " +
+                "WHERE fv.form_id = ?",
                 formId);
         // Build minimal FormFieldEntity list for createTable()
         List<FormFieldEntity> fields = new java.util.ArrayList<>();

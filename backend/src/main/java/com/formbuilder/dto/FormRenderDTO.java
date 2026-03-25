@@ -16,6 +16,8 @@ import java.util.UUID;
 @Builder
 public class FormRenderDTO {
     private UUID formId;
+    private UUID formVersionId;
+    private int versionNumber;
     private String formName;
     private String formDescription;
     private List<RenderFieldDTO> fields;

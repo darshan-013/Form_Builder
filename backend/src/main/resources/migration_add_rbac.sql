@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS rbac_users (
     enabled     BOOLEAN       NOT NULL DEFAULT TRUE,
     name        VARCHAR(100),
     email       VARCHAR(150)  UNIQUE,
+    profile_pic VARCHAR(255),
     created_at  TIMESTAMP     NOT NULL DEFAULT NOW()
 )^
 

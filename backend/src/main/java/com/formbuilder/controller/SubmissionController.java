@@ -36,29 +36,28 @@ public class SubmissionController {
     private static final String UPLOAD_DIR = "uploads";
 
     /**
-     * Check form is PUBLISHED, not expired, and enforce single-submission if
-     * configured
+     * Check form is PUBLISHED, not expired, and enforce single-submission if configured.
+     * Throws typed exceptions to be handled by GlobalExceptionHandler for structured JSON.
      */
-    private ResponseEntity<?> checkPublishedAndSession(UUID id, HttpSession session) {
+    private void validateFormAccess(UUID id, HttpSession session) {
         FormEntity form = formService.getFormById(id);
+        
+        
         if (form.getStatus() != FormEntity.FormStatus.PUBLISHED) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "This form is not accepting submissions right now.", "status", form.getStatus().name()));
+            throw new IllegalStateException("This form is not accepting submissions right now.");
         }
+        
         // Expiry check
         if (form.getExpiresAt() != null && LocalDateTime.now().isAfter(form.getExpiresAt())) {
-            return ResponseEntity.status(HttpStatus.GONE)
-                    .body(Map.of("error", "This form has expired and is no longer accepting submissions."));
+            throw new IllegalStateException("This form has expired and is no longer accepting submissions.");
         }
+        
         if (!form.isAllowMultipleSubmissions()) {
             String sessionKey = "submitted_" + id;
             if (session.getAttribute(sessionKey) != null) {
-                return ResponseEntity.status(HttpStatus.CONFLICT)
-                        .body(Map.of("error", "You have already submitted this form. Only one submission is allowed."));
+                throw new IllegalStateException("You have already submitted this form. Only one submission is allowed.");
             }
-            session.setAttribute(sessionKey, Boolean.TRUE);
         }
-        return null;
     }
 
     /**
@@ -71,9 +70,7 @@ public class SubmissionController {
             HttpSession session,
             Authentication auth) {
 
-        ResponseEntity<?> guard = checkPublishedAndSession(id, session);
-        if (guard != null)
-            return guard;
+        validateFormAccess(id, session);
 
         Map<String, Object> data = new HashMap<>();
         if (rawBody != null) {
@@ -90,8 +87,21 @@ public class SubmissionController {
         log.info("JSON submit — form={} keys={}", id, data.keySet());
         log.debug("JSON submit data: {}", data);
 
+        // B2/B3: Finalize a specific submission (draft) if provided
+        UUID submissionId = null;
+        if (data.containsKey("submissionId")) {
+            submissionId = UUID.fromString(data.get("submissionId").toString());
+        } else if (data.containsKey("id")) {
+             submissionId = UUID.fromString(data.get("id").toString());
+        }
+
+        if (submissionId == null) {
+            // Path A: New submission. Version is resolved authoritatively in saveDraft
+            submissionId = submissionService.saveDraft(id, auth != null ? auth.getName() : null, data, null);
+        }
+
         submissionService.validate(id, data, null);
-        submissionService.finalizeSubmission(id, auth != null ? auth.getName() : null, data);
+        submissionService.finalizeSubmission(submissionId, auth != null ? auth.getName() : null, data);
 
         FormEntity form = formService.getFormById(id);
         String username = auth != null ? auth.getName() : "anonymous";
@@ -148,8 +158,15 @@ public class SubmissionController {
             }
         }
 
-        submissionService.saveDraft(id, auth.getName(), data);
-        return ResponseEntity.ok(Map.of("message", "Draft saved successfully", "timestamp", LocalDateTime.now()));
+        UUID submissionId = null;
+        if (data.containsKey("id")) {
+            submissionId = UUID.fromString(data.get("id").toString());
+        } else if (data.containsKey("submissionId")) {
+            submissionId = UUID.fromString(data.get("submissionId").toString());
+        }
+
+        UUID savedId = submissionService.saveDraft(id, auth.getName(), data, submissionId);
+        return ResponseEntity.ok(Map.of("message", "Draft saved successfully", "submissionId", savedId, "timestamp", LocalDateTime.now()));
     }
 
     /**
@@ -162,9 +179,7 @@ public class SubmissionController {
             HttpSession session,
             Authentication auth) {
 
-        ResponseEntity<?> guard = checkPublishedAndSession(id, session);
-        if (guard != null)
-            return guard;
+        validateFormAccess(id, session);
 
         Map<String, Object> data = new HashMap<>();
         Map<String, MultipartFile> files = new HashMap<>();
@@ -210,7 +225,19 @@ public class SubmissionController {
                     data.put(e.getKey(), saveFile(e.getValue()));
             }
 
-            submissionService.finalizeSubmission(id, auth != null ? auth.getName() : null, data);
+            // B2/B3: Finalize a specific submission (draft) if provided
+            UUID submissionId = null;
+            if (data.containsKey("submissionId")) {
+                submissionId = UUID.fromString(data.get("submissionId").toString());
+            } else if (data.containsKey("id")) {
+                 submissionId = UUID.fromString(data.get("id").toString());
+            }
+            
+            if (submissionId == null) {
+                submissionId = submissionService.saveDraft(id, auth != null ? auth.getName() : null, data, null);
+            }
+
+            submissionService.finalizeSubmission(submissionId, auth != null ? auth.getName() : null, data);
 
             FormEntity form = formService.getFormById(id);
             String username = auth != null ? auth.getName() : "anonymous";
@@ -259,9 +286,12 @@ public class SubmissionController {
 
     @GetMapping("/{id}/submissions")
     public ResponseEntity<List<Map<String, Object>>> getSubmissions(
-            @PathVariable UUID id, Authentication auth) {
+            @PathVariable UUID id,
+            @RequestParam(required = false, defaultValue = "true") boolean activeOnly,
+            @RequestParam(required = false) UUID versionId,
+            Authentication auth) {
         formService.getFormForAction(id, auth.getName(), isAdmin(auth));
-        return ResponseEntity.ok(submissionService.getSubmissions(id));
+        return ResponseEntity.ok(submissionService.getSubmissions(id, activeOnly, versionId));
     }
 
     @GetMapping("/{id}/submissions/{submissionId}")

@@ -1,4 +1,4 @@
-package com.formbuilder.workflow;
+package com.formbuilder.workflow.entity;
 
 import com.formbuilder.rbac.entity.User;
 import jakarta.persistence.*;

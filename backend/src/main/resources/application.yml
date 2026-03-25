@@ -5,12 +5,12 @@ spring:
     name: formbuilder
 
   datasource:
-    #url: jdbc:postgresql://localhost:5432/formbuilder
-    #username: ${DB_USERNAME}
-    #password: ${DB_PASSWORD}
-    url: jdbc:postgresql://localhost:5432/formbuilderdb
-    username: postgres
-    password: admin
+    url: jdbc:postgresql://localhost:5432/formbuilder
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    #url: jdbc:postgresql://localhost:5432/formbuilderdb
+    #username: postgres
+    #password: admin
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -39,6 +39,11 @@ spring:
         - classpath:migration_add_builder_assignment.sql
         - classpath:migration_consolidate_auth.sql
         - classpath:migration_v5_dynamic_menu.sql
+        - classpath:migration_add_profile_pic.sql
+        - classpath:migration_add_versioning.sql
+        - classpath:migration_standardize_tables.sql
+        - classpath:migration_add_version_soft_delete.sql
+        - classpath:migration_remove_archived.sql
 
   jpa:
     hibernate:

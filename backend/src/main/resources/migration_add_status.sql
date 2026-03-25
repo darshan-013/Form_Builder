@@ -16,7 +16,7 @@ UPDATE forms SET created_by = 'admin' WHERE created_by IS NULL
 -- ── Static Form Fields ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS static_form_fields (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    form_id     UUID        NOT NULL REFERENCES forms(id) ON DELETE CASCADE,
+    form_id     UUID        REFERENCES forms(id) ON DELETE CASCADE,
     field_type  VARCHAR(50) NOT NULL
                             CHECK (field_type IN ('section_header','label_text','description_block')),
     data        TEXT,

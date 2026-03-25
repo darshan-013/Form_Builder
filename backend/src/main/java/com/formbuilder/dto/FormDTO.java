@@ -13,6 +13,9 @@ public class FormDTO {
     @NotBlank(message = "Form name cannot be blank")
     @Size(max = 150, message = "Form name must not exceed 150 characters")
     private String name;
+ 
+    @Size(max = 50, message = "Form code must not exceed 50 characters")
+    private String formCode;
 
     private String description;
 

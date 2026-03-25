@@ -12,65 +12,79 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.validation.FieldError;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     /**
-     * Validation errors — return structured { errors: [{field, message}] }
-     * where field is the fieldKey so the frontend can highlight the exact input.
+     * Standard error structure for all API responses.
      */
+    public record ErrorResponse(String errorCode, String message, List<Map<String, String>> details) {}
+
     @ExceptionHandler(ValidationException.class)
-    public ResponseEntity<ValidationErrorResponse> handleValidation(ValidationException ex) {
-        ValidationErrorResponse response = new ValidationErrorResponse();
-
-        Map<String, List<String>> fieldErrors = ex.getFieldErrors();
-        for (Map.Entry<String, List<String>> entry : fieldErrors.entrySet()) {
-            String fieldKey = entry.getKey();
-            for (String message : entry.getValue()) {
-                response.addError(fieldKey, message);
-            }
-        }
-
-        return ResponseEntity.badRequest().body(response);
+    public ResponseEntity<ErrorResponse> handleValidation(ValidationException ex) {
+        List<Map<String, String>> details = new java.util.ArrayList<>();
+        ex.getFieldErrors().forEach((field, messages) -> {
+            messages.forEach(msg -> details.add(Map.of("field", field, "message", msg)));
+        });
+        return ResponseEntity.badRequest().body(new ErrorResponse("VALIDATION_ERROR", "Validation failed", details));
     }
 
-    /**
-     * Spring Bean Validation errors (e.g., from @Valid @RequestBody)
-     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
-        String errorMessage = ex.getBindingResult().getFieldErrors().stream()
-                .map(FieldError::getDefaultMessage)
-                .findFirst()
-                .orElse("Validation failed");
-        return ResponseEntity.badRequest().body(Map.of("error", errorMessage));
+    public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
+        List<Map<String, String>> details = ex.getBindingResult().getFieldErrors().stream()
+                .map(f -> Map.of("field", f.getField(), "message", f.getDefaultMessage() != null ? f.getDefaultMessage() : "Invalid value"))
+                .toList();
+        return ResponseEntity.badRequest().body(new ErrorResponse("VALIDATION_ERROR", "Input validation failed", details));
     }
 
     @ExceptionHandler(NoSuchElementException.class)
-    public ResponseEntity<Map<String, Object>> handleNotFound(NoSuchElementException ex) {
+    public ResponseEntity<ErrorResponse> handleNotFound(NoSuchElementException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("error", ex.getMessage()));
+                .body(new ErrorResponse("NOT_FOUND", ex.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(SubmissionNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleSubmissionNotFound(SubmissionNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("SUBMISSION_NOT_FOUND", ex.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(NoActiveVersionException.class)
+    public ResponseEntity<ErrorResponse> handleNoActiveVersion(NoActiveVersionException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("NO_ACTIVE_VERSION", ex.getMessage(), List.of()));
+    }
+
+
+    @ExceptionHandler(VersionImmutableException.class)
+    public ResponseEntity<ErrorResponse> handleVersionImmutable(VersionImmutableException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.getErrorCode(), ex.getMessage(), List.of()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleBadArg(IllegalArgumentException ex) {
-        log.warn("IllegalArgumentException: {}", ex.getMessage());
-        return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+    public ResponseEntity<ErrorResponse> handleBadArg(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest().body(new ErrorResponse("INVALID_ARGUMENT", ex.getMessage(), List.of()));
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
-        log.warn("IllegalStateException: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(Map.of("error", ex.getMessage()));
+    public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("CONFLICT", ex.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.error("Data integrity violation: {}", ex.getMessage());
+        return ResponseEntity.badRequest().body(new ErrorResponse("DATABASE_ERROR", "A database constraint was violated.", List.of()));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGeneral(Exception ex) {
+    public ResponseEntity<ErrorResponse> handleGeneral(Exception ex) {
         log.error("Unhandled exception", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "An unexpected error occurred: " + ex.getMessage()));
+                .body(new ErrorResponse("SERVER_ERROR", "An unexpected error occurred.", List.of()));
     }
 }

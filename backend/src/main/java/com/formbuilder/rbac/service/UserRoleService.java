@@ -5,11 +5,12 @@ import com.formbuilder.rbac.entity.Role;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.repository.RoleRepository;
 import com.formbuilder.rbac.repository.UserRepository;
-import com.formbuilder.workflow.WorkflowService;
+import com.formbuilder.workflow.service.WorkflowService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +34,7 @@ public class UserRoleService {
     private final JdbcTemplate jdbc;
     private final EntityManager entityManager;
     private final WorkflowService workflowService;
+    private final PasswordEncoder passwordEncoder;
 
     // ═══════════════════════════════════════════════════════════════════════
     //  USER CRUD
@@ -109,6 +111,58 @@ public class UserRoleService {
         User saved = userRepo.save(user);
         log.info("RBAC user profile updated for '{}' (id={})", user.getUsername(), id);
         return saved;
+    }
+
+    /** Updates a user's own profile info (limited fields). */
+    @Transactional
+    public User updateProfile(Integer id, String name, String email, String username) {
+        User user = userRepo.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+
+        if (name != null) user.setName(name.trim());
+        if (email != null) {
+            String trimmedEmail = email.trim();
+            if (!trimmedEmail.isEmpty() && !trimmedEmail.equalsIgnoreCase(user.getEmail())) {
+                if (userRepo.existsByEmail(trimmedEmail)) {
+                    throw new IllegalArgumentException("Email already in use: " + trimmedEmail);
+                }
+                user.setEmail(trimmedEmail);
+            }
+        }
+        if (username != null) {
+            String trimmedUsername = username.trim();
+            if (!trimmedUsername.isEmpty() && !trimmedUsername.equals(user.getUsername())) {
+                if (userRepo.existsByUsername(trimmedUsername)) {
+                    throw new IllegalArgumentException("Username already taken: " + trimmedUsername);
+                }
+                user.setUsername(trimmedUsername);
+            }
+        }
+
+        return userRepo.save(user);
+    }
+
+    /** Updates a user's password. */
+    @Transactional
+    public void updatePassword(Integer id, String currentPassword, String newPassword) {
+        User user = userRepo.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new IllegalArgumentException("Current password does not match");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepo.save(user);
+    }
+
+    /** Updates a user's profile picture filename. */
+    @Transactional
+    public void updateProfilePic(Integer id, String filename) {
+        User user = userRepo.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+        user.setProfilePic(filename);
+        userRepo.save(user);
     }
 
     /** Deletes an RBAC user profile and returns workflow-impact stats. */
