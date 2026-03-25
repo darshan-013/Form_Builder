@@ -226,6 +226,170 @@
   filter: blur(1px);
 }
 
+/* Floating Background Shapes */
+.shapesContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+}
+
+.shape {
+  position: absolute;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.5s ease;
+}
+
+.shapeInputLine {
+  height: 6px;
+  width: 120px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.shapeInputLineShort {
+  height: 6px;
+  width: 80px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.shapeCheckbox {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(139, 92, 246, 0.4);
+  border-radius: 3px;
+}
+
+.shapeMailIcon {
+  width: 32px;
+  height: 32px;
+  color: rgba(139, 92, 246, 0.4);
+}
+
+.shapeToggleTrack {
+  width: 34px;
+  height: 18px;
+  background: rgba(139, 92, 246, 0.2);
+  border-radius: 9px;
+  position: relative;
+}
+
+.shapeToggleThumb {
+  width: 14px;
+  height: 14px;
+  background: #8b5cf6;
+  border-radius: 50%;
+  position: absolute;
+  right: 2px;
+  top: 2px;
+}
+
+.shapeProgressBg {
+  width: 100px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.shapeProgressFill {
+  height: 100%;
+  width: 60%;
+  background: linear-gradient(90deg, #8b5cf6, #6366f1);
+  border-radius: 3px;
+}
+
+.shapeHeaderCircle {
+  width: 24px;
+  height: 24px;
+  background: rgba(139, 92, 246, 0.15);
+  border-radius: 50%;
+  margin-bottom: 4px;
+}
+
+/* Specific Positions and Animations */
+.shape1 {
+  top: 15%;
+  left: 5%;
+  animation: float1 18s ease-in-out infinite;
+  transform: rotate(-12deg);
+}
+
+.shape2 {
+  top: 65%;
+  left: 10%;
+  animation: float2 22s ease-in-out infinite;
+  transform: rotate(8deg);
+}
+
+.shape3 {
+  top: 25%;
+  right: 8%;
+  background: rgba(139, 92, 246, 0.04);
+  animation: float1 20s ease-in-out infinite reverse;
+  transform: rotate(15deg);
+}
+
+.shape4 {
+  top: 75%;
+  right: 12%;
+  animation: float2 15s ease-in-out infinite reverse;
+  transform: rotate(-5deg);
+}
+
+.shape5 {
+  top: 10%;
+  right: 25%;
+  animation: float3 25s ease-in-out infinite;
+  opacity: 0.6;
+}
+
+.shape6 {
+  top: 80%;
+  left: 30%;
+  animation: float3 12s ease-in-out infinite reverse;
+  opacity: 0.5;
+}
+
+@keyframes float1 {
+  0%, 100% { transform: translateY(0) rotate(-12deg); }
+  50% { transform: translateY(-40px) rotate(-8deg); }
+}
+
+@keyframes float2 {
+  0%, 100% { transform: translateY(0) rotate(8deg); }
+  50% { transform: translateY(-30px) rotate(12deg); }
+}
+
+@keyframes float3 {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  33% { transform: translate(20px, -20px) rotate(3deg); }
+  66% { transform: translate(-10px, 15px) rotate(-2deg); }
+}
+
+@media (max-width: 1023px) {
+  .shape5, .shape6 { display: none; }
+}
+
+@media (max-width: 767px) {
+  .shape { transform: scale(0.7); opacity: 0.4; }
+  .shape1 { left: -20px; }
+  .shape3 { right: -20px; }
+}
+
 .heroContent {
   position: relative;
   max-width: 930px;

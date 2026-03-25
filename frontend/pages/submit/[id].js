@@ -28,13 +28,21 @@ export default function SubmitPage() {
     const [alreadySubmitted, setAlreadySubmitted] = useState(false);
     const [isExpired, setIsExpired] = useState(false);
     const [submitted, setSubmitted] = useState(false); // shown after successful submit
+    const [versionMismatch, setVersionMismatch] = useState(false);
+    const [draftDiscarded, setDraftDiscarded] = useState(false);
+    const [submissionId, setSubmissionId] = useState(null);
+    const [initialValues, setInitialValues] = useState({});
 
+    // 1. Initial Load: Fetch Form Configuration
     useEffect(() => {
         if (!id) return;
+        setLoading(true);
         getFormRender(id)
             .then((data) => {
                 const formObj = {
                     id: data.formId,
+                    formVersionId: data.formVersionId,
+                    versionNumber: data.versionNumber,
                     name: data.formName,
                     description: data.formDescription,
                     allowMultipleSubmissions: data.allowMultipleSubmissions ?? true,
@@ -43,11 +51,11 @@ export default function SubmitPage() {
                     groups: data.groups || [],
                 };
                 setForm(formObj);
-                // Client-side expiry check
+                
                 if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
                     setIsExpired(true);
                 }
-                // If single-submission form, check localStorage to block re-entry across tabs
+                
                 if (!formObj.allowMultipleSubmissions) {
                     const key = `submitted_${id}`;
                     if (typeof window !== 'undefined' && localStorage.getItem(key)) {
@@ -65,25 +73,69 @@ export default function SubmitPage() {
             .finally(() => setLoading(false));
     }, [id]);
 
+    // 2. Draft Recovery: Fetch existing draft if authenticated
+    useEffect(() => {
+        if (!id || !form) return;
+        
+        import('../../services/api').then(api => {
+            api.getDraft(id).then(draft => {
+                if (draft && draft.submissionId) {
+                    // Check if draft version matches current form version
+                    // Note: Backend might have cleared stale drafts, but we check here too.
+                    if (draft.formVersionId !== form.formVersionId) {
+                        console.warn("Draft version mismatch detected");
+                        
+                        // Clear the local flag if we found a mismatching draft (stale)
+                        if (localStorage.getItem(`draft_form_${id}`)) {
+                            setDraftDiscarded(true);
+                            localStorage.removeItem(`draft_form_${id}`);
+                        }
+                    } else {
+                        setSubmissionId(draft.submissionId);
+                        setInitialValues(draft);
+                    }
+                }
+            }).catch(err => {
+                // F2: Draft not found warning for returning users
+                if (err?.status === 404) {
+                    const key = `draft_form_${id}`;
+                    if (localStorage.getItem(key)) {
+                        setDraftDiscarded(true);
+                        localStorage.removeItem(key);
+                    }
+                }
+            });
+        });
+    }, [id, form]);
+
     const handleSubmit = async (values) => {
         try {
-            await submitForm(id, values);
-            // Mark as submitted in localStorage for single-submission forms
+            // F1/F3 Compliance: Pass formVersionId to ensure authority checks
+            // Backend is the only source (stored in form.formVersionId state)
+            await submitForm(id, values, submissionId, form?.formVersionId);
+            
             if (form && !form.allowMultipleSubmissions) {
                 localStorage.setItem(`submitted_${id}`, '1');
             }
+            // Clear draft flag on successful submit
+            localStorage.removeItem(`draft_form_${id}`);
+            
             toastSuccess('Form submitted successfully! 🎉');
-            // Show success screen — do NOT redirect, hide the form fields
             setSubmitted(true);
         } catch (err) {
-            // 409 = backend says already submitted
+            // F1: Version Mismatch (409 Conflict returned by B2/B3 guards)
+            if (err?.status === 409 && err.message?.includes("VERSION_MISMATCH")) {
+                setVersionMismatch(true);
+                toastError('The form version has changed. Please refresh.');
+                return;
+            }
+
             if (err?.status === 409) {
                 localStorage.setItem(`submitted_${id}`, '1');
                 setAlreadySubmitted(true);
                 toastError('You have already submitted this form.');
                 return;
             }
-            // 410 = form has expired
             if (err?.status === 410) {
                 setIsExpired(true);
                 toastError('This form has expired.');
@@ -164,6 +216,41 @@ export default function SubmitPage() {
                     <p style={{ marginTop: 20, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
                         Powered by FormCraft
                     </p>
+                </div>
+            </>
+        );
+    }
+
+    // ── Version Mismatch (409 Conflict) ────────────────────────────────────────
+    if (versionMismatch) {
+        return (
+            <>
+                <Head><title>Version Updated — FormCraft</title></Head>
+                <div className="form-page">
+                    <div className="form-page-nav animate-down" style={{ justifyContent: 'center' }}>
+                        <span style={{ fontFamily: 'Outfit', fontWeight: 800, fontSize: 16, background: 'var(--accent-grad)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>⚡ FormCraft</span>
+                    </div>
+                    <div className="form-renderer-card" style={{ padding: '60px 32px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 60, marginBottom: 20 }}>🔄</div>
+                        <h2 style={{ fontFamily: 'Outfit', fontSize: 26, marginBottom: 12, color: 'var(--text-primary)', fontWeight: 800 }}>
+                            Form Updated
+                        </h2>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: 15, maxWidth: 420, margin: '0 auto 24px' }}>
+                            A new version of this form has been published. To ensure data integrity, please refresh the page to load the latest fields.
+                        </p>
+                        <button 
+                            onClick={() => router.reload()}
+                            style={{
+                                background: 'var(--accent-primary)', color: 'white',
+                                border: 'none', padding: '12px 28px', borderRadius: 8,
+                                fontWeight: 700, cursor: 'pointer', fontSize: 15,
+                                boxShadow: '0 4px 12px rgba(var(--accent-primary-rgb), 0.3)'
+                            }}
+                        >
+                            Refresh Page
+                        </button>
+                    </div>
+                    <p style={{ marginTop: 20, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>Powered by FormCraft</p>
                 </div>
             </>
         );
@@ -312,6 +399,29 @@ export default function SubmitPage() {
                     </span>
                 </div>
 
+                {/* F2: Draft discarded warning banner */}
+                {draftDiscarded && (
+                    <div style={{
+                        maxWidth: 700, margin: '0 auto 14px',
+                        padding: '12px 20px', borderRadius: 12,
+                        background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)',
+                        color: '#FBBF24', fontSize: 13, fontWeight: 500, display: 'flex', gap: 10, alignItems: 'center',
+                        animation: 'fadeIn 0.3s ease-out'
+                    }}>
+                        <span style={{ fontSize: 18 }}>⚠️</span>
+                        <div style={{ flex: 1 }}>
+                            <strong>Your saved progress was lost</strong> because this form was updated.
+                            You are starting fresh with the latest version.
+                        </div>
+                        <button 
+                            onClick={() => setDraftDiscarded(false)}
+                            style={{ background: 'none', border: 'none', color: '#FBBF24', cursor: 'pointer', fontWeight: 800 }}
+                        >
+                            ✕
+                        </button>
+                    </div>
+                )}
+
                 {/* Single-submission notice */}
                 {!form.allowMultipleSubmissions && (
                     <div style={{
@@ -328,6 +438,7 @@ export default function SubmitPage() {
 
                 <FormRenderer
                     form={form}
+                    initialData={initialValues}
                     isPreview={false}
                     onSubmit={handleSubmit}
                 />

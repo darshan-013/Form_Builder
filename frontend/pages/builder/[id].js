@@ -7,8 +7,8 @@ import Canvas from '../../components/Builder/Canvas';
 import FieldConfigModal from '../../components/Builder/FieldConfigModal';
 import StaticFieldModal from '../../components/Builder/StaticFieldModal';
 import GroupConfigModal from '../../components/Builder/GroupConfigModal';
-import { getForm, updateForm, getVisibilityCandidates } from '../../services/api';
-import { toastSuccess, toastError } from '../../services/toast';
+import { getForm, updateForm, getVisibilityCandidates, getFormVersions, publishForm, publishVersion, deleteFormVersion } from '../../services/api';
+import { toastSuccess, toastError, toastInfo } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
 
 const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
@@ -20,7 +20,7 @@ const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block
  */
 export default function EditBuilderPage() {
     const router = useRouter();
-    const { id } = router.query;
+    const { id, versionId } = router.query;
     const { hasRole } = useAuth();
     const isViewer = hasRole('Viewer');
 
@@ -35,6 +35,15 @@ export default function EditBuilderPage() {
     // removed visibility state
     const [showSettings, setShowSettings] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
+    const [versionStatus, setVersionStatus] = useState('DRAFT'); // 'PUBLISHED' or 'DRAFT'
+    const [branching, setBranching] = useState(false);
+    const [versions, setVersions] = useState([]);
+    const [activeView, setActiveView] = useState('canvas'); // 'canvas' | 'versions'
+    const [confirmModal, setConfirmModal] = useState(null); // { type: 'publish'|'delete', versionId, versionNumber }
+    const [actioning, setActioning] = useState(null); // tracking loading state for version actions
+    const [isDirty, setIsDirty] = useState(false);
+    const [initialSignature, setInitialSignature] = useState(null);
+    const [currentVersionNumber, setCurrentVersionNumber] = useState(null);
 
     // Resizable panels state
     const [leftWidth, setLeftWidth] = useState(264);
@@ -144,11 +153,28 @@ export default function EditBuilderPage() {
     // Load existing form (dynamic fields + static fields merged by fieldOrder)
     useEffect(() => {
         if (!id) return;
-        getForm(id)
+        setLoading(true);
+        // Clear previous version state to prevent "ghost" fields/configs
+        setFields([]);
+        setGroups([]);
+        setEditField(null);
+        setEditStaticField(null);
+        setEditGroupConfig(null);
+
+        getForm(id, versionId)
             .then((form) => {
+                // If no versionId in URL, redirect to the active version
+                if (!versionId && form.activeVersionId) {
+                    // Find the active version from versions list or use form.activeVersionId
+                    router.replace(`/builder/${id}?versionId=${form.activeVersionId}`, undefined, { shallow: false });
+                    return; // useEffect will re-run with the versionId
+                }
+
                 setFormName(form.name || '');
                 setFormDescription(form.description || '');
                 setAllowMultipleSubmissions(form.allowMultipleSubmissions ?? true);
+                setVersionStatus(form.versionStatus || 'DRAFT');
+                setCurrentVersionNumber(form.versionNumber ?? null);
 
                 // Load allowed users from form data
                 if (form.allowedUsers) {
@@ -227,10 +253,52 @@ export default function EditBuilderPage() {
                     rulesJson: g.rulesJson || null,
                 }));
                 setGroups(loadedGroups);
+
+                // Set initial save state tracking
+                let usersList = [];
+                try {
+                    if (form.allowedUsers) {
+                        const parsed = typeof form.allowedUsers === 'string' ? JSON.parse(form.allowedUsers) : form.allowedUsers;
+                        if (Array.isArray(parsed)) {
+                            usersList = parsed.map(u => ({ id: u?.id ?? null, username: u?.username || '', name: u?.name || '' })).filter(u => u.id != null || u.username);
+                        }
+                    }
+                } catch { }
+
+                const loadedSignature = JSON.stringify({
+                    formName: form.name || '',
+                    formDescription: form.description || '',
+                    allowMultipleSubmissions: form.allowMultipleSubmissions ?? true,
+                    expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString().slice(0, 16) : '',
+                    allowedUsers: usersList,
+                    fields: merged,
+                    groups: loadedGroups
+                });
+                setInitialSignature(loadedSignature);
+                setIsDirty(false);
             })
             .catch(() => toastError('Failed to load form.'))
             .finally(() => setLoading(false));
-    }, [id]);
+
+        // Also load all versions for history dropdown
+        getFormVersions(id)
+            .then(setVersions)
+            .catch(() => console.error('Failed to load version history'));
+    }, [id, versionId]);
+
+    useEffect(() => {
+        if (initialSignature === null) return;
+        const currentSignature = JSON.stringify({
+            formName,
+            formDescription,
+            allowMultipleSubmissions,
+            expiresAt,
+            allowedUsers,
+            fields,
+            groups
+        });
+        setIsDirty(currentSignature !== initialSignature);
+    }, [formName, formDescription, allowMultipleSubmissions, expiresAt, allowedUsers, fields, groups, initialSignature]);
 
     const updateField = (updated) => {
         setFields((prev) => prev.map((f) => (f.id === updated.id ? { ...updated } : f)));
@@ -320,7 +388,7 @@ export default function EditBuilderPage() {
 
         setSaving(true);
         try {
-            await updateForm(id, dto);
+            await updateForm(id, versionId, dto);
             setSaveSuccess(true);
             toastSuccess('Form Updated Successfully! ✓');
             setTimeout(() => {
@@ -331,6 +399,51 @@ export default function EditBuilderPage() {
             setSaving(false);
         }
     };
+
+    const handleActionConfirm = async () => {
+        if (!confirmModal) return;
+        const { type, versionId } = confirmModal;
+        setActioning(versionId);
+        setConfirmModal(null);
+        try {
+            if (type === 'publish') {
+                await publishVersion(id, versionId);
+                toastSuccess(`Version ${confirmModal.versionNumber} activated successfully.`);
+                setActiveView('canvas');
+                router.push(`/builder/${id}?versionId=${versionId}`); // Reload canvas for new version
+            } else if (type === 'delete') {
+                await deleteFormVersion(id, versionId);
+                toastSuccess(`Version ${confirmModal.versionNumber} deleted.`);
+                if (versionId === router.query.versionId) {
+                    router.push(`/builder/${id}`); // fallback if they deleted what they were looking at
+                } else {
+                    getFormVersions(id).then(setVersions); // Refresh drawer
+                }
+            }
+        } catch (error) {
+            toastError("Failed to perform action.");
+            console.error(error);
+        } finally {
+            setActioning(null);
+        }
+    };
+
+    /** Publish current active DRAFT version */
+    const handlePublish = async () => {
+        if (!process.browser) return;
+        if (!id) return;
+        setSaving(true);
+        try {
+            await publishForm(id);
+            toastSuccess('Form published successfully!');
+            router.push('/dashboard');
+        } catch (error) {
+            toastError(error.message || 'Failed to publish form');
+        } finally {
+            setSaving(false);
+        }
+    };
+
 
 
     if (loading) {
@@ -349,6 +462,9 @@ export default function EditBuilderPage() {
     return (
         <>
             <Head><title>Edit Form — FormCraft Builder</title></Head>
+
+
+
 
             <div className="builder-page" style={{ gridTemplateColumns: `${leftWidth}px 1fr ${rightWidth}px` }}>
                 <header className="builder-topbar">
@@ -517,70 +633,326 @@ export default function EditBuilderPage() {
                                 )}
                             </div>
                         )}
-
                         <Link href={`/preview/${id}`} className="btn btn-secondary btn-sm">👁 Preview</Link>
+
+
+                        {/* Save Changes button always visible, label changes based on status */}
                         <button
                             id="update-form-btn"
                             className={`btn btn-primary btn-sm ${saveSuccess ? 'btn-success-anim' : ''}`}
                             onClick={handleSave}
-                            disabled={saving || saveSuccess}
+                            disabled={saving || saveSuccess || !isDirty}
                         >
                             {saveSuccess ? '✓ Saved!' : saving
                                 ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</>
-                                : '💾 Save Changes'}
+                                : versionStatus === 'PUBLISHED' ? '💾 Save as New Draft' : '💾 Save Changes'}
                         </button>
+                        
+                        {/* Publish Version button only visible for Drafts */}
+                        {versionStatus === 'DRAFT' && (
+                            <button
+                                className="btn btn-primary btn-sm"
+                                onClick={handlePublish}
+                                disabled={saving}
+                                style={{ backgroundColor: 'var(--success)', borderColor: 'var(--success)' }}
+                            >
+                                {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '🚀 Publish Version'}
+                            </button>
+                        )}
+
+                        {/* Version Switcher / History View Toggle */}
+                        <div className="view-toggle">
+                            <button
+                                className={`view-toggle-btn ${activeView === 'canvas' ? 'active' : ''}`}
+                                onClick={() => setActiveView('canvas')}
+                            >
+                                🎨 Canvas
+                            </button>
+                            <button
+                                className={`view-toggle-btn ${activeView === 'versions' ? 'active' : ''}`}
+                                onClick={() => setActiveView('versions')}
+                            >
+                                📜 Versions
+                            </button>
+                        </div>
                     </div>
                 </header>
 
-
-                <div 
-                    className={`panel-resizer left-resizer ${resizing === 'left' ? 'resizing' : ''}`}
-                    onMouseDown={() => setResizing('left')}
-                />
-                <FieldPalette />
-                <main className="builder-canvas-wrap">
-                    <Canvas
-                        fields={fields} setFields={setFields}
-                        groups={groups} setGroups={setGroups}
-                        setEditField={setEditField}
-                        setEditStaticField={setEditStaticField}
-                        setEditGroupConfig={setEditGroupConfig}
-                    />
-                </main>
-                <div 
-                    className={`panel-resizer right-resizer ${resizing === 'right' ? 'resizing' : ''}`}
-                    onMouseDown={() => setResizing('right')}
-                />
-                <aside className="builder-right-panel">
-                    {editField ? (
-                        <FieldConfigModal
-                            field={editField}
-                            onSave={updateField}
-                            onClose={() => setEditField(null)}
-                            siblingFields={fields.filter(f => f.id !== editField.id)}
-                        />
-                    ) : editStaticField ? (
-                        <StaticFieldModal
-                            field={editStaticField}
-                            onSave={updateStaticField}
-                            onClose={() => setEditStaticField(null)}
-                        />
-                    ) : editGroupConfig ? (
-                        <GroupConfigModal
-                            group={editGroupConfig}
-                            onSave={updateGroup}
-                            onClose={() => setEditGroupConfig(null)}
-                            siblingFields={fields}
-                        />
-                    ) : (
-                        <div className="right-panel-empty">
-                            <div className="right-panel-empty-icon">⚙️</div>
-                            <h3>Field Settings</h3>
-                            <p>Select a field or section on the canvas to configure its properties.</p>
+                {/* Modal for Activation/Deletion */}
+                {confirmModal && (
+                    <div className="builder-modal-backdrop" onClick={() => setConfirmModal(null)} style={{ zIndex: 10001 }}>
+                        <div className="builder-modal" onClick={e => e.stopPropagation()}>
+                            <div className="builder-modal-icon">
+                                {confirmModal.type === 'delete' ? '🗑️' : '🚀'}
+                            </div>
+                            <h3>{confirmModal.type === 'delete' ? 'Delete this version?' : (versionStatus === 'PUBLISHED' ? 'Activate this version?' : 'Publish this version?')}</h3>
+                            <p>
+                                {confirmModal.type === 'delete'
+                                    ? "This version will be moved to the trash. You can restore it later if needed by contacting an administrator."
+                                    : "Are you sure you want to activate this version? It will instantly replace the current live version of this form."
+                                }
+                            </p>
+                            <div className="builder-modal-actions">
+                                <button className="btn btn-secondary" onClick={() => setConfirmModal(null)}>Cancel</button>
+                                <button 
+                                    className={`btn ${confirmModal.type === 'delete' ? 'btn-danger' : 'btn-publish'}`} 
+                                    onClick={handleActionConfirm}
+                                    disabled={!!actioning}
+                                >
+                                    {actioning ? '⌛' : (confirmModal.type === 'delete' ? 'Yes, Delete' : 'Yes, Activate')}
+                                </button>
+                            </div>
                         </div>
-                    )}
-                </aside>
+                    </div>
+                )}
+
+                {activeView === 'canvas' ? (
+                    <>
+                        <div 
+                            className={`panel-resizer left-resizer ${resizing === 'left' ? 'resizing' : ''}`}
+                            onMouseDown={() => setResizing('left')}
+                        />
+                        <FieldPalette />
+                        <main className="builder-canvas-wrap">
+                            {/* Version info badge */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 10,
+                                padding: '8px 20px', background: 'var(--bg-card)',
+                                borderBottom: '1px solid var(--border)',
+                                fontSize: 13
+                            }}>
+                                <span style={{
+                                    padding: '3px 12px', borderRadius: 20, fontWeight: 700, fontSize: 12,
+                                    background: versionStatus === 'PUBLISHED' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                                    color: versionStatus === 'PUBLISHED' ? '#34D399' : '#FCD34D',
+                                    border: `1px solid ${versionStatus === 'PUBLISHED' ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                                    letterSpacing: '0.04em', textTransform: 'uppercase'
+                                }}>
+                                    {versionStatus === 'PUBLISHED' ? '✅ Active' : '📝 Draft'}
+                                </span>
+                                {currentVersionNumber && (
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                                        Version {currentVersionNumber}
+                                    </span>
+                                )}
+                                {versionStatus === 'PUBLISHED' && (
+                                    <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                                        — This is the live version. Saving will create a new draft.
+                                    </span>
+                                )}
+                            </div>
+                            <Canvas
+                                fields={fields} setFields={setFields}
+                                groups={groups} setGroups={setGroups}
+                                setEditField={setEditField}
+                                setEditStaticField={setEditStaticField}
+                                setEditGroupConfig={setEditGroupConfig}
+                            />
+                        </main>
+                        <div 
+                            className={`panel-resizer right-resizer ${resizing === 'right' ? 'resizing' : ''}`}
+                            onMouseDown={() => setResizing('right')}
+                        />
+                        <aside className="builder-right-panel">
+                            {editField ? (
+                                <FieldConfigModal
+                                    field={editField}
+                                    onSave={updateField}
+                                    onClose={() => setEditField(null)}
+                                    siblingFields={fields.filter(f => f.id !== editField.id)}
+                                />
+                            ) : editStaticField ? (
+                                <StaticFieldModal
+                                    field={editStaticField}
+                                    onSave={updateStaticField}
+                                    onClose={() => setEditStaticField(null)}
+                                />
+                            ) : editGroupConfig ? (
+                                <GroupConfigModal
+                                    group={editGroupConfig}
+                                    onSave={updateGroup}
+                                    onClose={() => setEditGroupConfig(null)}
+                                    siblingFields={fields}
+                                />
+                            ) : (
+                                <div className="right-panel-empty">
+                                    <div className="right-panel-empty-icon">⚙️</div>
+                                    <h3>Field Settings</h3>
+                                    <p>Select a field or section on the canvas to configure its properties.</p>
+                                </div>
+                            )}
+                        </aside>
+                    </>
+                ) : (
+                    <div className="vh-full-view" style={{ gridColumn: '1 / -1', padding: '40px', overflowY: 'auto' }}>
+                        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+                            <div style={{ marginBottom: 32, textAlign: 'center' }}>
+                                <h2>Form Version History</h2>
+                                <p style={{ color: 'var(--text-muted)' }}>View previous drafts and published versions of this form.</p>
+                            </div>
+                            <div className="timeline">
+                                {versions.map((v, index) => {
+                                    const st = v.status.toLowerCase(); 
+                                    const isLast = index === versions.length - 1;
+                                    const isCurrentlyViewing = v.id === (versionId || versions[0]?.id);
+                                    
+                                    return (
+                                        <div key={v.id} className={`tl-item ${st}`} style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', marginBottom: isLast ? 0 : '24px' }}>
+                                            <div className="tl-connector" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20, paddingTop: 14 }}>
+                                                <div className="tl-dot" style={{
+                                                    width: 18, height: 18, borderRadius: '50%',
+                                                    border: `4px solid ${st === 'published' ? 'var(--success)' : 'var(--warning)'}`,
+                                                    background: st === 'published' ? 'var(--success)' : 'var(--bg-base)',
+                                                    boxShadow: st === 'published' ? '0 0 16px rgba(16,185,129,0.5)' : 'none',
+                                                    zIndex: 2
+                                                }} />
+                                                {!isLast && <div className="tl-line" style={{ width: 2, flex: 1, minHeight: 60, background: 'var(--border)', margin: '8px 0', opacity: 0.5 }} />}
+                                            </div>
+
+                                            <div className="tl-card" style={{
+                                                flex: 1, padding: '24px', borderRadius: '16px',
+                                                border: `2px solid ${isCurrentlyViewing ? 'var(--accent)' : 'var(--border)'}`,
+                                                background: isCurrentlyViewing ? 'var(--bg-card)' : 'rgba(255,255,255,0.02)',
+                                                position: 'relative',
+                                                boxShadow: isCurrentlyViewing ? '0 8px 30px rgba(0,0,0,0.2)' : 'none'
+                                            }}>
+                                                {st === 'published' && (
+                                                    <div style={{ position: 'absolute', top: 0, right: 24, background: 'var(--success)', color: '#fff', fontSize: 11, fontWeight: 800, padding: '4px 12px', borderRadius: '0 0 8px 8px', letterSpacing: '0.1em' }}>
+                                                        LIVE
+                                                    </div>
+                                                )}
+                                                
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                                    <div style={{ fontWeight: 800, fontSize: '1.5rem', color: isCurrentlyViewing ? 'var(--primary)' : 'var(--text-base)' }}>
+                                                        v{v.versionNumber}
+                                                    </div>
+                                                    <span style={{
+                                                        fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 99,
+                                                        color: st === 'published' ? 'var(--success)' : 'var(--warning)',
+                                                        background: st === 'published' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                                                        border: `1px solid ${st === 'published' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`
+                                                    }}>{v.status}</span>
+                                                </div>
+
+                                                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+                                                    {st === 'draft' && (
+                                                        <button
+                                                            className="btn btn-sm btn-publish"
+                                                            onClick={() => setConfirmModal({ type: 'publish', versionId: v.id, versionNumber: v.versionNumber })}
+                                                            disabled={!!actioning}
+                                                            style={{ fontSize: 13, padding: '8px 16px' }}
+                                                        >
+                                                            {actioning === v.id ? '⌛' : '🚀 Activate Form'}
+                                                        </button>
+                                                    )}
+                                                    {st !== 'published' && (
+                                                        <button
+                                                            className="btn btn-sm btn-secondary"
+                                                            onClick={() => setConfirmModal({ type: 'delete', versionId: v.id, versionNumber: v.versionNumber })}
+                                                            disabled={!!actioning}
+                                                            style={{ color: 'var(--error)', borderColor: 'var(--border)', fontSize: 13, padding: '8px 16px' }}
+                                                        >
+                                                            {actioning === v.id ? '⌛' : '🗑️ Delete'}
+                                                        </button>
+                                                    )}
+                                                    {!isCurrentlyViewing && (
+                                                        <button 
+                                                            className="btn btn-sm btn-secondary"
+                                                            onClick={() => {
+                                                                router.push(`/builder/${id}?versionId=${v.id}`);
+                                                                setActiveView('canvas');
+                                                            }}
+                                                            style={{ fontSize: 13, padding: '8px 16px' }}
+                                                        >
+                                                            👁 Load on Canvas
+                                                        </button>
+                                                    )}
+                                                    {isCurrentlyViewing && (
+                                                        <span style={{ display: 'flex', alignItems: 'center', padding: '0 8px', fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+                                                            ✓ Currently viewing
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                                    <div>Created {new Date(v.createdAt).toLocaleDateString()} {v.createdBy && `by ${v.createdBy}`}</div>
+                                                    {v.publishedAt && <div>Published {new Date(v.publishedAt).toLocaleDateString()}</div>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
+
+            <style jsx global>{`
+                .builder-modal-backdrop {
+                    position: fixed; inset: 0; z-index: 9999;
+                    background: rgba(0,0,0,0.55);
+                    display: flex; align-items: center; justify-content: center;
+                    padding: 24px;
+                    backdrop-filter: blur(4px);
+                    animation: bm-fade 0.15s ease;
+                }
+                .builder-modal {
+                    background: var(--bg-card, #1e1e2e);
+                    border: 1px solid var(--border, rgba(255,255,255,0.1));
+                    border-radius: 18px;
+                    padding: 36px 32px 28px;
+                    max-width: 440px;
+                    width: 100%;
+                    text-align: center;
+                    box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+                    animation: bm-up 0.2s ease;
+                    color: var(--text-primary, #fff);
+                }
+                .builder-modal-icon { font-size: 2.4rem; margin-bottom: 10px; }
+                .builder-modal h3 { font-size: 1.25rem; font-weight: 700; margin: 0 0 10px; }
+                .builder-modal p { color: var(--text-secondary, #94a3b8); font-size: 0.92rem; line-height: 1.6; margin: 0 0 24px; }
+                .builder-modal-actions { display: flex; gap: 10px; justify-content: center; }
+                .btn-publish {
+                    display: inline-flex; align-items: center; gap: 6px;
+                    padding: 8px 22px; border-radius: 8px;
+                    font-size: 0.9rem; font-weight: 600; cursor: pointer;
+                    background: #10b981; color: #fff; border: none;
+                    transition: background 0.15s;
+                }
+                .btn-publish:hover { background: #059669; }
+                @keyframes bm-fade { from { opacity: 0 } to { opacity: 1 } }
+                @keyframes bm-up   { from { transform: translateY(16px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+                
+                /* View Toggle Styles */
+                .view-toggle {
+                    display: inline-flex;
+                    background: rgba(0, 0, 0, 0.2);
+                    padding: 4px;
+                    border-radius: 8px;
+                    border: 1px solid var(--border);
+                }
+                .view-toggle-btn {
+                    background: transparent;
+                    border: none;
+                    color: var(--text-muted);
+                    padding: 6px 14px;
+                    margin: 0;
+                    border-radius: 6px;
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .view-toggle-btn:hover {
+                    color: var(--text-base);
+                }
+                .view-toggle-btn.active {
+                    background: var(--bg-card);
+                    color: var(--primary);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                }
+            `}</style>
         </>
     );
 }
