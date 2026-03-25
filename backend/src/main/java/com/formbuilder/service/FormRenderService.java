@@ -9,8 +9,10 @@ import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormFieldEntity;
 import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
+import com.formbuilder.entity.FormVersionEntity;
 import com.formbuilder.repository.FormGroupRepository;
 import com.formbuilder.repository.FormJpaRepository;
+import com.formbuilder.repository.FormVersionRepository;
 import com.formbuilder.repository.SharedOptionsRepository;
 import com.formbuilder.repository.StaticFormFieldRepository;
 import lombok.RequiredArgsConstructor;
@@ -38,28 +40,38 @@ import java.util.LinkedHashMap;
 public class FormRenderService {
 
     private final FormJpaRepository formRepo;
+    private final FormVersionRepository versionRepo;
     private final SharedOptionsRepository sharedOptionsRepo;
     private final StaticFormFieldRepository staticRepo;
     private final FormGroupRepository groupRepo;
     private final ObjectMapper objectMapper;
 
-    public FormRenderDTO render(UUID formId) {
-        FormEntity form = formRepo.findByIdWithFields(formId)
+    public FormRenderDTO render(UUID formId, UUID versionId) {
+        FormEntity form = formRepo.findByIdWithVersions(formId)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + formId));
 
-        // 1. Dynamic fields
+        FormVersionEntity version;
+        if (versionId != null) {
+            version = versionRepo.findById(versionId)
+                    .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
+        } else {
+            version = form.getPublishedVersion()
+                    .orElseThrow(() -> new IllegalStateException("No published version found for form: " + formId));
+        }
+
+        // 1. Dynamic fields from the version
         List<RenderFieldDTO> renderFields = new ArrayList<>(
-                form.getFields().stream()
+                version.getFields().stream()
                         .sorted(Comparator.comparingInt(FormFieldEntity::getFieldOrder))
                         .map(this::toRenderField)
                         .collect(Collectors.toList()));
 
-        // 2. Static fields — merged in by field_order
-        List<StaticFormFieldEntity> staticFields = staticRepo.findByFormIdOrderByFieldOrderAsc(formId);
+        // 2. Static fields from the version
+        List<StaticFormFieldEntity> staticFields = staticRepo.findByFormVersionIdOrderByFieldOrderAsc(version.getId());
         for (StaticFormFieldEntity sf : staticFields) {
             renderFields.add(RenderFieldDTO.builder()
                     .fieldKey("__static__" + sf.getId())
-                    .label(sf.getData()) // label carries the display text
+                    .label(sf.getData())
                     .fieldType(sf.getFieldType())
                     .fieldOrder(sf.getFieldOrder())
                     .isStatic(true)
@@ -69,11 +81,11 @@ public class FormRenderService {
                     .build());
         }
 
-        // 3. Sort merged list by fieldOrder
+        // 3. Sort merged list
         renderFields.sort(Comparator.comparingInt(RenderFieldDTO::getFieldOrder));
 
-        // 4. Groups
-        List<FormGroupEntity> groupEntities = groupRepo.findByFormIdOrderByGroupOrderAsc(formId);
+        // 4. Groups from the version
+        List<FormGroupEntity> groupEntities = groupRepo.findByFormVersionIdOrderByGroupOrderAsc(version.getId());
         List<FormRenderDTO.RenderGroupDTO> groups = groupEntities.stream()
                 .map(g -> FormRenderDTO.RenderGroupDTO.builder()
                         .id(g.getId())
@@ -86,6 +98,8 @@ public class FormRenderService {
 
         return FormRenderDTO.builder()
                 .formId(form.getId())
+                .formVersionId(version.getId())
+                .versionNumber(version.getVersionNumber())
                 .formName(form.getName())
                 .formDescription(form.getDescription())
                 .fields(renderFields)

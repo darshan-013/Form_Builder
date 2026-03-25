@@ -76,6 +76,11 @@ public class User {
     @Email(message = "Invalid email format")
     private String email;
 
+    /** Filename of the profile picture stored in the upload directory. */
+    @Column(name = "profile_pic", length = 255)
+    @Size(max = 255, message = "Profile pic filename must not exceed 255 characters")
+    private String profilePic;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -102,12 +107,14 @@ public class User {
     // ── Convenience ──────────────────────────────────────────────────────
 
     /** Check if this user has a specific role by name. */
+    @JsonIgnore
     public boolean hasRole(String roleName) {
         return roles.stream()
                 .anyMatch(r -> r.getRoleName().equals(roleName));
     }
 
     /** Check if this user has a specific permission key (across all roles). */
+    @JsonIgnore
     public boolean hasPermission(String permissionKey) {
         return roles.stream()
                 .flatMap(r -> r.getPermissions().stream())
@@ -115,6 +122,7 @@ public class User {
     }
 
     /** Collect all distinct permission keys from all assigned roles. */
+    @JsonIgnore
     public Set<String> getAllPermissionKeys() {
         return roles.stream()
                 .flatMap(r -> r.getPermissions().stream())
@@ -123,6 +131,7 @@ public class User {
     }
 
     /** Collect all role names assigned to this user. */
+    @JsonIgnore
     public Set<String> getAllRoleNames() {
         return roles.stream()
                 .map(Role::getRoleName)

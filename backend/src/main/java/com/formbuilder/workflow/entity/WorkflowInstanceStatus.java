@@ -1,4 +1,4 @@
-package com.formbuilder.workflow;
+package com.formbuilder.workflow.entity;
 
 public enum WorkflowInstanceStatus {
     ACTIVE,

@@ -22,9 +22,10 @@ public class FormGroupEntity {
     @Column(name = "id", updatable = false, nullable = false, columnDefinition = "UUID")
     private UUID id;
 
-    /** FK to forms.id — ON DELETE CASCADE in DB */
-    @Column(name = "form_id", nullable = false, columnDefinition = "UUID")
-    private UUID formId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "form_version_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonBackReference
+    private FormVersionEntity formVersion;
 
     @Column(name = "group_title", nullable = false, length = 200)
     private String groupTitle;

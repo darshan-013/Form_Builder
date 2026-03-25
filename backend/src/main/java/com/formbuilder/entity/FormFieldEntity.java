@@ -17,24 +17,24 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "form_fields", uniqueConstraints = @UniqueConstraint(name = "uq_form_field_key", columnNames = {
-        "form_id", "field_key" }))
+        "form_version_id", "field_key" }))
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = "form")
-@ToString(exclude = "form")
+@EqualsAndHashCode(exclude = "formVersion")
+@ToString(exclude = "formVersion")
 public class FormFieldEntity {
 
     @Id
     @Column(name = "id", updatable = false, nullable = false, columnDefinition = "UUID")
     private UUID id;
 
-    /** Back-reference to parent form. @JsonBackReference prevents circular JSON. */
+    /** Back-reference to parent version. @JsonBackReference prevents circular JSON. */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "form_id", nullable = false)
+    @JoinColumn(name = "form_version_id", nullable = false)
     @JsonBackReference
-    private FormEntity form;
+    private FormVersionEntity formVersion;
 
     /** Snake_case key — becomes the column name in the dynamic submission table. */
     @Column(name = "field_key", nullable = false, length = 100)

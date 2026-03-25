@@ -71,7 +71,6 @@ public class SecurityConfig {
             // ── Authorization rules ──────────────────────────────────────────
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers(HttpMethod.GET,  "/api/forms/{id}").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/api/forms/{id}/render").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/forms/{id}/submit").permitAll()
                 .requestMatchers("/api/forms/**").authenticated()

@@ -2,23 +2,14 @@ package com.formbuilder.service;
 
 import com.formbuilder.dto.FormDTO;
 import com.formbuilder.dto.FormFieldDTO;
-import com.formbuilder.entity.FormEntity;
-import com.formbuilder.entity.FormFieldEntity;
-import com.formbuilder.entity.FormGroupEntity;
-import com.formbuilder.entity.SharedOptionsEntity;
-import com.formbuilder.entity.StaticFormFieldEntity;
+import com.formbuilder.entity.*;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.repository.UserRepository;
-import com.formbuilder.repository.FormFieldJpaRepository;
-import com.formbuilder.repository.FormGroupRepository;
-import com.formbuilder.repository.FormJpaRepository;
-import com.formbuilder.repository.SharedOptionsRepository;
-import com.formbuilder.repository.StaticFormFieldRepository;
-import com.formbuilder.workflow.WorkflowInstance;
-import com.formbuilder.workflow.WorkflowInstanceRepository;
-import com.formbuilder.workflow.WorkflowInstanceStatus;
+import com.formbuilder.repository.*;
+import com.formbuilder.workflow.repository.WorkflowInstanceRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,12 +18,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import java.util.stream.Collectors;
 
+
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class FormService {
 
     private final FormJpaRepository formRepo;
+    private final FormVersionRepository versionRepo;
     private final FormFieldJpaRepository fieldRepo;
     private final SharedOptionsRepository sharedOptionsRepo;
     private final StaticFormFieldRepository staticRepo;
@@ -40,8 +34,8 @@ public class FormService {
     private final DynamicTableService dynamicTable;
     private final UserRepository userRepo;
     private final WorkflowInstanceRepository workflowInstanceRepo;
-
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+    private final SubmissionService submissionService;
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
@@ -137,7 +131,7 @@ public class FormService {
     private List<AllowedUserEntry> deserializeUserList(String json) {
         if (json == null || json.isBlank() || "[]".equals(json)) return List.of();
         try {
-            List<AllowedUserEntry> parsed = JSON.readValue(json, new TypeReference<>() {});
+            List<AllowedUserEntry> parsed = objectMapper.readValue(json, new TypeReference<>() {});
             if (parsed == null || parsed.isEmpty()) return List.of();
             return parsed.stream()
                     .filter(Objects::nonNull)
@@ -172,7 +166,7 @@ public class FormService {
 
         if (unique.isEmpty()) return null;
         try {
-            return JSON.writeValueAsString(unique.values());
+            return objectMapper.writeValueAsString(unique.values());
         } catch (Exception e) {
             return null;
         }
@@ -183,7 +177,7 @@ public class FormService {
      * submit/render).
      */
     public FormEntity getFormById(UUID id) {
-        return formRepo.findByIdWithFields(id)
+        return formRepo.findByIdWithVersions(id)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
     }
 
@@ -203,10 +197,10 @@ public class FormService {
      */
     public FormEntity getFormForAction(UUID id, String username, boolean isAdmin) {
         if (isAdmin) {
-            return formRepo.findByIdWithFields(id)
+            return formRepo.findByIdWithVersions(id)
                     .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
         }
-        FormEntity form = formRepo.findByIdWithFields(id)
+        FormEntity form = formRepo.findByIdWithVersions(id)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
 
         // 1. Owner (Creator) or Assigned Builder
@@ -242,132 +236,165 @@ public class FormService {
     @Transactional
     public FormEntity createForm(FormDTO dto, String owner) {
         validateUniqueFieldKeys(dto.getFields());
-        String tableName = dynamicTable.generateTableName(dto.getName());
+        String formCode = dto.getFormCode();
+        if (formCode == null || formCode.isBlank()) {
+            formCode = dto.getName().toLowerCase()
+                    .replaceAll("[^a-z0-9]+", "_")
+                    .replaceAll("^_+|_+$", "");
+        }
+        String tableName = dynamicTable.generateTableName(formCode);
 
+        // 1. Save Form metadata
         FormEntity form = FormEntity.builder()
                 .name(dto.getName())
+                .formCode(formCode)
                 .description(dto.getDescription())
                 .tableName(tableName)
                 .createdBy(owner)
                 .allowedUsers(serializeUserList(dto.getAllowedUsers()))
                 .allowMultipleSubmissions(
                         dto.getAllowMultipleSubmissions() == null ? true : dto.getAllowMultipleSubmissions())
-                .showTimestamp(true) // always compulsory — timestamp every submission
+                .showTimestamp(true)
                 .expiresAt(dto.getExpiresAt())
+                .versions(new ArrayList<>())
+                .build();
+
+        FormEntity savedForm = formRepo.save(form);
+
+        // 2. Create initial Version (v1, DRAFT)
+        FormVersionEntity version = FormVersionEntity.builder()
+                .form(savedForm)
+                .versionNumber(1)
+                .isActive(false) // Initial version is not active until published
+                .createdBy(owner)
+                .createdAt(java.time.LocalDateTime.now())
                 .fields(new ArrayList<>())
                 .build();
 
-        // 1. Initial save of form metadata (to get form.id)
-        FormEntity saved = formRepo.save(form);
+        FormVersionEntity savedVersion = versionRepo.save(version);
+        savedForm.getVersions().add(savedVersion);
 
-        // 2. Save static fields (no FK dependencies)
-        saveStaticFields(saved.getId(), dto.getStaticFields());
+        // 3. Save static fields (linked to version)
+        saveStaticFields(savedVersion, dto.getStaticFields(), true);
 
-        // 3. Save groups (must exist before dynamic fields reference them)
-        saveGroups(saved.getId(), dto.getGroups());
-        groupRepo.flush(); // Force groups to DB before saving fields
+        // 4. Save groups (linked to version)
+        saveGroups(savedVersion, dto.getGroups(), true);
+        groupRepo.flush();
 
-        // 4. Map and save dynamic fields
+        // 5. Map and save dynamic fields (linked to version)
         if (dto.getFields() != null) {
             for (FormFieldDTO f : dto.getFields()) {
-                saved.getFields().add(toFieldEntity(f, saved));
+                savedVersion.getFields().add(toFieldEntity(f, savedVersion, true));
             }
-            // Save again to flush fields with correct IDs
-            saved = formRepo.save(saved);
+            versionRepo.save(savedVersion);
         }
 
-        dynamicTable.createTable(tableName, saved.getFields());
+        // 6. Update definition_json snapshot
+        updateDefinitionJson(savedVersion);
 
-        log.info("Form '{}' created by '{}' with table '{}'", saved.getName(), owner, tableName);
-        return saved;
+        // 7. Create dynamic table (Schema is per-form)
+        dynamicTable.createTable(tableName, savedVersion.getFields());
+
+        log.info("Form '{}' created by '{}' with Version 1 (DRAFT) and table '{}'", savedForm.getName(), owner, tableName);
+        return savedForm;
     }
 
     // ── Update ────────────────────────────────────────────────────────────────
 
     @Transactional
-    public FormEntity updateForm(UUID id, FormDTO dto, String owner, boolean isAdmin) {
+    public FormEntity updateForm(UUID id, FormDTO dto, String owner, boolean isAdmin, boolean isBuilder, UUID targetVersionId) {
         validateUniqueFieldKeys(dto.getFields());
 
-        FormEntity existing = getFormForAction(id, owner, isAdmin);
+        FormEntity existingForm = getFormForAction(id, owner, isAdmin);
 
-        Map<String, FormFieldEntity> oldByKey = existing.getFields().stream()
-                .collect(Collectors.toMap(FormFieldEntity::getFieldKey, f -> f));
+        // 0. Requirement 3.3: Field Type Stability
+        // A field's type cannot be changed between versions.
+        if (dto.getFields() != null && existingForm.getPublishedVersion().isPresent()) {
+            FormVersionEntity published = existingForm.getPublishedVersion().get();
+            for (FormFieldDTO newField : dto.getFields()) {
+                published.getFields().stream()
+                        .filter(f -> f.getFieldKey().equals(newField.getFieldKey()))
+                        .findFirst()
+                        .ifPresent(oldField -> {
+                            if (!oldField.getFieldType().equals(newField.getFieldType())) {
+                                throw new IllegalArgumentException(
+                                        "Field type cannot be changed between versions (Requirement 3.3). " +
+                                                "Field '" + newField.getFieldKey() + "' was originally '" + oldField.getFieldType() + "'.");
+                            }
+                        });
+            }
+        }
 
-        Set<String> newKeys = dto.getFields() != null
-                ? dto.getFields().stream().map(FormFieldDTO::getFieldKey).collect(Collectors.toSet())
-                : Set.of();
+        // 1. Identify targeted version for editing
+        FormVersionEntity targetVersion = null;
+        if (targetVersionId != null) {
+            targetVersion = existingForm.getVersions().stream()
+                    .filter(v -> v.getId().equals(targetVersionId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Version not found for form: " + id));
+        } else {
+            targetVersion = existingForm.getDraftVersion()
+                    .orElseGet(() -> existingForm.getPublishedVersion().orElse(null));
+        }
 
-        // DDL: add / alter columns
+        if (targetVersion == null) {
+            throw new IllegalStateException("No version found for form: " + id);
+        }
+
+        // 2. Immutability Check [T3]: Published versions cannot be edited directly.
+        // Instead of throwing an error, we automatically fork it into a new DRAFT.
+        boolean isNewDraft = false;
+        if (targetVersion.isActive()) {
+            log.info("Editing a PUBLISHED version of form '{}'. Automatically creating a new DRAFT.", id);
+            targetVersion = copyVersionAsDraft(targetVersion);
+            existingForm.getVersions().add(targetVersion);
+            isNewDraft = true;
+        }
+
+        FormVersionEntity activeVersion = targetVersion;
+
+        // 3. Schema Governance (DDL)
+        // Note: DDL is per-form table. We add new columns but NEVER drop columns in this versioning model
+        // to prevent data loss from older published versions' submissions.
         if (dto.getFields() != null) {
             for (FormFieldDTO f : dto.getFields()) {
-                if (!oldByKey.containsKey(f.getFieldKey())) {
-                    dynamicTable.addColumn(existing.getTableName(), f.getFieldKey(), f.getFieldType());
-                } else {
-                    String oldType = oldByKey.get(f.getFieldKey()).getFieldType();
-                    if (!oldType.equals(f.getFieldType())) {
-                        dynamicTable.alterColumnType(existing.getTableName(), f.getFieldKey(), f.getFieldType());
-                    }
-                }
-            }
-        }
-        // DDL: drop removed columns
-        for (String key : oldByKey.keySet()) {
-            if (!newKeys.contains(key)) {
-                dynamicTable.dropColumn(existing.getTableName(), key);
+                // We check existing columns in the table via dynamicTable service
+                // (This logic might need to be more robust, checking the DB schema directly if possible)
+                // For now, we'll follow the existing logical check but remove dropColumn.
+                dynamicTable.addColumnIfMissing(existingForm.getTableName(), f.getFieldKey(), f.getFieldType());
             }
         }
 
-        // 1. Replace all static fields
-        staticRepo.deleteByFormId(existing.getId());
-        saveStaticFields(existing.getId(), dto.getStaticFields());
-
-        // 2. Replace all groups (must exist before fields reference them)
-        groupRepo.deleteByFormId(existing.getId());
-        groupRepo.flush(); // Force delete to DB
-        saveGroups(existing.getId(), dto.getGroups());
-        groupRepo.flush(); // Force inserts to DB
-
-        // 3. Update form metadata and fields
-        existing.setName(dto.getName());
-        existing.setDescription(dto.getDescription());
+        // 4. Update Form Global Metadata
+        existingForm.setName(dto.getName());
+        existingForm.setDescription(dto.getDescription());
         if (dto.getAllowedUsers() != null) {
-            existing.setAllowedUsers(serializeUserList(dto.getAllowedUsers()));
+            existingForm.setAllowedUsers(serializeUserList(dto.getAllowedUsers()));
         }
         if (dto.getAllowMultipleSubmissions() != null)
-            existing.setAllowMultipleSubmissions(dto.getAllowMultipleSubmissions());
-        existing.setExpiresAt(dto.getExpiresAt());
-        existing.getFields().removeIf(field -> !newKeys.contains(field.getFieldKey()));
+            existingForm.setAllowMultipleSubmissions(dto.getAllowMultipleSubmissions());
+        existingForm.setExpiresAt(dto.getExpiresAt());
+
+        // 5. Update Versioned Content (Groups, Static Fields, Fields)
+        // Rely on orphanRemoval = true to handle deletions via collection clear
+        activeVersion.getStaticFields().clear();
+        activeVersion.getGroups().clear();
+        activeVersion.getFields().clear();
+
+        // Save new versioned content
+        saveStaticFields(activeVersion, dto.getStaticFields(), isNewDraft);
+        saveGroups(activeVersion, dto.getGroups(), isNewDraft);
+        groupRepo.flush();
 
         if (dto.getFields() != null) {
             for (FormFieldDTO dtoField : dto.getFields()) {
-                FormFieldEntity existingField = oldByKey.get(dtoField.getFieldKey());
-                if (existingField != null) {
-                    existingField.setLabel(dtoField.getLabel());
-                    existingField.setFieldType(dtoField.getFieldType());
-                    existingField.setRequired(dtoField.isRequired());
-                    existingField.setDefaultValue(dtoField.getDefaultValue());
-                    existingField.setValidationRegex(dtoField.getValidationRegex());
-                    existingField.setValidationJson(dtoField.getValidationJson());
-                    existingField.setRulesJson(dtoField.getRulesJson());
-                    existingField.setUiConfigJson(dtoField.getUiConfigJson());
-                    existingField.setSharedOptionsId(dtoField.getSharedOptionsId());
-                    existingField.setFieldOrder(dtoField.getFieldOrder());
-                    existingField.setDisabled(dtoField.isDisabled());
-                    existingField.setReadOnly(dtoField.isReadOnly());
-                    existingField.setIsCalculated(dtoField.getIsCalculated());
-                    existingField.setFormulaExpression(dtoField.getFormulaExpression());
-                    existingField.setDependenciesJson(serializeDependencies(dtoField.getDependencies()));
-                    existingField.setPrecision(dtoField.getPrecision());
-                    existingField.setLockAfterCalculation(dtoField.getLockAfterCalculation());
-                    existingField.setParentGroupKey(dtoField.getParentGroupKey());
-                    existingField.setGroupId(dtoField.getGroupId());
-                } else {
-                    existing.getFields().add(toFieldEntity(dtoField, existing));
-                }
+                activeVersion.getFields().add(toFieldEntity(dtoField, activeVersion, isNewDraft));
             }
         }
 
-        return formRepo.save(existing);
+        versionRepo.save(activeVersion);
+        updateDefinitionJson(activeVersion);
+        return formRepo.save(existingForm);
     }
 
     // ── Delete / Soft Delete ────────────────────────────────────────────────
@@ -382,21 +409,55 @@ public class FormService {
         log.info("Form '{}' soft-deleted by '{}'", form.getName(), owner);
     }
 
+    /** Soft-delete a specific version of a form. */
+    @Transactional
+    public void deleteFormVersion(UUID id, UUID versionId, String owner, boolean isAdmin) {
+        FormEntity form = getFormForAction(id, owner, isAdmin);
+        
+        FormVersionEntity target = versionRepo.findById(versionId)
+                .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
+                
+        if (!target.getForm().getId().equals(id)) {
+            throw new IllegalArgumentException("Version does not belong to this form.");
+        }
+        
+        if (target.isActive()) {
+            throw new IllegalStateException("Cannot delete the active/published version. Unpublish it first.");
+        }
+        
+        target.setSoftDeleted(true);
+        target.setDeletedAt(java.time.LocalDateTime.now());
+        versionRepo.save(target);
+        
+        log.info("Form version '{}' (v{}) soft-deleted by '{}'", form.getName(), target.getVersionNumber(), owner);
+    }
+
     // ── Status (Publish / Unpublish) ──────────────────────────────────────────
 
     @Transactional
     public FormEntity publishForm(UUID id, String owner, boolean isAdmin, boolean isBuilder) {
         FormEntity form = getFormForAction(id, owner, isAdmin);
 
-        if (form.getStatus() != FormEntity.FormStatus.DRAFT) {
-            throw new IllegalStateException("Only drafted forms can be published.");
+        Optional<FormVersionEntity> draftOpt = form.getDraftVersion();
+        
+        if (draftOpt.isEmpty()) {
+            // Idempotency: If already published and no new draft, just return the form
+            if (form.getStatus() == FormEntity.FormStatus.PUBLISHED && form.getActiveVersion().isPresent()) {
+                log.info("Form '{}' is already PUBLISHED with no new draft. Returning current state.", form.getName());
+                return form;
+            }
+            throw new IllegalStateException("No draft version found to publish for form: " + id);
         }
 
+        FormVersionEntity draftVersion = draftOpt.get();
+
+        // Permission checks
         boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
                 .map(user -> user.getRoles().stream().anyMatch(role -> "Builder".equals(role.getRoleName())))
                 .orElse(false);
+
         if (!isAdmin && !creatorIsBuilder) {
-            throw new IllegalStateException("Only draft forms created by Builder can be published.");
+            throw new IllegalStateException("Only forms created by Builders can be published.");
         }
 
         if (!isAdmin) {
@@ -404,23 +465,102 @@ public class FormService {
                 throw new IllegalStateException("Only Admin or Builder owner can publish this form.");
             }
             if (!owner.equals(form.getCreatedBy())) {
-                throw new IllegalStateException("Builder can publish only own draft forms.");
+                throw new IllegalStateException("Builder can publish only own forms.");
             }
         }
 
+        // 1. Archive current active version if it exists (Single Active Version Constraint)
+        form.getVersions().stream()
+                .filter(FormVersionEntity::isActive)
+                .forEach(v -> {
+                    v.setActive(false);
+                    v.setStatus(FormVersionEntity.FormVersionStatus.DRAFT);
+                    versionRepo.save(v);
+                });
+
+        // 2. Promote DRAFT to PUBLISHED
+        draftVersion.setActive(true);
+        draftVersion.setStatus(FormVersionEntity.FormVersionStatus.PUBLISHED);
+        draftVersion.setPublishedAt(java.time.LocalDateTime.now());
+        versionRepo.save(draftVersion);
+        updateDefinitionJson(draftVersion);
+
+        // 4. Update Form Global Status
         form.setStatus(FormEntity.FormStatus.PUBLISHED);
-        FormEntity saved = formRepo.save(form);
-        log.info("Form '{}' published by '{}'", form.getName(), owner);
-        return saved;
+
+        log.info("B1: Form '{}' version {} activated and status set to PUBLISHED.", form.getName(), draftVersion.getVersionNumber());
+        return formRepo.save(form);
+    }
+
+    @Transactional
+    public FormEntity publishVersion(UUID id, UUID versionId, String owner, boolean isAdmin, boolean isBuilder) {
+        FormEntity form = getFormForAction(id, owner, isAdmin);
+
+        FormVersionEntity targetVersion = versionRepo.findById(versionId)
+                .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
+
+        if (!targetVersion.getForm().getId().equals(id)) {
+            throw new IllegalArgumentException("Version does not belong to this form.");
+        }
+
+        if (targetVersion.isActive()) {
+            throw new IllegalStateException("Version is already published.");
+        }
+
+        // Permission checks
+        boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
+                .map(user -> user.getRoles().stream().anyMatch(role -> "Builder".equals(role.getRoleName())))
+                .orElse(false);
+
+        if (!isAdmin && !creatorIsBuilder) {
+            throw new IllegalStateException("Only forms created by Builders can be published.");
+        }
+
+        if (!isAdmin) {
+            if (!isBuilder) {
+                throw new IllegalStateException("Only Admin or Builder owner can publish this form.");
+            }
+            if (!owner.equals(form.getCreatedBy())) {
+                throw new IllegalStateException("Builder can publish only own forms.");
+            }
+        }
+
+        // 1. Current active version becomes DRAFT
+        form.getVersions().stream()
+                .filter(FormVersionEntity::isActive)
+                .forEach(v -> {
+                    v.setActive(false);
+                    v.setStatus(FormVersionEntity.FormVersionStatus.DRAFT);
+                    versionRepo.save(v);
+                });
+
+        // 2. Promote target to PUBLISHED
+        targetVersion.setActive(true);
+        targetVersion.setStatus(FormVersionEntity.FormVersionStatus.PUBLISHED);
+        targetVersion.setPublishedAt(java.time.LocalDateTime.now());
+        versionRepo.save(targetVersion);
+        updateDefinitionJson(targetVersion);
+
+        // 3. Update Form Global Status
+        form.setStatus(FormEntity.FormStatus.PUBLISHED);
+
+        log.info("Form '{}' version {} activated and status set to PUBLISHED.", form.getName(), targetVersion.getVersionNumber());
+        return formRepo.save(form);
     }
 
     @Transactional
     public FormEntity unpublishForm(UUID id, String owner, boolean isAdmin) {
         FormEntity form = getFormForAction(id, owner, isAdmin);
+        
+        form.getPublishedVersion().ifPresent(v -> {
+            v.setActive(false);
+            v.setStatus(FormVersionEntity.FormVersionStatus.DRAFT);
+            versionRepo.save(v);
+            log.info("Form '{}' version {} unpublished (isActive set to false, status set to DRAFT) by '{}'", form.getName(), v.getVersionNumber(), owner);
+        });
+
         form.setStatus(FormEntity.FormStatus.DRAFT);
-        FormEntity saved = formRepo.save(form);
-        log.info("Form '{}' unpublished by '{}'", form.getName(), owner);
-        return saved;
+        return formRepo.save(form);
     }
 
     // ── Shared Options CRUD ───────────────────────────────────────────────────
@@ -463,57 +603,79 @@ public class FormService {
     // ── Static Field helpers ──────────────────────────────────────────────────
 
     /** Returns all static fields for a form, ordered by field_order */
-    public List<StaticFormFieldEntity> getStaticFields(UUID formId) {
-        return staticRepo.findByFormIdOrderByFieldOrderAsc(formId);
+    public List<StaticFormFieldEntity> getStaticFields(UUID versionId) {
+        return staticRepo.findByFormVersionIdOrderByFieldOrderAsc(versionId);
     }
 
-    private void saveStaticFields(UUID formId, List<FormDTO.StaticFieldDTO> staticDTOs) {
+    private void saveStaticFields(FormVersionEntity version, List<FormDTO.StaticFieldDTO> staticDTOs, boolean isNewDraft) {
         if (staticDTOs == null || staticDTOs.isEmpty())
             return;
         for (FormDTO.StaticFieldDTO sf : staticDTOs) {
-            staticRepo.save(StaticFormFieldEntity.builder()
-                    .id(sf.getId() != null ? sf.getId() : UUID.randomUUID())
-                    .formId(formId)
+            StaticFormFieldEntity entity = StaticFormFieldEntity.builder()
+                    .id(!isNewDraft && sf.getId() != null ? sf.getId() : UUID.randomUUID())
+                    .formVersion(version)
                     .fieldType(sf.getFieldType())
                     .data(sf.getData())
                     .fieldOrder(sf.getFieldOrder())
-                    .build());
+                    .build();
+            staticRepo.save(entity);
+            version.getStaticFields().add(entity);
         }
     }
 
     /** Returns all groups for a form, ordered by group_order */
-    public List<FormGroupEntity> getGroups(UUID formId) {
-        return groupRepo.findByFormIdOrderByGroupOrderAsc(formId);
+    public List<FormGroupEntity> getGroups(UUID versionId) {
+        return groupRepo.findByFormVersionIdOrderByGroupOrderAsc(versionId);
     }
 
-    private void saveGroups(UUID formId, List<FormDTO.GroupDTO> groupDTOs) {
+    private void saveGroups(FormVersionEntity version, List<FormDTO.GroupDTO> groupDTOs, boolean isNewDraft) {
         if (groupDTOs == null || groupDTOs.isEmpty())
             return;
         for (FormDTO.GroupDTO g : groupDTOs) {
-            groupRepo.save(FormGroupEntity.builder()
-                    .id(g.getId() != null ? g.getId() : UUID.randomUUID())
-                    .formId(formId)
+            FormGroupEntity entity = FormGroupEntity.builder()
+                    .id(!isNewDraft && g.getId() != null ? g.getId() : UUID.randomUUID())
+                    .formVersion(version)
                     .groupTitle(g.getGroupTitle())
                     .groupDescription(g.getGroupDescription())
                     .groupOrder(g.getGroupOrder())
                     .rulesJson(g.getRulesJson())
-                    .build());
+                    .build();
+            groupRepo.save(entity);
+            version.getGroups().add(entity);
         }
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────
 
-    private FormFieldEntity toFieldEntity(FormFieldDTO dto, FormEntity parent) {
+    private FormVersionEntity copyVersionAsDraft(FormVersionEntity source) {
+        FormEntity form = source.getForm();
+        int maxVersion = form.getVersions().stream()
+                .mapToInt(FormVersionEntity::getVersionNumber)
+                .max().orElse(0);
+
+        FormVersionEntity newDraft = FormVersionEntity.builder()
+                .form(form)
+                .versionNumber(maxVersion + 1)
+                .status(FormVersionEntity.FormVersionStatus.DRAFT)
+                .isActive(false)
+                .createdBy(source.getCreatedBy())
+                .build();
+
+        // We do NOT copy fields/groups/staticFields here because `updateForm`
+        // will immediately clear them and replace them with the DTO contents.
+        // The DTO from the frontend contains all the fields (both old and new).
+        return newDraft;
+    }
+
+    private FormFieldEntity toFieldEntity(FormFieldDTO dto, FormVersionEntity parent, boolean isNewDraft) {
         return FormFieldEntity.builder()
-                .id(dto.getId() != null ? dto.getId() : UUID.randomUUID())
-                .form(parent)
+                .id(!isNewDraft && dto.getId() != null ? dto.getId() : UUID.randomUUID())
+                .formVersion(parent)
                 .fieldKey(dto.getFieldKey())
-                .label(dto.getLabel()
-                )
+                .label(dto.getLabel())
                 .fieldType(dto.getFieldType())
                 .required(dto.isRequired())
-                .defaultValue(dto.getDefaultValue()
-                )
+                .defaultValue(dto.getDefaultValue())
                 .validationRegex(dto.getValidationRegex())
                 .validationJson(dto.getValidationJson())
                 .rulesJson(dto.getRulesJson())
@@ -561,6 +723,25 @@ public class FormService {
         }
     }
 
+
+
+    @Transactional
+    public void updateDefinitionJson(FormVersionEntity version) {
+        try {
+            Map<String, Object> snapshot = new HashMap<>();
+            snapshot.put("fields", version.getFields());
+            snapshot.put("groups", version.getGroups());
+            snapshot.put("staticFields", version.getStaticFields());
+            
+            String json = objectMapper.writeValueAsString(snapshot);
+            version.setDefinitionJson(json);
+            versionRepo.save(version);
+            log.debug("Updated definition_json snapshot for version {}", version.getVersionNumber());
+        } catch (Exception e) {
+            log.error("Failed to serialize form definition for version {}: {}", 
+                version.getVersionNumber(), e.getMessage());
+        }
+    }
 
     private static final class AllowedUserEntry {
         public Integer id;

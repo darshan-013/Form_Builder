@@ -1,4 +1,4 @@
-package com.formbuilder.workflow;
+package com.formbuilder.workflow.entity;
 
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.rbac.entity.User;
@@ -54,7 +54,7 @@ public class WorkflowInstance {
     @OneToMany(mappedBy = "instance", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("stepIndex ASC")
     @Builder.Default
-    private List<com.formbuilder.workflow.WorkflowStep> steps = new ArrayList<>();
+    private List<WorkflowStep> steps = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

@@ -3,16 +3,17 @@ package com.formbuilder.controller;
 import com.formbuilder.dto.FormDTO;
 import com.formbuilder.entity.FormEntity;
 import com.formbuilder.entity.FormGroupEntity;
+import com.formbuilder.entity.FormVersionEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.service.UserRoleService;
 import com.formbuilder.service.AuditLogService;
 import com.formbuilder.service.FormRenderService;
 import com.formbuilder.service.FormService;
-import com.formbuilder.workflow.WorkflowInstance;
-import com.formbuilder.workflow.WorkflowInstanceStatus;
-import com.formbuilder.workflow.WorkflowService;
-import com.formbuilder.workflow.WorkflowStep;
+import com.formbuilder.workflow.entity.WorkflowInstance;
+import com.formbuilder.workflow.entity.WorkflowInstanceStatus;
+import com.formbuilder.workflow.service.WorkflowService;
+import com.formbuilder.workflow.entity.WorkflowStep;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -71,7 +72,7 @@ public class FormController {
             map.put("allowMultipleSubmissions", form.isAllowMultipleSubmissions());
             map.put("showTimestamp", form.isShowTimestamp());
             map.put("expiresAt", form.getExpiresAt());
-            map.put("fields", form.getFields());
+            // fields moved to version, not shown in list view
 
             WorkflowInstance wf = workflowByFormId.get(form.getId());
             map.put("workflow", wf != null ? toWorkflowSummary(wf) : null);
@@ -172,28 +173,74 @@ public class FormController {
         return map;
     }
 
+    /** Update form — owner or Admin can edit. Supports optional versionId for targeted version editing. */
+    @PutMapping("/{id}")
+    public ResponseEntity<FormEntity> updateForm(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID versionId,
+            @RequestBody FormDTO dto,
+            Authentication auth,
+            HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        if (roles.contains(ROLE_ROLE_ADMIN)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        if (roles.contains("Viewer") && !roles.contains(ROLE_ADMIN)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
+        boolean isBuilder = roles.contains("Builder");
+        String username = auth.getName();
+        FormEntity updated = formService.updateForm(id, dto, username, isAdmin, isBuilder, versionId);
+        auditLogService.logEvent(
+                "UPDATE_FORM",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                username,
+                "FORM",
+                updated.getId().toString(),
+                "User '" + username + "' updated form '" + updated.getName() + "'.",
+                Map.of("formName", updated.getName()),
+                null,
+                null,
+                null,
+                null);
+        return ResponseEntity.ok(updated);
+    }
     /** Single form with static fields bundled — used by builder edit page. */
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> getById(@PathVariable UUID id, Authentication auth) {
+    public ResponseEntity<Map<String, Object>> getById(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID versionId,
+            Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
         FormEntity form = formService.getFormForAction(id, auth.getName(), isAdmin);
-        List<StaticFormFieldEntity> statics = formService.getStaticFields(id);
-
-        // Convert statics to simple maps for JSON response
-        List<Map<String, Object>> staticList = new ArrayList<>();
-        for (StaticFormFieldEntity sf : statics) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", sf.getId());
-            m.put("fieldType", sf.getFieldType());
-            m.put("data", sf.getData());
-            m.put("fieldOrder", sf.getFieldOrder());
-            m.put("isStatic", true);
-            staticList.add(m);
+        
+        FormVersionEntity version;
+        if (versionId != null) {
+            version = form.getVersions().stream()
+                    .filter(v -> v.getId().equals(versionId))
+                    .findFirst()
+                    .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
+        } else {
+            version = form.getDraftVersion()
+                    .orElseGet(() -> form.getPublishedVersion()
+                            .orElseThrow(() -> new IllegalStateException("No version found for form: " + id)));
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("id", form.getId());
+        response.put("activeVersionId", version.getId());
+        response.put("versionNumber", version.getVersionNumber());
+        
+        String status = "DRAFT";
+        if (version.isActive()) {
+            status = "PUBLISHED";
+        } else if (version.getPublishedAt() != null) {
+            status = "DRAFT";
+        }
+        response.put("versionStatus", status);
+        // ... (rest of the fields)
         response.put("name", form.getName());
         response.put("description", form.getDescription());
         response.put("tableName", form.getTableName());
@@ -207,11 +254,24 @@ public class FormController {
         response.put("allowMultipleSubmissions", form.isAllowMultipleSubmissions());
         response.put("showTimestamp", form.isShowTimestamp());
         response.put("expiresAt", form.getExpiresAt());
-        response.put("fields", form.getFields());
+        response.put("fields", version.getFields());
+
+        // Statics from version
+        List<StaticFormFieldEntity> statics = version.getStaticFields();
+        List<Map<String, Object>> staticList = new ArrayList<>();
+        for (StaticFormFieldEntity sf : statics) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", sf.getId());
+            m.put("fieldType", sf.getFieldType());
+            m.put("data", sf.getData());
+            m.put("fieldOrder", sf.getFieldOrder());
+            m.put("isStatic", true);
+            staticList.add(m);
+        }
         response.put("staticFields", staticList);
 
-        // Groups
-        List<FormGroupEntity> groups = formService.getGroups(id);
+        // Groups from version
+        List<FormGroupEntity> groups = version.getGroups();
         List<Map<String, Object>> groupList = new ArrayList<>();
         for (FormGroupEntity g : groups) {
             Map<String, Object> gm = new LinkedHashMap<>();
@@ -227,6 +287,28 @@ public class FormController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/{id}/versions")
+    public ResponseEntity<List<Map<String, Object>>> getVersions(@PathVariable UUID id, Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
+        FormEntity form = formService.getFormForAction(id, auth.getName(), isAdmin);
+
+        List<Map<String, Object>> versionList = form.getVersions().stream()
+                .filter(v -> !v.isSoftDeleted())
+                .sorted((v1, v2) -> v2.getVersionNumber() - v1.getVersionNumber())
+                .map(v -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", v.getId());
+                    m.put("versionNumber", v.getVersionNumber());
+                    m.put("status", v.getStatus().name());
+                    m.put("createdAt", v.getCreatedAt());
+                    return m;
+                })
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(versionList);
+    }
+
     /**
      * Public render — returns 403 if DRAFT.
      * No ownership check: anyone with the link can submit to a published form.
@@ -234,7 +316,9 @@ public class FormController {
     @GetMapping("/{id}/render")
     public ResponseEntity<?> render(@PathVariable UUID id, jakarta.servlet.http.HttpSession session) {
         FormEntity form = formService.getFormById(id);
-        if (form.getStatus() != FormEntity.FormStatus.PUBLISHED) {
+        // Public render only works if there is a published version
+        Optional<FormVersionEntity> published = form.getPublishedVersion();
+        if (published.isEmpty()) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("error", "This form is not published yet.", "status", form.getStatus().name()));
         }
@@ -247,7 +331,7 @@ public class FormController {
             }
         }
 
-        return ResponseEntity.ok(formRenderService.render(id));
+        return ResponseEntity.ok(formRenderService.render(id, published.get().getId()));
     }
 
     /**
@@ -256,20 +340,21 @@ public class FormController {
      * other users can preview only forms they can act on.
      */
     @GetMapping("/{id}/render/admin")
-    public ResponseEntity<?> renderAdmin(@PathVariable UUID id, Authentication auth, HttpSession session) {
+    public ResponseEntity<?> renderAdmin(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID versionId,
+            Authentication auth,
+            HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
         boolean isRoleAdmin = roles.contains(ROLE_ROLE_ADMIN);
 
-        if (isAdmin || isRoleAdmin) {
-            // Admin can preview any non-deleted form
-            formService.getFormById(id);
-        } else {
+        FormEntity form = formService.getFormById(id);
+        if (!(isAdmin || isRoleAdmin)) {
             // Non-admins (Manager, Approver, Builder, Viewer) can only preview forms they are involved in
-            FormEntity form = formService.getFormById(id);
             boolean isOwner = auth.getName().equalsIgnoreCase(form.getCreatedBy());
             boolean isAssignedBuilder = auth.getName().equalsIgnoreCase(form.getAssignedBuilderUsername());
-            
+
             Integer userId = (Integer) session.getAttribute("USER_ID");
             boolean isInvolved = userId != null && workflowService.isUserInvolvedInActiveWorkflow(id, userId);
 
@@ -281,7 +366,7 @@ public class FormController {
             }
         }
 
-        return ResponseEntity.ok(formRenderService.render(id));
+        return ResponseEntity.ok(formRenderService.render(id, versionId));
     }
 
     /** Create a form — owner is set to the authenticated user. */
@@ -349,36 +434,6 @@ public class FormController {
                 "message", "Builder assigned successfully"));
     }
 
-    /** Update — owner or Admin can edit a form. */
-    @PutMapping("/{id}")
-    public ResponseEntity<FormEntity> update(
-            @PathVariable UUID id,
-            @Valid @RequestBody FormDTO dto,
-            Authentication auth,
-            HttpSession session) {
-        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
-        if (roles.contains(ROLE_ROLE_ADMIN)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        if (roles.contains("Viewer") && !roles.contains(ROLE_ADMIN)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        boolean isAdmin = roles.contains(ROLE_ADMIN);
-        FormEntity updated = formService.updateForm(id, dto, auth.getName(), isAdmin);
-        auditLogService.logEvent(
-                "UPDATE_FORM",
-                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
-                auth.getName(),
-                "FORM",
-                updated.getId().toString(),
-                "User '" + auth.getName() + "' updated form '" + updated.getName() + "'.",
-                Map.of("formName", updated.getName()),
-                null,
-                null,
-                null,
-                null);
-        return ResponseEntity.ok(updated);
-    }
 
     /** Soft-delete only. Owner or Admin. */
     @DeleteMapping("/{id}")
@@ -405,15 +460,41 @@ public class FormController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Soft-delete a specific form version. */
+    @DeleteMapping("/{id}/versions/{versionId}")
+    public ResponseEntity<Void> deleteVersion(@PathVariable UUID id, @PathVariable UUID versionId, Authentication auth, HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN);
+        
+        formService.deleteFormVersion(id, versionId, auth.getName(), isAdmin);
+        
+        auditLogService.logEvent(
+                "DELETE_FORM_VERSION",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                auth.getName(),
+                "FORM_VERSION",
+                versionId.toString(),
+                "User '" + auth.getName() + "' soft-deleted form version.",
+                Map.of("formId", id.toString()),
+                null,
+                null,
+                null,
+                null);
+                
+        return ResponseEntity.noContent().build();
+    }
+
     /** Publish — owner or Admin can publish a form. */
     @PatchMapping("/{id}/publish")
     public ResponseEntity<Map<String, Object>> publish(@PathVariable UUID id, Authentication auth,
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
-        if (roles.contains(ROLE_ROLE_ADMIN)) {
+        boolean isAdmin = roles.contains(ROLE_ADMIN);
+        boolean isRoleAdmin = roles.contains(ROLE_ROLE_ADMIN);
+        // Role Administrator users cannot publish unless they are also a full Admin
+        if (isRoleAdmin && !isAdmin) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        boolean isAdmin = roles.contains(ROLE_ADMIN);
         boolean isBuilder = roles.contains("Builder");
         FormEntity form = formService.publishForm(id, auth.getName(), isAdmin, isBuilder);
         auditLogService.logEvent(
@@ -433,6 +514,38 @@ public class FormController {
                 "status", "PUBLISHED",
                 "message", "Form published successfully"));
     }
+
+    /** Publish a specific version — owner or Admin can activate a version. */
+    @PatchMapping("/{id}/versions/{versionId}/publish")
+    public ResponseEntity<Map<String, Object>> publishVersion(@PathVariable UUID id, @PathVariable UUID versionId, Authentication auth,
+            HttpSession session) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN);
+        boolean isRoleAdmin = roles.contains(ROLE_ROLE_ADMIN);
+        if (isRoleAdmin && !isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        boolean isBuilder = roles.contains("Builder");
+        FormEntity form = formService.publishVersion(id, versionId, auth.getName(), isAdmin, isBuilder);
+        auditLogService.logEvent(
+                "PUBLISH_FORM_VERSION",
+                auditLogService.getSessionUserId(session.getAttribute("USER_ID")),
+                auth.getName(),
+                "FORM_VERSION",
+                versionId.toString(),
+                "User '" + auth.getName() + "' activated version " + versionId + " for form '" + form.getName() + "'.",
+                Map.of("formName", form.getName(), "versionId", versionId.toString()),
+                null,
+                null,
+                null,
+                null);
+        return ResponseEntity.ok(Map.of(
+                "id", id.toString(),
+                "versionId", versionId.toString(),
+                "status", "PUBLISHED",
+                "message", "Form version activated successfully"));
+    }
+
 
     /** Unpublish — owner or Admin can unpublish a form. */
     @PatchMapping("/{id}/unpublish")

@@ -12,9 +12,9 @@ import java.util.UUID;
 @Repository
 public interface StaticFormFieldRepository extends JpaRepository<StaticFormFieldEntity, UUID> {
 
-    List<StaticFormFieldEntity> findByFormIdOrderByFieldOrderAsc(UUID formId);
+    List<StaticFormFieldEntity> findByFormVersionIdOrderByFieldOrderAsc(UUID versionId);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("DELETE FROM StaticFormFieldEntity s WHERE s.formId = :formId")
-    void deleteByFormId(UUID formId);
+    @Query("DELETE FROM StaticFormFieldEntity s WHERE s.formVersion.id = :versionId")
+    void deleteByFormVersionId(UUID versionId);
 }

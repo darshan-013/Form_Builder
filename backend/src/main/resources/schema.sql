@@ -40,15 +40,35 @@ COMMENT ON COLUMN shared_options.options_json IS 'JSON array: [{"label":"A","val
 -- ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS forms (
     id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_code     VARCHAR(50)   NOT NULL UNIQUE,  -- unique identifier e.g. "onboarding"
     name          VARCHAR(150)  NOT NULL,
     description   TEXT,
-    table_name    VARCHAR(150)  NOT NULL UNIQUE,   -- e.g. "form_a3b8d1b6"
+    table_name    VARCHAR(150)  NOT NULL UNIQUE,   -- e.g. "form_data_onboarding"
     created_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMP     NOT NULL DEFAULT NOW()
 )^
 
 COMMENT ON TABLE  forms              IS 'Master registry of every form created by admins.'^
+COMMENT ON COLUMN forms.form_code    IS 'Unique string identifier for the form, used in URL logic and table naming.'^
 COMMENT ON COLUMN forms.table_name  IS 'Name of the dedicated PostgreSQL table that stores submissions for this form.'^
+
+-- ─────────────────────────────────────────────
+--  TABLE: form_versions
+--  Stores snapshots of a form''s definition.
+--  Only one version is ACTIVE (for rendering).
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS form_versions (
+    id              UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_id         UUID            NOT NULL REFERENCES forms(id) ON DELETE CASCADE,
+    version_number  INT             NOT NULL DEFAULT 1,
+    status          VARCHAR(20)     NOT NULL DEFAULT 'DRAFT', -- DRAFT | PUBLISHED | ARCHIVED
+    definition_json TEXT,
+    created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+    published_at    TIMESTAMP,
+    created_by      VARCHAR(100),
+    UNIQUE(form_id, version_number)
+)^
 
 
 -- ─────────────────────────────────────────────
@@ -58,26 +78,25 @@ COMMENT ON COLUMN forms.table_name  IS 'Name of the dedicated PostgreSQL table t
 -- ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS form_fields (
     id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    form_id           UUID         NOT NULL
-                                   REFERENCES forms (id) ON DELETE CASCADE,
+    form_version_id   UUID         NOT NULL
+                                   REFERENCES form_versions (id) ON DELETE CASCADE,
+    group_id          UUID,                           -- FK -> form_groups.id
     field_key         VARCHAR(100) NOT NULL,          -- column name in submission table
     label             VARCHAR(150) NOT NULL,          -- human-readable label shown on form
-    field_type        VARCHAR(50)  NOT NULL            -- text | number | date | boolean | dropdown | radio | file | multiple_choice | linear_scale | field_group | grid_types
-                                   CHECK (field_type IN ('text', 'number', 'date', 'boolean', 'dropdown', 'radio', 'file', 'multiple_choice', 'linear_scale', 'field_group', 'multiple_choice_grid', 'star_rating', 'checkbox_grid')),
+    field_type        VARCHAR(50)  NOT NULL,
     required          BOOLEAN      NOT NULL DEFAULT FALSE,
     default_value     TEXT,
-    validation_regex  TEXT,                           -- optional client+server-side regex
-    validation_json   TEXT,                           -- advanced validation rules (JSON object)
-    ui_config_json    TEXT,                           -- UI configuration JSON (e.g. scale min/max, labels)
-    shared_options_id UUID                            -- FK → shared_options.id (required for dropdown/radio)
+    validation_regex  TEXT,
+    validation_json   TEXT,
+    ui_config_json    TEXT,
+    shared_options_id UUID                            -- FK -> shared_options.id
                        REFERENCES shared_options (id) ON DELETE SET NULL,
     is_disabled       BOOLEAN      NOT NULL DEFAULT FALSE,
     is_read_only      BOOLEAN      NOT NULL DEFAULT FALSE,
-    field_order       INT          NOT NULL DEFAULT 0, -- render order in builder/preview
+    field_order       INT          NOT NULL DEFAULT 0,
     created_at        TIMESTAMP    NOT NULL DEFAULT NOW(),
-
-    -- ── Constraints ──────────────────────────
-    CONSTRAINT uq_form_field_key UNIQUE (form_id, field_key)  -- no duplicate column names per form
+    
+    CONSTRAINT uq_form_field_key UNIQUE (form_version_id, field_key)
 )^
 
 COMMENT ON TABLE  form_fields               IS 'Field definitions for each form. Each field becomes a column in the form''s submission table.'^
@@ -91,13 +110,13 @@ COMMENT ON COLUMN form_fields.field_order   IS 'Zero-based render order. Builder
 --  INDEXES
 -- ─────────────────────────────────────────────
 
--- Speed up all queries that join/filter form_fields by form
-CREATE INDEX IF NOT EXISTS idx_form_fields_form_id
-    ON form_fields (form_id)^
+-- Speed up all queries that join/filter form_fields by version
+CREATE INDEX IF NOT EXISTS idx_form_fields_version_id
+    ON form_fields (form_version_id)^
 
--- Speed up ORDER BY field_order when rendering / previewing a form
+-- Speed up ORDER BY field_order when rendering / previewing a version
 CREATE INDEX IF NOT EXISTS idx_form_fields_field_order
-    ON form_fields (form_id, field_order)^
+    ON form_fields (form_version_id, field_order)^
 
 
 -- ─────────────────────────────────────────────

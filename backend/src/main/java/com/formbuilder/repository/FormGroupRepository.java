@@ -12,9 +12,9 @@ import java.util.UUID;
 @Repository
 public interface FormGroupRepository extends JpaRepository<FormGroupEntity, UUID> {
 
-    List<FormGroupEntity> findByFormIdOrderByGroupOrderAsc(UUID formId);
+    List<FormGroupEntity> findByFormVersionIdOrderByGroupOrderAsc(UUID versionId);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("DELETE FROM FormGroupEntity g WHERE g.formId = :formId")
-    void deleteByFormId(UUID formId);
+    @Query("DELETE FROM FormGroupEntity g WHERE g.formVersion.id = :versionId")
+    void deleteByFormVersionId(UUID versionId);
 }

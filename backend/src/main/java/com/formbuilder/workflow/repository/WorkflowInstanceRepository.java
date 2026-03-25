@@ -1,5 +1,7 @@
-package com.formbuilder.workflow;
+package com.formbuilder.workflow.repository;
 
+import com.formbuilder.workflow.entity.WorkflowInstance;
+import com.formbuilder.workflow.entity.WorkflowInstanceStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
