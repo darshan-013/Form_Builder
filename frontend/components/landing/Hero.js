@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import styles from '../../styles/Home.module.css';
+import BackgroundShapes from './BackgroundShapes';
 
 export default function Hero() {
     return (
         <section className={`${styles.heroSection} ${styles.reveal}`} data-reveal>
+            <BackgroundShapes />
             <div className={styles.container}>
                 <div className={styles.heroGlow} />
                 <div className={styles.heroContent}>

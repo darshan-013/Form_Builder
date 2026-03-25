@@ -16,8 +16,13 @@ async function request(method, path, body) {
     };
 
     if (body !== undefined) {
-        opts.headers['Content-Type'] = 'application/json';
-        opts.body = JSON.stringify(body);
+        if (body instanceof FormData) {
+            opts.body = body;
+            // Don't set Content-Type, browser will set it with boundary for FormData
+        } else {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = JSON.stringify(body);
+        }
     }
 
     const res = await fetch(`${BASE}${path}`, opts);
@@ -74,20 +79,25 @@ export const getMe = () =>
 export const getForms = () =>
     request('GET', '/forms');
 
-export const getForm = (id) =>
-    request('GET', `/forms/${id}`);
+export const getForm = (id, versionId = null) =>
+    request('GET', `/forms/${id}${versionId ? `?versionId=${versionId}` : ''}`);
+
+export const getFormVersions = (id) =>
+    request('GET', `/forms/${id}/versions`);
 
 /** Fetch form with resolved options — public (blocks DRAFT, returns 403) */
 export const getRenderForm = (id) =>
     request('GET', `/forms/${id}/render`);
 
-/** Public form render (alias) */
-export const getFormRender = (id) =>
-    request('GET', `/forms/${id}/render`);
+/** Public form render (alias). If versionId is provided, uses the admin endpoint so drafts work. */
+export const getFormRender = (id, versionId = null) =>
+    versionId
+        ? request('GET', `/forms/${id}/render/admin?versionId=${versionId}`)
+        : request('GET', `/forms/${id}/render`);
 
 /** Admin render — always works regardless of status (for preview page) */
-export const getFormRenderAdmin = (id) =>
-    request('GET', `/forms/${id}/render/admin`);
+export const getFormRenderAdmin = (id, versionId = null) =>
+    request('GET', `/forms/${id}/render/admin${versionId ? `?versionId=${versionId}` : ''}`);
 
 export const createForm = (dto) =>
     request('POST', '/forms', dto);
@@ -95,8 +105,8 @@ export const createForm = (dto) =>
 export const assignBuilder = (id, builderId) =>
     request('PATCH', `/forms/${id}/assign-builder`, { builderId });
 
-export const updateForm = (id, dto) =>
-    request('PUT', `/forms/${id}`, dto);
+export const updateForm = (id, versionId, dto) =>
+    request('PUT', `/forms/${id}${versionId ? `?versionId=${versionId}` : ''}`, dto);
 
 export const deleteForm = (id) =>
     request('DELETE', `/forms/${id}`);
@@ -105,26 +115,40 @@ export const deleteForm = (id) =>
 export const publishForm = (id) =>
     request('PATCH', `/forms/${id}/publish`);
 
+/** Publish a specific version — activates the target version */
+export const publishVersion = (formId, versionId) =>
+    request('PATCH', `/forms/${formId}/versions/${versionId}/publish`);
+
 /** Unpublish a form — sets status back to DRAFT */
 export const unpublishForm = (id) =>
     request('PATCH', `/forms/${id}/unpublish`);
 
+export const deleteFormVersion = (id, versionId) =>
+    request('DELETE', `/forms/${id}/versions/${versionId}`);
+
+
 // ── Submissions ───────────────────────────────────────────────
 
-export async function submitForm(formId, data) {
+export async function submitForm(formId, data, submissionId = null) {
     const opts = {
         method: 'POST',
         credentials: 'include',
     };
 
+    const payload = { data };
+    if (submissionId) {
+        payload.submissionId = submissionId;
+    }
+
     // Check if data is FormData (for file uploads)
     if (data instanceof FormData) {
-        // Don't set Content-Type header - browser will set it with boundary
+        // If we have a submissionId with FormData, we append it
+        if (submissionId) data.append('submissionId', submissionId);
         opts.body = data;
     } else {
         // Regular JSON submission
         opts.headers = { 'Content-Type': 'application/json' };
-        opts.body = JSON.stringify({ data });
+        opts.body = JSON.stringify(payload);
     }
 
     const res = await fetch(`${BASE}/forms/${formId}/submit`, opts);
@@ -145,11 +169,11 @@ export const getDraft = (formId) =>
     request('GET', `/forms/${formId}/draft`);
 
 /** Save response as draft */
-export const saveDraft = (formId, data) =>
-    request('POST', `/forms/${formId}/draft`, { data });
+export const saveDraft = (formId, data, submissionId = null) =>
+    request('POST', `/forms/${formId}/draft`, { data, submissionId });
 
-export const getSubmissions = (formId) =>
-    request('GET', `/forms/${formId}/submissions`);
+export const getSubmissions = (formId, versionId = null) =>
+    request('GET', `/forms/${formId}/submissions${versionId ? `?versionId=${versionId}` : ''}`);
 
 export const getSubmission = (formId, submissionId) =>
     request('GET', `/forms/${formId}/submissions/${submissionId}`);
@@ -289,6 +313,23 @@ export const assignRoleToUser = (userId, roleId) =>
 
 export const removeRoleFromUser = (userId, roleId) =>
     request('DELETE', `/users/${userId}/roles/${roleId}`);
+
+// ── Profile ──────────────────────────────────────────────────
+
+export const getProfile = () =>
+    request('GET', '/profile');
+
+export const updateProfile = (data) =>
+    request('PUT', '/profile', data);
+
+export const changePassword = (data) =>
+    request('PUT', '/profile/password', data);
+
+export const uploadProfilePhoto = (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request('POST', '/profile/photo', formData);
+};
 
 export const getUserPermissions = (userId) =>
     request('GET', `/users/${userId}/permissions`);

@@ -46,6 +46,7 @@ export function AuthProvider({ children }) {
                 userId: data.userId,
                 name: data.name,
                 email: data.email,
+                profilePic: data.profilePic,
                 authorities: data.authorities || [],
             });
             setRoles(data.roles || []);

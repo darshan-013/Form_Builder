@@ -44,12 +44,6 @@ export default function Navbar() {
             ⚡ FormCraft
           </Link>
 
-          {user && (
-            <span className="navbar-user-chip">
-              👤 {user.username} <span style={{ opacity: 0.5 }}>|</span> {roleDisplay}
-            </span>
-          )}
-
           <div className="navbar-actions">
             <button
               className="theme-toggle-btn"
@@ -91,6 +85,37 @@ export default function Navbar() {
           color: #A5B4FC;
           transform: scale(1.05);
         }
+        .navbar-user-chip {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 12px 4px 4px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 20px;
+          text-decoration: none;
+          color: inherit;
+          transition: all 0.2s;
+        }
+        .navbar-user-chip:hover {
+          background: rgba(255, 255, 255, 0.08);
+          border-color: rgba(255, 255, 255, 0.2);
+          transform: translateY(-1px);
+        }
+        .navbar-avatar, .navbar-avatar-placeholder {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          object-cover: cover;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.1);
+          font-size: 0.9rem;
+        }
+        .navbar-username { font-weight: 500; }
+        .navbar-role-divider { opacity: 0.3; }
+        .navbar-role { opacity: 0.6; font-size: 0.85rem; }
         @media (max-width: 768px) {
           .navbar-user-chip { display: none; }
         }

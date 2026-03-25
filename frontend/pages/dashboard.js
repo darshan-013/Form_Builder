@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../components/Navbar';
+import UserProfileChip from '../components/UserProfileChip';
 import { getForms, deleteForm, publishForm } from '../services/api';
 import { toastSuccess, toastError } from '../services/toast';
 import { useAuth } from '../context/AuthContext';
@@ -222,6 +223,7 @@ export default function DashboardPage() {
                                 )}
                             </>
                         )}
+                        {/* Version History now accessed from within the Builder */}
                     </div>
                 </div>
 
@@ -312,6 +314,7 @@ export default function DashboardPage() {
 
             <div className="page">
                 <Navbar />
+                <UserProfileChip />
                 <div className="container">
 
                     {/* Page header */}
@@ -338,20 +341,20 @@ export default function DashboardPage() {
                     {/* Stats */}
                     <div className="dashboard-stats">
                         <div className="stat-card">
-                            <div className="stat-value">{forms.length}</div>
                             <div className="stat-label">Total Forms</div>
+                            <div className="stat-value">{forms.length}</div>
                         </div>
                         <div className="stat-card">
-                            <div className="stat-value">{allPublished.length}</div>
                             <div className="stat-label">Published</div>
+                            <div className="stat-value">{allPublished.length}</div>
                         </div>
                         <div className="stat-card">
-                            <div className="stat-value">{allDraft.length}</div>
                             <div className="stat-label">Drafts</div>
+                            <div className="stat-value">{allDraft.length}</div>
                         </div>
                         <div className="stat-card">
-                            <div className="stat-value">{forms.reduce((a, f) => a + (f.fields?.length || 0), 0)}</div>
                             <div className="stat-label">Total Fields</div>
+                            <div className="stat-value">{forms.reduce((a, f) => a + (f.fields?.length || 0), 0)}</div>
                         </div>
                     </div>
 

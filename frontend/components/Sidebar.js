@@ -124,9 +124,13 @@ export default function Sidebar({ isOpen, onClose }) {
 
                 <div className="sb-footer">
                     {user && (
-                        <div className="sb-user-info">
-                            <div className="sb-user-avatar">👤</div>
-                            <div className="sb-user-details">
+                        <div 
+                            className="sb-user-info" 
+                            onClick={() => { router.push('/profile'); onClose(); }}
+                            style={{ cursor: 'pointer' }}
+                            title="View Profile"
+                        >
+                            <div className="sb-user-details" style={{ marginLeft: '8px' }}>
                                 <span className="sb-username">{user.username}</span>
                                 <span className="sb-user-role">{roleDisplay}</span>
                             </div>

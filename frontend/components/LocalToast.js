@@ -19,8 +19,8 @@ export default function LocalToast() {
         
         setToasts(prev => [...prev, newToast]);
 
-        // Auto-dismiss after 5 seconds
-        setTimeout(() => removeToast(id), 5000);
+        // Auto-dismiss after 3.5 seconds
+        setTimeout(() => removeToast(id), 3500);
         
         return id;
     }, [removeToast]);
@@ -74,7 +74,7 @@ export default function LocalToast() {
                     justify-content: space-between;
                     align-items: flex-start;
                     gap: 12px;
-                    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1), fadeOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) 3.2s forwards;
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
                 }
@@ -82,6 +82,11 @@ export default function LocalToast() {
                 @keyframes slideIn {
                     from { transform: translateX(30px); opacity: 0; }
                     to { transform: translateX(0); opacity: 1; }
+                }
+
+                @keyframes fadeOut {
+                    from { transform: translateX(0); opacity: 1; }
+                    to { transform: translateX(30px); opacity: 0; }
                 }
 
                 .toast-content {

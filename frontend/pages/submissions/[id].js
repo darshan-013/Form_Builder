@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
 import DataTable from '../../components/DataTable';
-import { getForm, getSubmissions, downloadFile, deleteSubmission, updateSubmission, getFormRender } from '../../services/api';
+import { getForm, getSubmissions, downloadFile, deleteSubmission, updateSubmission, getFormRender, getFormVersions } from '../../services/api';
 import { toastError, toastSuccess } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
 
@@ -27,6 +27,8 @@ export default function SubmissionsPage() {
     const [form, setForm] = useState(null);
     const [renderData, setRenderData] = useState(null); // Stores /render response with resolved options
     const [submissions, setSubmissions] = useState([]);
+    const [versions, setVersions] = useState([]);
+    const [selectedVersionId, setSelectedVersionId] = useState('');
     const [loading, setLoading] = useState(true);
     const [selectedSubmission, setSelectedSubmission] = useState(null);
     const [viewMode, setViewMode] = useState('table'); // 'table' | 'grid'
@@ -66,15 +68,61 @@ export default function SubmissionsPage() {
     const loadData = () => {
         if (!id) return;
         setLoading(true);
-        Promise.all([getForm(id), getFormRender(id), getSubmissions(id)])
+
+        // Fetch versions first to find active/target version
+        getFormVersions(id)
+            .then(versionsData => {
+                const arr = Array.isArray(versionsData) ? versionsData : [];
+                setVersions(arr);
+                
+                let targetVersionId = selectedVersionId;
+                if (!targetVersionId && arr.length > 0) {
+                    const activeVer = arr.find(v => v.isActive) || arr[0];
+                    targetVersionId = activeVer.id;
+                }
+                if (targetVersionId !== selectedVersionId) {
+                    setSelectedVersionId(targetVersionId);
+                }
+
+                // If no versions, fallback to default fetch
+                const versionToFetch = targetVersionId || '';
+                
+                return Promise.all([
+                    getForm(id, versionToFetch),
+                    versionToFetch ? getFormRender(id, versionToFetch) : getFormRender(id),
+                    versionToFetch ? getSubmissions(id, versionToFetch) : getSubmissions(id)
+                ]);
+            })
             .then(([formData, renderFormData, submissionsData]) => {
                 setForm(formData);
-                setRenderData(renderFormData); // Store render data with resolved options
+                setRenderData(renderFormData);
                 setSubmissions(Array.isArray(submissionsData) ? submissionsData : []);
             })
             .catch((err) => {
                 console.error('Failed to load submissions:', err);
                 toastError('Failed to load submissions data.');
+            })
+            .finally(() => setLoading(false));
+    };
+
+    const handleVersionChange = (e) => {
+        const vid = e.target.value;
+        setSelectedVersionId(vid);
+        setLoading(true);
+        Promise.all([
+            getForm(id, vid),
+            getFormRender(id, vid),
+            getSubmissions(id, vid)
+        ])
+            .then(([formData, renderFormData, submissionsData]) => {
+                setForm(formData);
+                setRenderData(renderFormData);
+                setSubmissions(Array.isArray(submissionsData) ? submissionsData : []);
+                clearSelection();
+            })
+            .catch(err => {
+                console.error('Failed to switch version:', err);
+                toastError('Failed to load version data');
             })
             .finally(() => setLoading(false));
     };
@@ -1126,6 +1174,20 @@ export default function SubmissionsPage() {
                             </p>
                         </div>
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            {versions.length > 0 && (
+                                <select 
+                                    className="form-select" 
+                                    value={selectedVersionId} 
+                                    onChange={handleVersionChange}
+                                    style={{ width: 'auto', padding: '6px 32px 6px 12px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                                >
+                                    {versions.map(v => (
+                                        <option key={v.id} value={v.id}>
+                                            Version {v.versionNumber} {v.isActive ? '(Active)' : (v.publishedAt ? '(Archived)' : '(Draft)')}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
                             <Link href={`/submit/${id}`} className="btn btn-secondary" target="_blank">
                                 📝 Submit Form
                             </Link>

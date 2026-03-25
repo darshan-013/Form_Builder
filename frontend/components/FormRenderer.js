@@ -3,7 +3,7 @@ import ValidationEngine from '../services/validation';
 import RuleEngine, { setDefaultValues } from '../services/RuleEngine';
 import CalculationEngine from '../services/CalculationEngine';
 import { getDraft, saveDraft } from '../services/api';
-import { toastInfo } from '../services/toast';
+import { toastInfo, showWarning } from '../services/toast';
 
 /**
  * FormRenderer — enterprise dynamic form renderer with Conditional Rule Engine.
@@ -184,13 +184,30 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
           valuesRef.current = calculated;
           setFieldStates(finalStates);
           setLastSaved(new Date(draft.updated_at || Date.now()));
+          
+          // Ensure flag is set if we successfully loaded a draft
+          localStorage.setItem(`draft_form_${form.id}`, 'true');
+        } else {
+          // No draft returned from backend. Check if we EXPECTED one (F2 requirement)
+          const hadDraft = localStorage.getItem(`draft_form_${form.id}`);
+          if (hadDraft) {
+            showWarning('Your previous draft was discarded because the form was updated to a new version. Please review the fields.');
+            localStorage.removeItem(`draft_form_${form.id}`);
+          }
         }
       } catch (err) {
+        if (err?.status === 404) {
+           const hadDraft = localStorage.getItem(`draft_form_${form.id}`);
+           if (hadDraft) {
+             showWarning('Your previous draft was discarded because the form was updated to a new version.');
+             localStorage.removeItem(`draft_form_${form.id}`);
+           }
+        }
         console.warn('Failed to fetch draft:', err);
       }
     }
     fetchDraft();
-  }, [form?.id, isPreview]);
+  }, [form?.id, isPreview, form?.formVersionId]);
 
   // ── Autosave Logic ───────────────────────────────────────────────────────
   const lastSavedValuesRef = useRef(values);
@@ -207,9 +224,12 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
 
       setSaving(true);
       try {
-        await saveDraft(form.id, currentValues);
+        // [F3] Compliance: formVersionId from React state (form object) only
+        await saveDraft(form.id, currentValues, null, form.formVersionId);
         setLastSaved(new Date());
         lastSavedValuesRef.current = currentValues;
+        // Signal that a draft now exists for this form
+        localStorage.setItem(`draft_form_${form.id}`, 'true');
       } catch (err) {
         console.warn('Autosave failed:', err);
       } finally {
@@ -227,9 +247,9 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     const handleBeforeUnload = () => {
       const currentValues = valuesRef.current;
       if (JSON.stringify(currentValues) !== JSON.stringify(lastSavedValuesRef.current)) {
-        // Use sendBeacon for more reliable fire-and-forget save on exit if possible,
-        // but since saveDraft is a regular fetch, we just try our best.
-        saveDraft(form.id, currentValues).catch(() => { });
+        // [F3] Compliance: formVersionId from React state only
+        saveDraft(form.id, currentValues, null, form.formVersionId).catch(() => { });
+        localStorage.setItem(`draft_form_${form.id}`, 'true');
       }
     };
 
@@ -437,6 +457,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
       }
 
       setSubmitted(true);
+      localStorage.removeItem(`draft_form_${form.id}`); // Requirement [E9]
     } catch (err) {
       if (err?.errors && Array.isArray(err.errors)) {
         const fieldErrs = {};
@@ -546,6 +567,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
           <span>⚠</span> {serverError}
         </div>
       )}
+
 
       {/* ── Wizard Progress Bar (only when multi-step) ────────────────────── */}
       {isMultiStep && (
