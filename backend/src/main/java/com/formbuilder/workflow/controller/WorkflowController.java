@@ -1,5 +1,6 @@
 package com.formbuilder.workflow.controller;
 
+import com.formbuilder.constants.AppConstants;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.service.UserRoleService;
 import com.formbuilder.service.AuditLogService;
@@ -17,11 +18,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/workflows")
+@RequestMapping(AppConstants.API_WORKFLOWS)
 @RequiredArgsConstructor
 public class WorkflowController {
 
@@ -158,6 +166,18 @@ public class WorkflowController {
         Integer userId = requireSessionUserId(session);
         List<BuilderReviewDTO> rows = workflowService.getBuilderOverallReviews(userId);
         return ResponseEntity.ok(rows);
+    }
+
+    @GetMapping("/all-status")
+    public List<String> getAllStatuses() {
+        return workflowService.getAllStatuses().stream()
+                .map(wi -> {
+                    if (wi.getStatus() == com.formbuilder.workflow.entity.WorkflowInstanceStatus.COMPLETED) return "APPROVED";
+                    if (wi.getStatus() == com.formbuilder.workflow.entity.WorkflowInstanceStatus.REJECTED) return "REJECTED";
+                    return "PENDING";
+                })
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     @GetMapping("/candidates")

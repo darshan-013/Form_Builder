@@ -4,7 +4,7 @@
  * Session cookie (JSESSIONID) is carried automatically via credentials:'include'.
  */
 
-const BASE = '/api';
+const BASE = '/api/v1';
 
 // ── Core fetch helper ─────────────────────────────────────────
 
@@ -79,6 +79,9 @@ export const getMe = () =>
 export const getForms = () =>
     request('GET', '/forms');
 
+export const getDashboardStats = () =>
+    request('GET', '/forms/stats');
+
 export const getForm = (id, versionId = null) =>
     request('GET', `/forms/${id}${versionId ? `?versionId=${versionId}` : ''}`);
 
@@ -126,16 +129,39 @@ export const unpublishForm = (id) =>
 export const deleteFormVersion = (id, versionId) =>
     request('DELETE', `/forms/${id}/versions/${versionId}`);
 
+export const getDeletedForms = () =>
+    request('GET', '/forms/trash');
+
+export const restoreForm = (id) =>
+    request('POST', `/forms/${id}/restore`);
+
+export const permanentlyDeleteForm = (id) =>
+    request('DELETE', `/forms/${id}/permanent`);
+
+// ── Custom Validation Rules ────────────────────────────────────
+
+export const getCustomValidations = (formId, versionId) =>
+    request('GET', `/forms/${formId}/versions/${versionId}/custom-validations`);
+
+export const addCustomValidation = (formId, versionId, dto) =>
+    request('POST', `/forms/${formId}/versions/${versionId}/custom-validations`, dto);
+
+export const deleteCustomValidation = (formId, versionId, ruleId) =>
+    request('DELETE', `/forms/${formId}/versions/${versionId}/custom-validations/${ruleId}`);
+
+export const updateCustomValidation = (formId, versionId, ruleId, dto) =>
+    request('PUT', `/forms/${formId}/versions/${versionId}/custom-validations/${ruleId}`, dto);
+
 
 // ── Submissions ───────────────────────────────────────────────
 
-export async function submitForm(formId, data, submissionId = null) {
+export async function submitForm(formId, data, submissionId = null, formVersionId = null) {
     const opts = {
         method: 'POST',
         credentials: 'include',
     };
 
-    const payload = { data };
+    const payload = { data, formVersionId };
     if (submissionId) {
         payload.submissionId = submissionId;
     }
@@ -144,6 +170,7 @@ export async function submitForm(formId, data, submissionId = null) {
     if (data instanceof FormData) {
         // If we have a submissionId with FormData, we append it
         if (submissionId) data.append('submissionId', submissionId);
+        if (formVersionId) data.append('formVersionId', formVersionId);
         opts.body = data;
     } else {
         // Regular JSON submission
@@ -151,7 +178,7 @@ export async function submitForm(formId, data, submissionId = null) {
         opts.body = JSON.stringify(payload);
     }
 
-    const res = await fetch(`${BASE}/forms/${formId}/submit`, opts);
+    const res = await fetch(`${BASE}/runtime/forms/${formId}/submit`, opts);
 
     if (!res.ok) {
         const responseData = await res.json().catch(() => ({ error: res.statusText }));
@@ -166,23 +193,29 @@ export async function submitForm(formId, data, submissionId = null) {
 
 /** Get existing draft for the user */
 export const getDraft = (formId) =>
-    request('GET', `/forms/${formId}/draft`);
+    request('GET', `/runtime/forms/${formId}/draft`);
 
 /** Save response as draft */
 export const saveDraft = (formId, data, submissionId = null) =>
-    request('POST', `/forms/${formId}/draft`, { data, submissionId });
+    request('POST', `/runtime/forms/${formId}/draft`, { data, submissionId });
 
 export const getSubmissions = (formId, versionId = null) =>
-    request('GET', `/forms/${formId}/submissions${versionId ? `?versionId=${versionId}` : ''}`);
+    request('GET', `/runtime/${formId}/submissions${versionId ? `?versionId=${versionId}` : ''}`);
 
 export const getSubmission = (formId, submissionId) =>
-    request('GET', `/forms/${formId}/submissions/${submissionId}`);
+    request('GET', `/runtime/${formId}/submissions/${submissionId}`);
 
 export const deleteSubmission = (formId, submissionId) =>
-    request('DELETE', `/forms/${formId}/submissions/${submissionId}`);
+    request('DELETE', `/runtime/${formId}/submissions/${submissionId}`);
 
 export const updateSubmission = (formId, submissionId, data) =>
-    request('PUT', `/forms/${formId}/submissions/${submissionId}`, data);
+    request('PUT', `/runtime/${formId}/submissions/${submissionId}`, data);
+
+export const getDeletedSubmissions = (formId) =>
+    request('GET', `/runtime/${formId}/submissions/trash`);
+
+export const restoreSubmission = (formId, submissionId) =>
+    request('POST', `/runtime/${formId}/submissions/${submissionId}/restore`);
 
 // ── Shared Options ────────────────────────────────────────────
 // Manages the shared_options table — canonical option lists shared across form fields.
@@ -408,7 +441,7 @@ export const getAllWorkflowStatus = () =>
 // ── RBAC: Modules & Menu ──────────────────────────────────────
 
 export const getMenu = () =>
-    request('GET', '/menu');
+    request('GET', '/menus');
 
 export const getAllModules = () =>
     request('GET', '/modules');

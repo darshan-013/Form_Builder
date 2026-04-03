@@ -9,11 +9,13 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
- * CalculationEngine — Unified expression evaluator with Fail-Fast policy.
+ * ExpressionEvaluatorService — Safe Recursive Descent Parser for Boolean Expressions.
+ * Supports: ==, !=, <, <=, >, >=, &&, ||, !
+ * References form fields by fieldKey.
  */
 @Slf4j
 @Service
-public class CalculationEngine {
+public class ExpressionEvaluatorService {
 
     private enum TokenType {
         NUMBER, STRING, KEY, OP
@@ -28,65 +30,24 @@ public class CalculationEngine {
 
     private static final Object MISSING = new Object() {
         @Override
-        public String toString() { return "MISSING"; }
+        public String toString() { return "null"; }
     };
 
-    /**
-     * Recalculates all calculated fields until stabilization or MAX_PASSES.
-     */
-    public Map<String, Object> recalculate(List<Map<String, Object>> fieldRows, Map<String, Object> data) {
-        List<Map<String, Object>> calcFields = fieldRows.stream()
-                .filter(r -> Boolean.TRUE.equals(r.get("is_calculated"))
-                        && r.get("formula_expression") != null
-                        && !r.get("formula_expression").toString().isBlank())
-                .toList();
-
-        if (calcFields.isEmpty()) return data;
-
-        Map<String, Object> values = new LinkedHashMap<>(data);
-        boolean changed = true;
-        int passes = 0;
-        final int MAX_PASSES = 10;
-
-        while (changed && passes < MAX_PASSES) {
-            changed = false;
-            passes++;
-            for (Map<String, Object> row : calcFields) {
-                String fieldKey = (String) row.get("field_key");
-                String formula = (String) row.get("formula_expression");
-                int prec = (row.get("calc_precision") instanceof Number n) ? n.intValue() : 2;
-
-                try {
-                    Object result = evaluateFormula(formula, values);
-                    if (result instanceof Number num) result = roundTo(num.doubleValue(), prec);
-
-                    String prev = normalise(values.get(fieldKey));
-                    String next = normalise(result);
-
-                    if (!prev.equals(next)) {
-                        values.put(fieldKey, result);
-                        changed = true;
-                    }
-                } catch (ExpressionEvaluationException e) {
-                    log.error("Calculation Fail [{}]: {}", fieldKey, e.getMessage());
-                    throw e; // Fail-Fast policy
-                }
-            }
+    public boolean evaluate(String expression, Map<String, Object> values) {
+        if (expression == null || expression.isBlank()) return true;
+        
+        try {
+            List<Token> tokens = tokenize(expression);
+            if (tokens.isEmpty()) return true;
+            
+            Object result = new Parser(tokens, values, expression).parse();
+            return toBool(result);
+        } catch (ExpressionEvaluationException e) {
+            log.warn("Expression evaluation failed: {} | Expression: {}", e.getMessage(), expression);
+            // Default to false on evaluation error to be safe, or throw?
+            // For validation, an error in expression usually means invalid logic.
+            throw e; 
         }
-        // Cleanup: replace MISSING sentinels with null before returning
-        for (Map.Entry<String, Object> entry : values.entrySet()) {
-            if (entry.getValue() == MISSING) {
-                entry.setValue(null);
-            }
-        }
-        return values;
-    }
-
-    public Object evaluateFormula(String formula, Map<String, Object> values) {
-        if (formula == null || formula.isBlank()) return null;
-        List<Token> tokens = tokenize(formula);
-        if (tokens.isEmpty()) return null;
-        return new Parser(tokens, values, formula).parse();
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -207,8 +168,15 @@ public class CalculationEngine {
             if (t.type == TokenType.STRING) return t.raw();
             if (t.type == TokenType.KEY) {
                 Object v = values.get(t.raw());
-                if (v == null || (v instanceof String s && s.isBlank())) return MISSING;
-                if (v instanceof String s && s.matches("^-?\\d+(\\.\\d+)?$")) return Double.parseDouble(s);
+                if (v == null || (v instanceof String s && s.isBlank())) {
+                    // Specific check for 'null' keyword if not found in data
+                    if ("null".equals(t.raw())) return null;
+                    return MISSING;
+                }
+                // Auto-coerce strings that look like numbers
+                if (v instanceof String s && s.matches("^-?\\d+(\\.\\d+)?$")) {
+                    try { return Double.parseDouble(s); } catch (NumberFormatException ignored) {}
+                }
                 return v;
             }
             if (match("(")) {
@@ -234,7 +202,7 @@ public class CalculationEngine {
         }
 
         private ExpressionEvaluationException error(String msg) {
-            return new ExpressionEvaluationException(msg, expression, "unknown", values);
+            return new ExpressionEvaluationException(msg, expression, "custom-validation", values);
         }
     }
 
@@ -242,32 +210,32 @@ public class CalculationEngine {
     // TOKENIZER
     // ═════════════════════════════════════════════════════════════════════
 
-    private List<Token> tokenize(String formula) {
+    private List<Token> tokenize(String expression) {
         List<Token> tokens = new ArrayList<>();
-        int i = 0, n = formula.length();
+        int i = 0, n = expression.length();
         while (i < n) {
-            char ch = formula.charAt(i);
+            char ch = expression.charAt(i);
             if (Character.isWhitespace(ch)) { i++; continue; }
             if (ch == '"' || ch == '\'') {
                 char q = ch; StringBuilder sb = new StringBuilder(); i++;
-                while (i < n && formula.charAt(i) != q) {
-                    if (formula.charAt(i) == '\\' && i + 1 < n) i++;
-                    sb.append(formula.charAt(i++));
+                while (i < n && expression.charAt(i) != q) {
+                    if (expression.charAt(i) == '\\' && i + 1 < n) i++;
+                    sb.append(expression.charAt(i++));
                 }
                 tokens.add(Token.str(sb.toString())); i++; continue;
             }
             if (Character.isDigit(ch)) {
                 StringBuilder sb = new StringBuilder();
-                while (i < n && (Character.isDigit(formula.charAt(i)) || formula.charAt(i) == '.')) sb.append(formula.charAt(i++));
+                while (i < n && (Character.isDigit(expression.charAt(i)) || expression.charAt(i) == '.')) sb.append(expression.charAt(i++));
                 tokens.add(Token.num(Double.parseDouble(sb.toString()))); continue;
             }
             if (Character.isLetter(ch) || ch == '_') {
                 StringBuilder sb = new StringBuilder();
-                while (i < n && (Character.isLetterOrDigit(formula.charAt(i)) || formula.charAt(i) == '_')) sb.append(formula.charAt(i++));
+                while (i < n && (Character.isLetterOrDigit(expression.charAt(i)) || expression.charAt(i) == '_')) sb.append(expression.charAt(i++));
                 tokens.add(Token.key(sb.toString())); continue;
             }
             if (i+1 < n) {
-                String two = formula.substring(i, i+2);
+                String two = expression.substring(i, i+2);
                 if (List.of("==", "!=", "<=", ">=", "&&", "||").contains(two)) {
                     tokens.add(Token.op(two)); i += 2; continue;
                 }
@@ -275,7 +243,7 @@ public class CalculationEngine {
             if ("+-*/()<>!".indexOf(ch) >= 0) {
                 tokens.add(Token.op(String.valueOf(ch))); i++; continue;
             }
-            throw new ExpressionEvaluationException("Unexpected character: " + ch, formula, "unknown", null);
+            throw new ExpressionEvaluationException("Unexpected character: " + ch, expression, "tokenizer", null);
         }
         return tokens;
     }
@@ -301,9 +269,20 @@ public class CalculationEngine {
         if (l == MISSING) l = null; if (r == MISSING) r = null;
         if (l == null && r == null) return 0;
         if (l == null) return -1; if (r == null) return 1;
-        if (l instanceof Number nl && r instanceof Number nr) return Double.compare(nl.doubleValue(), nr.doubleValue());
-        if (l instanceof Number || r instanceof Number) return Double.compare(toDouble(l), toDouble(r));
+        
+        // If both are numbers (or numeric strings), compare numerically
+        if (isNumeric(l) && isNumeric(r)) {
+            return Double.compare(toDouble(l), toDouble(r));
+        }
+        
+        // Fallback to string comparison
         return String.valueOf(l).compareToIgnoreCase(String.valueOf(r));
+    }
+
+    private boolean isNumeric(Object v) {
+        if (v instanceof Number) return true;
+        if (v instanceof String s) return s.matches("^-?\\d+(\\.\\d+)?$");
+        return false;
     }
 
     private boolean isDateLike(Object v) {
@@ -316,12 +295,6 @@ public class CalculationEngine {
             LocalDate dt2 = LocalDate.parse(d2.toString().substring(0, 10));
             return (double) ChronoUnit.DAYS.between(dt2, dt1);
         } catch (Exception e) { return null; }
-    }
-
-    private double roundTo(double val, int prec) {
-        if (Double.isNaN(val) || Double.isInfinite(val)) return val;
-        double f = Math.pow(10, prec);
-        return Math.round(val * f) / f;
     }
 
     private String normalise(Object v) {

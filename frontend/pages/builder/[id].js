@@ -7,6 +7,7 @@ import Canvas from '../../components/Builder/Canvas';
 import FieldConfigModal from '../../components/Builder/FieldConfigModal';
 import StaticFieldModal from '../../components/Builder/StaticFieldModal';
 import GroupConfigModal from '../../components/Builder/GroupConfigModal';
+import CustomValidationsPanel from '../../components/Builder/CustomValidationsPanel';
 import { getForm, updateForm, getVisibilityCandidates, getFormVersions, publishForm, publishVersion, deleteFormVersion } from '../../services/api';
 import { toastSuccess, toastError, toastInfo } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -77,6 +78,10 @@ export default function EditBuilderPage() {
         };
     }, [resizing]);
 
+
+    const dynamicFields = useMemo(() => 
+        fields.filter(f => !STATIC_TYPES.has(f.fieldType)),
+    [fields]);
 
     // active configuration tracking
     const [editField, setEditFieldState] = useState(null);
@@ -459,6 +464,17 @@ export default function EditBuilderPage() {
     const pageBreakCount = fields.filter(f => f.fieldType === 'page_break').length;
     const pageCount = pageBreakCount + 1;
 
+    // Policy 10 Limits
+    const totalValidationCount = fields.reduce((acc, f) => {
+        try {
+            const rules = JSON.parse(f.validationJson || '{}');
+            return acc + Object.values(rules).filter(v => v !== null && v !== undefined && v !== '' && v !== false).length;
+        } catch (e) { return acc; }
+    }, 0);
+
+    const canAddField = dynamicCount < 50 && totalValidationCount < 100;
+    const canAddGroup = groups.length < 10;
+
     return (
         <>
             <Head><title>Edit Form — FormCraft Builder</title></Head>
@@ -669,6 +685,12 @@ export default function EditBuilderPage() {
                                 🎨 Canvas
                             </button>
                             <button
+                                className={`view-toggle-btn ${activeView === 'validations' ? 'active' : ''}`}
+                                onClick={() => setActiveView('validations')}
+                            >
+                                🛡️ Validations
+                            </button>
+                            <button
                                 className={`view-toggle-btn ${activeView === 'versions' ? 'active' : ''}`}
                                 onClick={() => setActiveView('versions')}
                             >
@@ -712,7 +734,7 @@ export default function EditBuilderPage() {
                             className={`panel-resizer left-resizer ${resizing === 'left' ? 'resizing' : ''}`}
                             onMouseDown={() => setResizing('left')}
                         />
-                        <FieldPalette />
+                        <FieldPalette canAddField={canAddField} canAddGroup={canAddGroup} />
                         <main className="builder-canvas-wrap">
                             {/* Version info badge */}
                             <div style={{
@@ -747,6 +769,8 @@ export default function EditBuilderPage() {
                                 setEditField={setEditField}
                                 setEditStaticField={setEditStaticField}
                                 setEditGroupConfig={setEditGroupConfig}
+                                canAddField={canAddField}
+                                canAddGroup={canAddGroup}
                             />
                         </main>
                         <div 
@@ -783,6 +807,16 @@ export default function EditBuilderPage() {
                             )}
                         </aside>
                     </>
+                ) : activeView === 'validations' ? (
+                    <div className="vh-full-view" style={{ gridColumn: '1 / -1', padding: '40px', overflowY: 'auto', background: 'var(--bg-base)' }}>
+                        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+                           <CustomValidationsPanel 
+                               formId={id} 
+                               versionId={versionId || (versions[0]?.id)} 
+                               fields={fields.filter(f => !STATIC_TYPES.has(f.fieldType))} 
+                           />
+                        </div>
+                    </div>
                 ) : (
                     <div className="vh-full-view" style={{ gridColumn: '1 / -1', padding: '40px', overflowY: 'auto' }}>
                         <div style={{ maxWidth: 800, margin: '0 auto' }}>

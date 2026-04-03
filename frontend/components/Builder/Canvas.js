@@ -16,8 +16,11 @@ const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block
 export default function Canvas({ 
     fields, setFields, 
     groups = [], setGroups = () => { },
-    setEditField, setEditStaticField, setEditGroupConfig
+    setEditField, setEditStaticField, setEditGroupConfig,
+    canAddField = true, canAddGroup = true
 }) {
+    // ... imports for toast should be handled if toast is used. 
+    // New page/edit already has it. Canvas might need it too.
     const [isOverCanvas, setIsOverCanvas] = useState(false);
     const [draggingIndex, setDraggingIndex] = useState(null);
     const [dropIndex, setDropIndex] = useState(null);
@@ -38,6 +41,11 @@ export default function Canvas({
     };
 
     const addGroup = () => {
+        if (!canAddGroup) {
+            const { toastError } = require('../../services/toast');
+            toastError("Maximum of 10 sections reached (Policy 10.3)");
+            return;
+        }
         const id = generateUUID();
         const maxFieldOrder = fields.length > 0 ? Math.max(...fields.map(f => f.fieldOrder ?? 0)) : -1;
         const maxGroupOrder = groups.length > 0 ? Math.max(...groups.map(g => g.groupOrder ?? 0)) : -1;
@@ -71,13 +79,20 @@ export default function Canvas({
     // ── Field operations ──────────────────────────────────────────────────────
 
     const addField = (fieldType, groupId = null) => {
-        const id = generateUUID();
         const isStatic = STATIC_TYPES.has(fieldType);
-
+        
         if (fieldType === 'field_group') {
             addGroup();
             return;
         }
+
+        if (!canAddField && !isStatic) {
+            const { toastError } = require('../../services/toast');
+            toastError("Maximum of 50 fields or 100 validation rules reached (Policy 10)");
+            return;
+        }
+
+        const id = generateUUID();
 
         const maxFieldOrder = fields.length > 0 ? Math.max(...fields.map(f => f.fieldOrder ?? 0)) : -1;
         const maxGroupOrder = groups.length > 0 ? Math.max(...groups.map(g => g.groupOrder ?? 0)) : -1;
@@ -100,7 +115,9 @@ export default function Canvas({
                 return updated;
             });
         } else {
-            const autoKey = `${fieldType}_${Date.now().toString(36).slice(-6)}`;
+            // SRS Decision 4.1: Lowercased, Non-alphanumeric characters stripped, max 100 chars
+            const sanitizedType = fieldType.toLowerCase().replace(/[^a-z0-9_]/g, '').substring(0, 50);
+            const autoKey = `${sanitizedType}_${Date.now().toString(36).slice(-6)}`;
             const newField = {
                 id,
                 fieldType,

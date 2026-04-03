@@ -55,6 +55,11 @@ public class FormDTO {
      */
     private LocalDateTime expiresAt;
 
+    /**
+     * Optional custom validation rules (expression-based errors).
+     */
+    private List<CustomValidationRuleDTO> customValidationRules;
+
     @Data
     public static class StaticFieldDTO {
         private UUID id;

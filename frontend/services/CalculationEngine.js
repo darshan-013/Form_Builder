@@ -39,74 +39,56 @@ const CalculationEngine = {
         while (i < formula.length) {
             const ch = formula[i];
 
-            // ── Whitespace ─────────────────────────────────────────────
             if (/\s/.test(ch)) { i++; continue; }
 
-            // ── String literals: "…" or '…' ────────────────────────────
             if (ch === '"' || ch === "'") {
                 const quote = ch;
-                let str = '';
-                i++;
+                let str = ''; i++;
                 while (i < formula.length && formula[i] !== quote) {
-                    if (formula[i] === '\\') i++; // ignore escape
-                    str += formula[i];
-                    i++;
+                    if (formula[i] === '\\') i++;
+                    str += formula[i++];
                 }
                 tokens.push({ type: 'STRING', value: str });
-                i++; // consume closing quote
-                continue;
+                i++; continue;
             }
 
-            // ── Numbers (integer or decimal) ────────────────────────────
             if (/[0-9]/.test(ch)) {
                 let numStr = '';
                 let dotCount = 0;
                 while (i < formula.length && /[0-9.]/.test(formula[i])) {
                     if (formula[i] === '.') {
                         dotCount++;
-                        if (dotCount > 1) {
-                            throw new Error(`Invalid number literal near "${numStr}."`);
-                        }
+                        if (dotCount > 1) throw new Error(`Invalid number literal near "${numStr}."`);
                     }
-                    numStr += formula[i];
-                    i++;
+                    numStr += formula[i++];
                 }
                 tokens.push({ type: 'NUMBER', value: parseFloat(numStr) });
                 continue;
             }
 
-            // ── Identifiers / field keys ────────────────────────────────
             if (/[a-zA-Z_]/.test(ch)) {
                 let key = '';
                 while (i < formula.length && /[a-zA-Z0-9_]/.test(formula[i])) {
-                    key += formula[i];
-                    i++;
+                    key += formula[i++];
                 }
                 tokens.push({ type: 'KEY', value: key });
                 continue;
             }
 
-            // ── Operators ───────────────────────────────────────────────
-            if ('+-*/()'.includes(ch)) {
-                tokens.push({ type: 'OP', value: ch });
-                i++;
-                continue;
+            // Multi-char operators
+            const two = formula.slice(i, i + 2);
+            if (['==', '!=', '<=', '>=', '&&', '||'].includes(two)) {
+                tokens.push({ type: 'OP', value: two });
+                i += 2; continue;
             }
 
-            // ── Unknown character → reject ──────────────────────────────
+            if ('+-*/()<>!'.includes(ch)) {
+                tokens.push({ type: 'OP', value: ch });
+                i++; continue;
+            }
+
             throw new Error(`Unexpected character "${ch}" in formula`);
         }
-
-        // ── Post-tokenize: reject illegal consecutive op combos (++ ** etc.) ─
-        for (let t = 0; t < tokens.length - 1; t++) {
-            const cur = tokens[t];
-            const next = tokens[t + 1];
-            const bothArithOps = (tk) => tk.type === 'OP' && '+-*/'.includes(tk.value);
-            if (bothArithOps(cur) && bothArithOps(next)) {
-                throw new Error(`Invalid operator sequence "${cur.value}${next.value}"`);
-            }
-        }
-
         return tokens;
     },
 
@@ -114,28 +96,16 @@ const CalculationEngine = {
     // 2. DEPENDENCY EXTRACTION
     // ══════════════════════════════════════════════════════════════════════
 
-    /**
-     * Returns an array of fieldKey tokens found in the formula.
-     * If availableFieldKeys is provided, only returns keys that exist in it.
-     */
     extractDependencies(formula, availableFieldKeys = []) {
         if (!formula || typeof formula !== 'string') return [];
-
         let tokens;
-        try { tokens = this.tokenize(formula); }
-        catch { return []; }
-
-        const keyTokens = tokens
-            .filter(t => t.type === 'KEY')
-            .map(t => t.value);
-
+        try { tokens = this.tokenize(formula); } catch { return []; }
+        const keyTokens = tokens.filter(t => t.type === 'KEY').map(t => t.value);
         const unique = [...new Set(keyTokens)];
-
         if (availableFieldKeys.length > 0) {
             const allowed = new Set(availableFieldKeys);
             return unique.filter(k => allowed.has(k));
         }
-
         return unique;
     },
 
@@ -143,157 +113,157 @@ const CalculationEngine = {
     // 3. SAFE EXPRESSION PARSER  (recursive descent)
     // ══════════════════════════════════════════════════════════════════════
 
-    /**
-     * Evaluates the formula string against formValues.
-     * Returns:
-     *   • numeric result (number)
-     *   • string result  (string)
-     *   • null           (missing operand in arithmetic / invalid date)
-     *   • ''             (formula is empty)
-     */
     evaluateFormula(formula, formValues) {
         if (!formula || typeof formula !== 'string' || !formula.trim()) return '';
 
-        let tokens;
-        try {
-            tokens = this.tokenize(formula);
-        } catch (err) {
-            console.error('CalculationEngine tokenize error:', err.message);
-            return 'Error';
-        }
+        let tokens = this.tokenize(formula);
 
         if (tokens.length === 0) return '';
-
         let pos = 0;
 
-        // ── parseExpression → entry point ──────────────────────────────
-        const parseExpression = () => parseAddition();
+        const toBool = (v) => {
+            if (typeof v === 'boolean') return v;
+            if (v === null || v === undefined || v === MISSING) return false;
+            const s = String(v).toLowerCase();
+            return s === 'true' || s === '1' || s === 'yes';
+        };
 
-        // ── parseAddition: handles + and - ─────────────────────────────
+        const compare = (l, r) => {
+            const left = l === MISSING ? null : l;
+            const right = r === MISSING ? null : r;
+            if (left === null && right === null) return 0;
+            if (left === null) return -1;
+            if (right === null) return 1;
+
+            if (typeof left === 'number' && typeof right === 'number') {
+                return left - right;
+            }
+            // Auto-coercion
+            if (typeof left === 'number' || typeof right === 'number') {
+                const nl = parseFloat(left);
+                const nr = parseFloat(right);
+                if (!isNaN(nl) && !isNaN(nr)) return nl - nr;
+            }
+            return String(left).localeCompare(String(right), undefined, { sensitivity: 'base' });
+        };
+
+        const parseLogicalOr = () => {
+            let left = parseLogicalAnd();
+            while (pos < tokens.length && tokens[pos].value === '||') {
+                pos++;
+                const right = parseLogicalAnd();
+                left = toBool(left) || toBool(right);
+            }
+            return left;
+        };
+
+        const parseLogicalAnd = () => {
+            let left = parseEquality();
+            while (pos < tokens.length && tokens[pos].value === '&&') {
+                pos++;
+                const right = parseEquality();
+                left = toBool(left) && toBool(right);
+            }
+            return left;
+        };
+
+        const parseEquality = () => {
+            let left = parseComparison();
+            while (pos < tokens.length && (tokens[pos].value === '==' || tokens[pos].value === '!=')) {
+                const op = tokens[pos++].value;
+                const right = parseComparison();
+                left = (op === '==') ? compare(left, right) === 0 : compare(left, right) !== 0;
+            }
+            return left;
+        };
+
+        const parseComparison = () => {
+            let left = parseAddition();
+            while (pos < tokens.length && ['<', '<=', '>', '>='].includes(tokens[pos].value)) {
+                const op = tokens[pos++].value;
+                const right = parseAddition();
+                const cmp = compare(left, right);
+                left = op === '<' ? cmp < 0 : op === '<=' ? cmp <= 0 : op === '>' ? cmp > 0 : cmp >= 0;
+            }
+            return left;
+        };
+
         const parseAddition = () => {
             let left = parseMultiplication();
-
             while (pos < tokens.length && (tokens[pos].value === '+' || tokens[pos].value === '-')) {
                 const op = tokens[pos++].value;
                 const right = parseMultiplication();
-
                 if (op === '+') {
-                    // Rule §6: if either operand is string → concatenation, null → ""
-                    if (typeof left === 'string' || typeof right === 'string' ||
-                        left === MISSING || right === MISSING) {
-                        const l = (left === MISSING || left === null || left === undefined) ? '' : left;
-                        const r = (right === MISSING || right === null || right === undefined) ? '' : right;
-                        // If both look non-string but one is MISSING treat whole as concat
+                    if (typeof left === 'string' || typeof right === 'string' || left === MISSING || right === MISSING) {
+                        const l = (left === MISSING || left === null) ? '' : left;
+                        const r = (right === MISSING || right === null) ? '' : right;
                         left = String(l) + String(r);
                     } else {
-                        // Rule §8: arithmetic: if either operand null/missing → result null
-                        if (left === null || right === null) {
-                            left = null;
-                        } else {
-                            left = left + right;
-                        }
+                        left = (left === null || right === null) ? null : Number(left) + Number(right);
                     }
                 } else {
-                    // Rule §17: Subtraction — date math if both are date-like strings (result in days)
                     if (this.isDateLike(left) && this.isDateLike(right)) {
-                        try {
-                            const d1 = new Date(String(left).substring(0, 10));
-                            const d2 = new Date(String(right).substring(0, 10));
-                            if (!isNaN(d1) && !isNaN(d2)) {
-                                const diffTime = d1 - d2;
-                                left = Math.round(diffTime / (1000 * 60 * 60 * 24));
-                            } else {
-                                left = null;
-                            }
-                        } catch (e) {
-                            left = null;
-                        }
-                    } else if (typeof left !== 'number' || typeof right !== 'number') {
-                        // Strict check: if either is not numeric/MISSING after parsePrimary attempt
-                        left = null;
-                    } else if (left === null || right === null) {
-                        left = null;
+                        const d1 = new Date(String(left).substring(0, 10));
+                        const d2 = new Date(String(right).substring(0, 10));
+                        left = (!isNaN(d1) && !isNaN(d2)) ? Math.round((d1 - d2) / (1000 * 60 * 60 * 24)) : null;
                     } else {
-                        left = left - right;
+                        left = (typeof left !== 'number' || typeof right !== 'number') ? null : left - right;
                     }
                 }
             }
-            if (typeof left === 'number' && isNaN(left)) return null;
             return left;
         };
 
-        // ── parseMultiplication: handles * and / ───────────────────────
         const parseMultiplication = () => {
-            let left = parsePrimary();
-
+            let left = parseUnary();
             while (pos < tokens.length && (tokens[pos].value === '*' || tokens[pos].value === '/')) {
                 const op = tokens[pos++].value;
-                const right = parsePrimary();
-
-                if (op === '*') {
-                    if (typeof left !== 'number' || typeof right !== 'number') {
-                        left = null;
-                    } else if (left === null || right === null) {
-                        left = null;
-                    } else {
-                        left = left * right;
-                    }
+                const right = parseUnary();
+                if (left === null || right === null || left === MISSING || right === MISSING) {
+                    left = null;
+                } else if (op === '*') {
+                    left = Number(left) * Number(right);
                 } else {
-                    const divisor = (right === MISSING || right === null) ? null : right;
-                    if (typeof left !== 'number' || typeof divisor !== 'number') {
-                        left = null;
-                    } else if (left === null || divisor === 0) {
-                        left = null;
-                    } else {
-                        left = left / divisor;
-                    }
+                    if (Number(right) === 0) throw new Error(`Division by zero in formula: "${formula}"`);
+                    left = Number(left) / Number(right);
                 }
             }
-            if (typeof left === 'number' && isNaN(left)) return null;
             return left;
         };
 
-        // ── parsePrimary: atoms (numbers, strings, keys, parentheses) ──
+        const parseUnary = () => {
+            if (pos < tokens.length && tokens[pos].value === '!') {
+                pos++;
+                return !toBool(parsePrimary());
+            }
+            return parsePrimary();
+        };
+
         const parsePrimary = () => {
             if (pos >= tokens.length) return MISSING;
-
-            const token = tokens[pos++];
-
-            if (token.type === 'NUMBER') return token.value;
-            if (token.type === 'STRING') return token.value;
-
-            if (token.type === 'KEY') {
-                const raw = formValues[token.value];
-                // Distinguish "empty string" from "not filled in"
+            const t = tokens[pos++];
+            if (t.type === 'NUMBER' || t.type === 'STRING') return t.value;
+            if (t.type === 'KEY') {
+                const raw = formValues[t.value];
                 if (raw === undefined || raw === null || raw === '') return MISSING;
-
-                // If it looks like a number, parse it so arithmetic works (fix 2+3=23)
-                // We only do this for KEY values, not explicit STRING literals ("123")
                 if (typeof raw === 'string' && /^-?\d+(\.\d+)?$/.test(raw.trim())) {
                     const n = parseFloat(raw.trim());
                     if (!isNaN(n)) return n;
                 }
-
                 return raw;
             }
-
-            if (token.type === 'OP' && token.value === '(') {
-                const val = parseExpression();
+            if (t.type === 'OP' && t.value === '(') {
+                const val = parseLogicalOr();
                 if (pos < tokens.length && tokens[pos].value === ')') pos++;
+                else throw new Error(`Missing closing parenthesis in formula: "${formula}"`);
                 return val;
             }
-
-            return MISSING;
+            throw new Error(`Unexpected token "${t.value}" in formula: "${formula}"`);
         };
 
-        try {
-            const result = parseExpression();
-            if (result === MISSING || result === undefined) return '';
-            return result === null ? null : result;
-        } catch (err) {
-            console.error('CalculationEngine eval error:', err.message);
-            return 'Error';
-        }
+        const result = parseLogicalOr();
+        if (pos < tokens.length) throw new Error(`Unexpected trailing tokens in formula: "${formula}"`);
+        return result === MISSING ? '' : result;
     },
 
     // ── Helper: Detect ISO-like date strings ───────────────────────────

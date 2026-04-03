@@ -1,6 +1,7 @@
 package com.formbuilder.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.formbuilder.constants.AppConstants;
 import com.formbuilder.rbac.security.RbacUserDetailsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,11 +41,6 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    /**
-     * DaoAuthenticationProvider uses our custom RbacUserDetailsService
-     * to authenticate against the rbac_users table directly.
-     * No more JdbcUserDetailsManager or Spring Security users/authorities tables.
-     */
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
@@ -65,29 +61,37 @@ public class SecurityConfig {
         http
             .authenticationProvider(authenticationProvider())
 
-            // CSRF disabled (REST API + session cookie)
             .csrf(csrf -> csrf.disable())
 
-            // ── Authorization rules ──────────────────────────────────────────
+            // ── Authorization rules (v1 only, using AppConstants) ────────────
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers(HttpMethod.GET,  "/api/forms/{id}/render").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/forms/{id}/submit").permitAll()
-                .requestMatchers("/api/forms/**").authenticated()
-                .requestMatchers("/api/shared-options/**").authenticated()
-                .requestMatchers("/api/roles/**").authenticated()
-                .requestMatchers("/api/users/**").authenticated()
-                .requestMatchers("/api/logs/**").authenticated()
-                .requestMatchers("/api/workflows/**").authenticated()
+                .requestMatchers(AppConstants.API_AUTH + "/**").permitAll()
+                // Public form render and submit
+                .requestMatchers(HttpMethod.GET,  AppConstants.API_FORMS + "/{id}/render").permitAll()
+                .requestMatchers(HttpMethod.POST, AppConstants.API_FORMS + "/{id}/submit").permitAll()
+                .requestMatchers(HttpMethod.POST, AppConstants.API_RUNTIME + "/forms/{id}/submit").permitAll()
+                .requestMatchers(HttpMethod.GET,  AppConstants.API_RUNTIME + "/forms/{idOrCode}").permitAll()
+                // Authenticated endpoints
+                .requestMatchers(AppConstants.API_FORMS + "/**").authenticated()
+                .requestMatchers(AppConstants.API_RUNTIME + "/**").authenticated()
+                .requestMatchers(AppConstants.API_SHARED_OPTIONS + "/**").authenticated()
+                .requestMatchers(AppConstants.API_ROLES + "/**").authenticated()
+                .requestMatchers(AppConstants.API_USERS + "/**").authenticated()
+                .requestMatchers(AppConstants.API_LOGS + "/**").authenticated()
+                .requestMatchers(AppConstants.API_WORKFLOWS + "/**").authenticated()
+                .requestMatchers(AppConstants.API_ADMIN + "/**").authenticated()
+                .requestMatchers(AppConstants.API_PROFILE + "/**").authenticated()
+                .requestMatchers(AppConstants.API_MENUS + "/**").authenticated()
+                .requestMatchers(AppConstants.API_MODULES + "/**").authenticated()
+                .requestMatchers(AppConstants.API_FILES + "/**").authenticated()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .anyRequest().permitAll()
             )
 
             // ── Form-based login ─────────────────────────────────────────────
             .formLogin(form -> form
-                .loginProcessingUrl("/api/auth/login")
+                .loginProcessingUrl(AppConstants.API_AUTH + AppConstants.AUTH_LOGIN)
                 .successHandler((req, res, auth) -> {
-                    // ── Build response with RBAC data ──
                     Map<String, Object> response = new LinkedHashMap<>();
                     response.put("username", auth.getName());
                     response.put("authorities", auth.getAuthorities().stream()
@@ -101,7 +105,6 @@ public class SecurityConfig {
                             Map<String, Object> rbacUser = rows.get(0);
                             Integer userId = (Integer) rbacUser.get("id");
 
-                            // Store in session for PermissionInterceptor
                             HttpSession session = req.getSession(true);
                             session.setAttribute("USER_ID", userId);
                             log.debug("Stored USER_ID={} in session for '{}'", userId, auth.getName());
@@ -110,7 +113,6 @@ public class SecurityConfig {
                             response.put("name", rbacUser.get("name"));
                             response.put("email", rbacUser.get("email"));
 
-                            // Fetch roles
                             List<Map<String, Object>> roleRows = jdbc.queryForList(
                                     "SELECT r.id, r.role_name, r.is_system_role " +
                                     "FROM user_roles ur JOIN roles r ON r.id = ur.role_id " +
@@ -124,7 +126,6 @@ public class SecurityConfig {
                                 return role;
                             }).toList());
 
-                            // Fetch effective permissions
                             List<String> perms = jdbc.queryForList(
                                     "SELECT DISTINCT p.permission_key " +
                                     "FROM user_roles ur " +
@@ -160,7 +161,7 @@ public class SecurityConfig {
 
             // ── Logout ───────────────────────────────────────────────────────
             .logout(logout -> logout
-                .logoutUrl("/api/auth/logout")
+                .logoutUrl(AppConstants.API_AUTH + AppConstants.AUTH_LOGOUT)
                 .invalidateHttpSession(true)
                 .deleteCookies("JSESSIONID")
                 .clearAuthentication(true)
@@ -181,7 +182,6 @@ public class SecurityConfig {
                 })
             )
 
-            // ── Session management ───────────────────────────────────────────
             .sessionManagement(session -> session
                 .maximumSessions(10)
             );

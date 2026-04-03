@@ -1,5 +1,6 @@
 package com.formbuilder.controller;
 
+import com.formbuilder.constants.AppConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -20,7 +21,7 @@ import java.nio.file.Paths;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/files")
+@RequestMapping(AppConstants.API_FILES)
 @CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
 public class FileDownloadController {
 

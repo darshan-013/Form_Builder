@@ -137,6 +137,15 @@ public class FormFieldEntity {
      * Carries resolved options_json into ValidationService so dropdown/radio
      * validation works without any extra JPA/repo calls inside the validation path.
      */
+    @Column(name = "validation_message", columnDefinition = "TEXT")
+    private String validationMessage;
+
+    @Column(name = "grid_json", columnDefinition = "TEXT")
+    private String gridJson;
+
+    @Column(name = "table_ref_json", columnDefinition = "TEXT")
+    private String tableRefJson;
+
     @Transient
     private String optionsJson;
 

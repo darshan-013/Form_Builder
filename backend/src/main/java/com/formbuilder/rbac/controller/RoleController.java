@@ -1,5 +1,6 @@
 package com.formbuilder.rbac.controller;
 
+import com.formbuilder.constants.AppConstants;
 import com.formbuilder.rbac.entity.Permission;
 import com.formbuilder.rbac.entity.Role;
 import com.formbuilder.rbac.security.RequirePermission;
@@ -33,7 +34,7 @@ import java.util.*;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/roles")
+@RequestMapping(AppConstants.API_ROLES)
 @RequiredArgsConstructor
 @RequirePermission("MANAGE")
 public class RoleController {
@@ -141,7 +142,7 @@ public class RoleController {
          * 2. System roles cannot be edited
          * 4. Actor cannot assign permissions they don't hold
          */
-        @PutMapping("/{id}")
+        @PutMapping(AppConstants.BY_ID)
         public ResponseEntity<?> updateRole(@PathVariable Integer id,
                         @RequestBody UpdateRoleRequest body,
                         Authentication auth,
@@ -182,7 +183,7 @@ public class RoleController {
          * Validations (enforced by RoleService):
          * 3. System roles cannot be deleted
          */
-        @DeleteMapping("/{id}")
+        @DeleteMapping(AppConstants.BY_ID)
         public ResponseEntity<?> deleteRole(@PathVariable Integer id,
                         Authentication auth,
                         HttpSession session) {
@@ -225,7 +226,7 @@ public class RoleController {
          * 2. System roles cannot be edited
          * 4. Actor cannot assign permissions they don't hold
          */
-        @PostMapping("/{id}/permissions")
+        @PostMapping(AppConstants.BY_ID_PERMISSIONS)
         public ResponseEntity<?> assignPermissions(@PathVariable Integer id,
                         @RequestBody PermissionsRequest body,
                         Authentication auth,

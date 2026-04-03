@@ -905,27 +905,34 @@ async function validateField(field, value, formData = {}, files = {}) {
   const type = (field.fieldType || '').toLowerCase();
   const opts = (type === 'dropdown' || type === 'radio' || type === 'multiple_choice') ? resolveOptionValues(field) : null;
 
+  let errors = [];
   switch (type) {
-    case 'text': return validateText(value, rules, label);
-    case 'number': return validateNumber(value, rules, label);
-    case 'date': return validateDate(value, rules, label);
-    case 'boolean': return validateBoolean(value, rules, label);
-    case 'dropdown': return validateDropdown(value, rules, label, opts);
-    case 'radio': return validateRadio(value, rules, label, opts);
-    case 'multiple_choice': return validateMultipleChoice(value, rules, label, opts);
-    case 'linear_scale': return validateLinearScale(value, rules, label, field);
-    case 'star_rating': return validateStarRating(value, rules, label);
-    case 'multiple_choice_grid': return validateMultipleChoiceGrid(value, rules, label, field);
-    case 'checkbox_grid': return validateCheckboxGrid(value, rules, label, field);
+    case 'text': errors = validateText(value, rules, label); break;
+    case 'number': errors = validateNumber(value, rules, label); break;
+    case 'date': errors = validateDate(value, rules, label); break;
+    case 'boolean': errors = validateBoolean(value, rules, label); break;
+    case 'dropdown': errors = validateDropdown(value, rules, label, opts); break;
+    case 'radio': errors = validateRadio(value, rules, label, opts); break;
+    case 'multiple_choice': errors = validateMultipleChoice(value, rules, label, opts); break;
+    case 'linear_scale': errors = validateLinearScale(value, rules, label, field); break;
+    case 'star_rating': errors = validateStarRating(value, rules, label); break;
+    case 'multiple_choice_grid': errors = validateMultipleChoiceGrid(value, rules, label, field); break;
+    case 'checkbox_grid': errors = validateCheckboxGrid(value, rules, label, field); break;
     case 'file': {
       const fileVal = files[field.fieldKey];
       const resolved = fileVal instanceof FileList || fileVal instanceof File
         ? fileVal
         : (value instanceof FileList || value instanceof File ? value : null);
-      return validateFile(resolved, rules, label, files);
+      errors = await validateFile(resolved, rules, label, files);
+      break;
     }
-    default: return [];
+    default: errors = [];
   }
+
+  if (errors.length > 0 && field.validationMessage) {
+    return [field.validationMessage];
+  }
+  return errors;
 }
 
 /**
@@ -938,27 +945,34 @@ function validateFieldSync(field, value, formData = {}, files = {}) {
   const type = (field.fieldType || '').toLowerCase();
   const opts = (type === 'dropdown' || type === 'radio' || type === 'multiple_choice') ? resolveOptionValues(field) : null;
 
+  let errors = [];
   switch (type) {
-    case 'text': return validateText(value, rules, label);
-    case 'number': return validateNumber(value, rules, label);
-    case 'date': return validateDate(value, rules, label);
-    case 'boolean': return validateBoolean(value, rules, label);
-    case 'dropdown': return validateDropdown(value, rules, label, opts);
-    case 'radio': return validateRadio(value, rules, label, opts);
-    case 'multiple_choice': return validateMultipleChoice(value, rules, label, opts);
-    case 'linear_scale': return validateLinearScale(value, rules, label, field);
-    case 'star_rating': return validateStarRating(value, rules, label);
-    case 'multiple_choice_grid': return validateMultipleChoiceGrid(value, rules, label, field);
-    case 'checkbox_grid': return validateCheckboxGrid(value, rules, label, field);
+    case 'text': errors = validateText(value, rules, label); break;
+    case 'number': errors = validateNumber(value, rules, label); break;
+    case 'date': errors = validateDate(value, rules, label); break;
+    case 'boolean': errors = validateBoolean(value, rules, label); break;
+    case 'dropdown': errors = validateDropdown(value, rules, label, opts); break;
+    case 'radio': errors = validateRadio(value, rules, label, opts); break;
+    case 'multiple_choice': errors = validateMultipleChoice(value, rules, label, opts); break;
+    case 'linear_scale': errors = validateLinearScale(value, rules, label, field); break;
+    case 'star_rating': errors = validateStarRating(value, rules, label); break;
+    case 'multiple_choice_grid': errors = validateMultipleChoiceGrid(value, rules, label, field); break;
+    case 'checkbox_grid': errors = validateCheckboxGrid(value, rules, label, field); break;
     case 'file': {
       const fileVal = files[field.fieldKey];
       const resolved = fileVal instanceof FileList || fileVal instanceof File
         ? fileVal
         : (value instanceof FileList || value instanceof File ? value : null);
-      return validateFileSync(resolved, rules, label, files);
+      errors = validateFileSync(resolved, rules, label, files);
+      break;
     }
-    default: return [];
+    default: errors = [];
   }
+
+  if (errors.length > 0 && field.validationMessage) {
+    return [field.validationMessage];
+  }
+  return errors;
 }
 
 /**

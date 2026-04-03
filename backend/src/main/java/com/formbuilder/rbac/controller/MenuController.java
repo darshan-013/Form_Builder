@@ -1,5 +1,7 @@
 package com.formbuilder.rbac.controller;
 
+import com.formbuilder.constants.AppConstants;
+
 import com.formbuilder.rbac.dto.MenuDto;
 import com.formbuilder.rbac.service.MenuService;
 import lombok.RequiredArgsConstructor;
@@ -9,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/menu")
+@RequestMapping(AppConstants.API_MENUS)
 @RequiredArgsConstructor
 public class MenuController {
 

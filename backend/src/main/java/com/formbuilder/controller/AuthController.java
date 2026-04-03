@@ -1,5 +1,6 @@
 package com.formbuilder.controller;
 
+import com.formbuilder.constants.AppConstants;
 import com.formbuilder.dto.RegisterRequest;
 import com.formbuilder.rbac.entity.Permission;
 import com.formbuilder.rbac.entity.Role;
@@ -20,7 +21,7 @@ import java.util.*;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping(AppConstants.API_AUTH)
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -71,11 +72,10 @@ public class AuthController {
     }
 
     /**
-     * GET /api/auth/me
-     * Returns the currently authenticated user's full profile,
-     * including RBAC roles and effective permissions.
+     * GET /api/v1/auth/me
+     * Returns the currently authenticated user's profile.
      */
-    @GetMapping("/me")
+    @GetMapping({"/me", AppConstants.AUTH_ME})
     public ResponseEntity<?> me(Authentication auth) {
         if (auth == null || !auth.isAuthenticated()
                 || "anonymousUser".equals(auth.getPrincipal())) {
@@ -95,22 +95,13 @@ public class AuthController {
                     response.put("email", rbacUser.getEmail());
                     response.put("profilePic", rbacUser.getProfilePic());
 
+                    // Map roles to objects [{roleName: "..."}] to match AuthContext hasRole
                     response.put("roles", rbacUser.getRoles().stream()
-                            .sorted(Comparator.comparing(Role::getRoleName))
-                            .map(role -> {
-                                Map<String, Object> r = new LinkedHashMap<>();
-                                r.put("id", role.getId());
-                                r.put("roleName", role.getRoleName());
-                                r.put("isSystemRole", role.isSystemRole());
-                                return r;
-                            }).toList());
-
-                    response.put("permissions", rbacUser.getRoles().stream()
-                            .flatMap(role -> role.getPermissions().stream())
-                            .map(Permission::getPermissionKey)
-                            .distinct()
-                            .sorted()
+                            .map(r -> Map.of("roleName", r.getRoleName()))
                             .toList());
+
+                    // Collect and return all distinct permission keys
+                    response.put("permissions", rbacUser.getAllPermissionKeys());
                 });
 
         return ResponseEntity.ok(response);

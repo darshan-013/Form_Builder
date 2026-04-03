@@ -74,6 +74,11 @@ public class FormVersionEntity {
     @com.fasterxml.jackson.annotation.JsonManagedReference
     private List<StaticFormFieldEntity> staticFields = new ArrayList<>();
 
+    @OneToMany(mappedBy = "formVersion", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Builder.Default
+    @com.fasterxml.jackson.annotation.JsonManagedReference
+    private List<CustomValidationRuleEntity> customValidationRules = new ArrayList<>();
+
     public enum FormVersionStatus {
         DRAFT, PUBLISHED
     }

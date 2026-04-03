@@ -1,5 +1,6 @@
 package com.formbuilder.workflow.controller;
 
+import com.formbuilder.constants.AppConstants;
 import com.formbuilder.rbac.service.UserRoleService;
 import com.formbuilder.workflow.service.WorkflowService;
 import com.formbuilder.workflow.dto.AdminWorkflowStatusDTO;
@@ -19,7 +20,7 @@ import java.util.Map;
 import java.util.Set;
 
 @RestController
-@RequestMapping("/api/admin/workflows")
+@RequestMapping(AppConstants.API_ADMIN_WORKFLOWS)
 @RequiredArgsConstructor
 public class AdminWorkflowStatusController {
 

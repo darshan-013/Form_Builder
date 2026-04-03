@@ -110,6 +110,10 @@ public class ValidationService {
 
         if (!errors.isEmpty()) {
             log.debug("Field '{}' failed validation: {}", field.getFieldKey(), errors);
+            // Policy 9.1: If a custom validation message is defined, use it instead of technical errors
+            if (field.getValidationMessage() != null && !field.getValidationMessage().isBlank()) {
+                return List.of(field.getValidationMessage());
+            }
         }
 
         return errors;
@@ -186,17 +190,19 @@ public class ValidationService {
         }
         if (rules.has("customRegex")) {
             String regex = rules.get("customRegex").asText();
+            String customMessage = rules.has("message") ? rules.get("message").asText() : (label + " format is invalid");
             try {
                 if (!Pattern.compile(regex).matcher(value).find())
-                    errors.add(label + " format is invalid");
+                    errors.add(customMessage);
             } catch (Exception e) {
                 log.warn("Invalid regex pattern: {}", regex, e);
             }
         }
         if (!rules.has("customRegex") && field.getValidationRegex() != null && !field.getValidationRegex().isBlank()) {
+            String customMessage = rules.has("message") ? rules.get("message").asText() : (label + " format is invalid");
             try {
                 if (!Pattern.compile(field.getValidationRegex()).matcher(value).find())
-                    errors.add(label + " format is invalid");
+                    errors.add(customMessage);
             } catch (Exception e) {
                 log.warn("Invalid validationRegex for field {}: {}", field.getFieldKey(), field.getValidationRegex());
             }

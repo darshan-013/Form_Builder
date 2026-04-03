@@ -1,5 +1,6 @@
 package com.formbuilder.controller;
 
+import com.formbuilder.constants.AppConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,7 +20,7 @@ import java.util.UUID;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/upload")
+@RequestMapping(AppConstants.API_UPLOAD)
 public class FileUploadController {
 
     private static final String UPLOAD_DIR = "uploads";

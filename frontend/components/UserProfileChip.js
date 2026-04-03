@@ -1,6 +1,6 @@
-import React from 'react';
-import { useAuth } from '../context/AuthContext';
 import Link from 'next/link';
+import { useAuth } from '../context/AuthContext';
+import { getFileViewUrl } from '../services/api';
 
 export default function UserProfileChip() {
     const { user, roles } = useAuth();
@@ -17,7 +17,7 @@ export default function UserProfileChip() {
                 <div className="avatar-wrapper">
                     {user.profilePic ? (
                         <img 
-                            src={`/api/uploads/${user.profilePic}`} 
+                            src={getFileViewUrl(user.profilePic)} 
                             alt={user.username} 
                             className="chip-avatar" 
                         />

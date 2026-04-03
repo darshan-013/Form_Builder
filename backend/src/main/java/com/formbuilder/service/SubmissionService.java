@@ -32,6 +32,8 @@ public class SubmissionService {
     private final CalculationEngine calculationEngine;
     private final RuleEvaluator ruleEvaluator;
     private final DynamicTableService dynamicTableService;
+    private final com.formbuilder.repository.CustomValidationRuleRepository customValidationRepo;
+    private final ExpressionEvaluatorService expressionEvaluator;
 
     // ─────────────────────────────────────────────────────────────────────────
     // METADATA & STATUS
@@ -71,13 +73,47 @@ public class SubmissionService {
         }
     }
 
+    /**
+     * Get total submission count for a form (excluding drafts and soft-deleted).
+     */
+    public long getSubmissionCount(UUID formId) {
+        try {
+            String tableName = getTableName(formId);
+            String sql = "SELECT COUNT(*) FROM " + tableName + " WHERE is_draft = false AND is_soft_deleted = false";
+            Long count = jdbc.queryForObject(sql, Long.class);
+            return count != null ? count : 0L;
+        } catch (Exception e) {
+            // If table doesn't exist yet, count is 0
+            return 0L;
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // VALIDATE — direct JDBC, bypasses JPA FetchType.LAZY + open-in-view:false
     // ─────────────────────────────────────────────────────────────────────────
 
     public void validate(UUID formId, Map<String, Object> data, Map<String, MultipartFile> files) {
+        // Safety check: Flatten map if it contains nested 'data' (defensive layer)
+        if (data != null && data.containsKey("data") && data.get("data") instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> inner = (Map<String, Object>) data.get("data");
+            inner.forEach(data::putIfAbsent);
+        }
+
         String tableName = getTableName(formId);
         UUID versionId = resolveVersionForNewSubmission(formId);
+
+        // Policy 10.4: Max payload size: 100 KB
+        if (data != null) {
+            try {
+                byte[] bytes = objectMapper.writeValueAsBytes(data);
+                if (bytes.length > 100 * 1024) {
+                    throw new ValidationException(Map.of("payload", List.of("Submission payload exceeds the 100KB limit (Policy 10.4)")));
+                }
+            } catch (Exception e) {
+                log.warn("Failed to calculate payload size for form {}: {}", formId, e.getMessage());
+            }
+        }
 
         // SRS Decision 4.3: Fast-fail Drift Detection
         dynamicTableService.validateSchema(tableName, versionId);
@@ -93,7 +129,7 @@ public class SubmissionService {
         // JOIN shared_options for metadata
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
                 "SELECT ff.field_key, ff.label, ff.field_type, ff.required, " +
-                        "ff.validation_json, ff.validation_regex, ff.shared_options_id, ff.ui_config_json, " +
+                        "ff.validation_json, ff.validation_regex, ff.validation_message, ff.shared_options_id, ff.ui_config_json, " +
                         "ff.rules_json, ff.group_id, " +
                         "so.options_json " +
                         "FROM form_fields ff " +
@@ -145,6 +181,39 @@ public class SubmissionService {
             }
         }
 
+        // Custom Validation Engine Integration
+        if (fieldErrors.isEmpty()) {
+            List<com.formbuilder.entity.CustomValidationRuleEntity> customRules =
+                    customValidationRepo.findByFormVersionIdOrderByExecutionOrderAsc(versionId);
+
+            if (!customRules.isEmpty()) {
+                log.info("Evaluating {} custom validation rules for version {}", customRules.size(), versionId);
+
+                // Phase 1: Field-Scope Custom Validations
+                for (com.formbuilder.entity.CustomValidationRuleEntity rule : customRules) {
+                    if (rule.getScope() == com.formbuilder.entity.CustomValidationRuleEntity.ValidationRuleScope.FIELD) {
+                        if (!expressionEvaluator.evaluate(rule.getExpression(), data)) {
+                            // Field scope requires a valid fieldKey; fallback to __general__ if missing
+                            String key = rule.getFieldKey() != null ? rule.getFieldKey() : "__general__";
+                            fieldErrors.computeIfAbsent(key, k -> new ArrayList<>()).add(rule.getErrorMessage());
+                        }
+                    }
+                }
+
+                // Phase 2: Form-Scope Custom Validations (always appear at the top)
+                if (fieldErrors.isEmpty()) {
+                    for (com.formbuilder.entity.CustomValidationRuleEntity rule : customRules) {
+                        if (rule.getScope() == com.formbuilder.entity.CustomValidationRuleEntity.ValidationRuleScope.FORM) {
+                            if (!expressionEvaluator.evaluate(rule.getExpression(), data)) {
+                                // Form scope always goes to general pool
+                                fieldErrors.computeIfAbsent("__general__", k -> new ArrayList<>()).add(rule.getErrorMessage());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (!fieldErrors.isEmpty())
             throw new ValidationException(fieldErrors);
     }
@@ -161,7 +230,7 @@ public class SubmissionService {
         // JOIN shared_options to carry options_json for dropdown/radio validation
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
                 "SELECT ff.field_key, ff.label, ff.field_type, ff.required, " +
-                        "ff.validation_json, ff.validation_regex, ff.shared_options_id, ff.ui_config_json, " +
+                        "ff.validation_json, ff.validation_regex, ff.validation_message, ff.rules_json, ff.shared_options_id, ff.ui_config_json, " +
                         "so.options_json " +
                         "FROM form_fields ff " +
                         "LEFT JOIN shared_options so ON ff.shared_options_id = so.id " +
@@ -210,7 +279,7 @@ public class SubmissionService {
         } else {
             // PATH B — Draft resumption: resolve version from meta-index
             versionId = resolveVersionForDraftResumption(submissionId);
-            updateDynamicRow(tableName, submissionId, versionId, data);
+            updateDynamicRow(tableName, submissionId, versionId, data, false);
         }
         return submissionId;
     }
@@ -255,8 +324,23 @@ public class SubmissionService {
 
     private void insertDynamicRow(String tableName, UUID id, UUID versionId, String userId, String status,
             Map<String, Object> data) {
+        // Fetch field metadata for recalculation
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
-                "SELECT field_key, field_type FROM form_fields WHERE form_version_id = ?", versionId);
+                "SELECT field_key, field_type, is_calculated, formula_expression, calc_precision " +
+                        "FROM form_fields WHERE form_version_id = ? ORDER BY field_order ASC",
+                versionId);
+
+        // Run Calculation
+        Map<String, Object> workingValues = new LinkedHashMap<>(data != null ? data : Map.of());
+        try {
+            workingValues = calculationEngine.recalculate(fieldRows, workingValues);
+        } catch (com.formbuilder.exception.ExpressionEvaluationException e) {
+            if ("SUBMITTED".equals(status)) {
+                throw e;
+            } else {
+                log.warn("Calculation failed for draft [form={}]: {}", tableName, e.getMessage());
+            }
+        }
 
         List<String> cols = new ArrayList<>();
         List<Object> vals = new ArrayList<>();
@@ -266,7 +350,7 @@ public class SubmissionService {
         cols.add("form_version_id");
         vals.add(versionId);
         cols.add("is_draft");
-        vals.add("DRAFTED".equals(status));
+        vals.add(status == null || !"SUBMITTED".equals(status));
         if (userId != null) {
             cols.add("user_id");
             vals.add(userId);
@@ -277,8 +361,10 @@ public class SubmissionService {
             String type = (String) row.get("field_type");
             if ("field_group".equals(type) || "file".equals(type))
                 continue;
+            
+            Object val = workingValues.get(key);
             cols.add("\"" + key + "\"");
-            vals.add(data != null ? convertValue(data.get(key), type) : null);
+            vals.add(convertValue(val, type));
         }
 
         String sql = String.format("INSERT INTO \"%s\" (%s) VALUES (%s)",
@@ -286,9 +372,23 @@ public class SubmissionService {
         jdbc.update(sql, vals.toArray());
     }
 
-    private void updateDynamicRow(String tableName, UUID id, UUID versionId, Map<String, Object> data) {
+    private void updateDynamicRow(String tableName, UUID id, UUID versionId, Map<String, Object> data, boolean isFinal) {
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
-                "SELECT field_key, field_type FROM form_fields WHERE form_version_id = ?", versionId);
+                "SELECT field_key, field_type, is_calculated, formula_expression, calc_precision " +
+                        "FROM form_fields WHERE form_version_id = ? ORDER BY field_order ASC",
+                versionId);
+
+        // Run Calculation
+        Map<String, Object> workingValues = new LinkedHashMap<>(data != null ? data : Map.of());
+        try {
+            workingValues = calculationEngine.recalculate(fieldRows, workingValues);
+        } catch (com.formbuilder.exception.ExpressionEvaluationException e) {
+            if (isFinal) {
+                throw e; // Fail-Fast for final submit or official update
+            } else {
+                log.warn("Calculation failed for draft [id={}]: {}", id, e.getMessage());
+            }
+        }
 
         List<String> setClauses = new ArrayList<>();
         List<Object> vals = new ArrayList<>();
@@ -297,9 +397,11 @@ public class SubmissionService {
             String type = (String) row.get("field_type");
             if ("file".equals(type) || "field_group".equals(type))
                 continue;
-            if (data != null && data.containsKey(key)) {
+            
+            // For updates, we only update fields that were either calculated OR passed in data
+            if (Boolean.TRUE.equals(row.get("is_calculated")) || (data != null && data.containsKey(key))) {
                 setClauses.add("\"" + key + "\" = ?");
-                vals.add(convertValue(data.get(key), type));
+                vals.add(convertValue(workingValues.get(key), type));
             }
         }
         setClauses.add("updated_at = NOW()");
@@ -323,6 +425,10 @@ public class SubmissionService {
         dynamicTableService.addDraftColumnsIfMissing(tableName);
 
         UUID versionId = resolveVersionForNewSubmission(formId);
+        
+        // SRS Decision 4.3: Startup/Submission-time drift detection
+        dynamicTableService.validateSchema(tableName, versionId);
+
         com.formbuilder.entity.FormVersionEntity version = versionRepo.findById(versionId)
                 .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
 
@@ -344,7 +450,15 @@ public class SubmissionService {
             workingValues.put(key, val);
         }
         // Override calculated fields with server-evaluated results
-        workingValues = calculationEngine.recalculate(fieldRows, workingValues);
+        try {
+            workingValues = calculationEngine.recalculate(fieldRows, workingValues);
+        } catch (com.formbuilder.exception.ExpressionEvaluationException e) {
+            if ("SUBMITTED".equals(status)) {
+                throw e; // Fail-Fast for final submission to ensure data integrity
+            } else {
+                log.warn("Calculation failed for draft submission [form={}], allowing save: {}", formId, e.getMessage());
+            }
+        }
         final Map<String, Object> finalValues = workingValues;
 
         List<String> cols = new ArrayList<>();
@@ -396,8 +510,11 @@ public class SubmissionService {
         UUID versionId = (UUID) meta.get("form_version_id");
         String tableName = getTableName(formId);
 
-        // Update Dynamic Data
-        updateDynamicRow(tableName, submissionId, versionId, data);
+        // SRS Decision 4.3: Submission-time drift detection
+        dynamicTableService.validateSchema(tableName, versionId);
+
+        // Update Dynamic Data - Mark as final (isFinal = true) to trigger fail-fast for recalculation
+        updateDynamicRow(tableName, submissionId, versionId, data, true);
         jdbc.update(String.format("UPDATE \"%s\" SET is_draft = FALSE, updated_at = NOW() WHERE id = ?", tableName),
                 submissionId);
 
@@ -500,6 +617,34 @@ public class SubmissionService {
         log.info("Submission {} soft-deleted from {}", submissionId, tableName);
     }
 
+    /** Returns only soft-deleted submissions. */
+    public List<Map<String, Object>> getDeletedSubmissions(UUID formId) {
+        String tableName = getTableName(formId);
+        dynamicTableService.ensureTableExists(tableName, formId);
+        return jdbc.queryForList(
+                String.format("SELECT * FROM \"%s\" WHERE is_soft_deleted = TRUE ORDER BY deleted_at DESC",
+                        tableName));
+    }
+
+    /** Restores a soft-deleted submission. */
+    public void restoreSubmission(UUID formId, UUID submissionId) {
+        String tableName = getTableName(formId);
+        int affected = jdbc.update(
+                String.format("UPDATE \"%s\" SET is_soft_deleted = FALSE, deleted_at = NULL WHERE id = ?",
+                        tableName),
+                submissionId);
+        if (affected == 0)
+            throw new NoSuchElementException("Deleted submission not found: " + submissionId);
+        log.info("Submission {} restored in {}", submissionId, tableName);
+    }
+
+    /** Permanently deletes all soft-deleted submissions for a form. */
+    public void purgeDeletedSubmissions(UUID formId) {
+        String tableName = getTableName(formId);
+        int affected = jdbc.update(String.format("DELETE FROM \"%s\" WHERE is_soft_deleted = TRUE", tableName));
+        log.info("Purged {} soft-deleted submissions from {}", affected, tableName);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // UPDATE
     // ─────────────────────────────────────────────────────────────────────────
@@ -513,7 +658,17 @@ public class SubmissionService {
         UUID versionId = (UUID) sub.get("form_version_id");
 
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
-                "SELECT field_key, field_type FROM form_fields WHERE form_version_id = ?", versionId);
+                "SELECT field_key, field_type, is_calculated, formula_expression, calc_precision " +
+                        "FROM form_fields WHERE form_version_id = ? ORDER BY field_order ASC",
+                versionId);
+
+        // Run Calculation (Treat as final submission since it's an update check)
+        Map<String, Object> workingValues = new LinkedHashMap<>(data != null ? data : Map.of());
+        try {
+            workingValues = calculationEngine.recalculate(fieldRows, workingValues);
+        } catch (com.formbuilder.exception.ExpressionEvaluationException e) {
+            throw e; // Fail-Fast
+        }
 
         List<String> setClauses = new ArrayList<>();
         List<Object> vals = new ArrayList<>();
@@ -522,10 +677,12 @@ public class SubmissionService {
             String fieldType = (String) row.get("field_type");
             if ("file".equals(fieldType) || "field_group".equals(fieldType))
                 continue;
-            if (!data.containsKey(fieldKey))
-                continue;
-            setClauses.add("\"" + fieldKey + "\" = ?");
-            vals.add(convertValue(data.get(fieldKey), fieldType));
+            
+            // Update if calculated or provided
+            if (Boolean.TRUE.equals(row.get("is_calculated")) || (data != null && data.containsKey(fieldKey))) {
+                setClauses.add("\"" + fieldKey + "\" = ?");
+                vals.add(convertValue(workingValues.get(fieldKey), fieldType));
+            }
         }
         if (setClauses.isEmpty())
             throw new IllegalArgumentException("No updatable fields provided");
@@ -570,6 +727,7 @@ public class SubmissionService {
         f.setRequired(Boolean.TRUE.equals(row.get("required")));
         f.setValidationJson((String) row.get("validation_json"));
         f.setValidationRegex((String) row.get("validation_regex"));
+        f.setValidationMessage((String) row.get("validation_message"));
         f.setUiConfigJson((String) row.get("ui_config_json"));
         f.setRulesJson((String) row.get("rules_json"));
         f.setGroupId((UUID) row.get("group_id"));

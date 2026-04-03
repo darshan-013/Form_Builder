@@ -49,4 +49,24 @@ public class FormFieldDTO {
     private Boolean lockAfterCalculation;
     private String parentGroupKey;
     private UUID groupId;
+    private String validationMessage;
+    private String gridJson;
+    private String tableRefJson;
+
+    // Manual getters and setters as fallback for Lombok issues
+    public String getGridJson() {
+        return gridJson;
+    }
+
+    public void setGridJson(String gridJson) {
+        this.gridJson = gridJson;
+    }
+
+    public String getTableRefJson() {
+        return tableRefJson;
+    }
+
+    public void setTableRefJson(String tableRefJson) {
+        this.tableRefJson = tableRefJson;
+    }
 }

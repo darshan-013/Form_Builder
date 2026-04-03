@@ -21,23 +21,23 @@ public class GlobalExceptionHandler {
     /**
      * Standard error structure for all API responses.
      */
-    public record ErrorResponse(String errorCode, String message, List<Map<String, String>> details) {}
+    public record ErrorResponse(String errorCode, String message, List<com.formbuilder.dto.ValidationError> errors) {}
 
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ErrorResponse> handleValidation(ValidationException ex) {
-        List<Map<String, String>> details = new java.util.ArrayList<>();
+        List<com.formbuilder.dto.ValidationError> errors = new java.util.ArrayList<>();
         ex.getFieldErrors().forEach((field, messages) -> {
-            messages.forEach(msg -> details.add(Map.of("field", field, "message", msg)));
+            messages.forEach(msg -> errors.add(new com.formbuilder.dto.ValidationError(field, msg)));
         });
-        return ResponseEntity.badRequest().body(new ErrorResponse("VALIDATION_ERROR", "Validation failed", details));
+        return ResponseEntity.badRequest().body(new ErrorResponse("VALIDATION_ERROR", "Validation failed", errors));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
-        List<Map<String, String>> details = ex.getBindingResult().getFieldErrors().stream()
-                .map(f -> Map.of("field", f.getField(), "message", f.getDefaultMessage() != null ? f.getDefaultMessage() : "Invalid value"))
+        List<com.formbuilder.dto.ValidationError> errors = ex.getBindingResult().getFieldErrors().stream()
+                .map(f -> new com.formbuilder.dto.ValidationError(f.getField(), f.getDefaultMessage() != null ? f.getDefaultMessage() : "Invalid value"))
                 .toList();
-        return ResponseEntity.badRequest().body(new ErrorResponse("VALIDATION_ERROR", "Input validation failed", details));
+        return ResponseEntity.badRequest().body(new ErrorResponse("VALIDATION_ERROR", "Input validation failed", errors));
     }
 
     @ExceptionHandler(NoSuchElementException.class)
@@ -65,14 +65,36 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(ex.getErrorCode(), ex.getMessage(), List.of()));
     }
 
+    @ExceptionHandler(SchemaDriftException.class)
+    public ResponseEntity<ErrorResponse> handleSchemaDrift(SchemaDriftException ex) {
+        log.error("Schema drift detected: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("SCHEMA_DRIFT", ex.getMessage(), List.of()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleBadArg(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(new ErrorResponse("INVALID_ARGUMENT", ex.getMessage(), List.of()));
     }
 
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex) {
+        String msg = String.format("Type mismatch for parameter '%s': invalid value '%s'", ex.getName(), ex.getValue());
+        return ResponseEntity.badRequest().body(new ErrorResponse("TYPE_MISMATCH", msg, List.of()));
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("CONFLICT", ex.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(ExpressionEvaluationException.class)
+    public ResponseEntity<ErrorResponse> handleExpressionEvaluation(ExpressionEvaluationException ex) {
+        log.error("Expression evaluation failed: {} (reason: {}, expression: {})", ex.getMessage(), ex.getReason(), ex.getExpression());
+        List<com.formbuilder.dto.ValidationError> errors = List.of(
+                new com.formbuilder.dto.ValidationError(ex.getFieldKey() != null ? ex.getFieldKey() : "unknown", ex.getMessage())
+        );
+        return ResponseEntity.badRequest().body(new ErrorResponse("EXPRESSION_ERROR", ex.getMessage(), errors));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -84,7 +106,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneral(Exception ex) {
         log.error("Unhandled exception", ex);
+        // Temporarily include ex.getMessage() for easier frontend debugging of 500 errors
+        String msg = "An unexpected error occurred: " + ex.getMessage();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ErrorResponse("SERVER_ERROR", "An unexpected error occurred.", List.of()));
+                .body(new ErrorResponse("SERVER_ERROR", msg, List.of()));
     }
 }

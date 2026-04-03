@@ -151,6 +151,7 @@ public class FormRenderService {
                 .lockAfterCalculation(Boolean.TRUE.equals(f.getLockAfterCalculation()))
                 .parentGroupKey(f.getParentGroupKey())
                 .groupId(f.getGroupId())
+                .validationMessage(f.getValidationMessage())
                 .build();
     }
 

@@ -143,7 +143,12 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     }
 
     // 2. Initial Calculations
-    const calculated = CalculationEngine.recalculateCalculatedFields(fields, currentValues);
+    let calculated = currentValues;
+    try {
+      calculated = CalculationEngine.recalculateCalculatedFields(fields, currentValues);
+    } catch (err) {
+      console.warn('[FormRenderer] Initial calculation error:', err.message);
+    }
 
     // 3. Re-run rules if calculations changed values (cascade)
     const finalStates = RuleEngine.applyRules(fields, calculated);
@@ -177,7 +182,12 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
 
           // Re-apply rules and calculations based on draft data
           const states = RuleEngine.applyRules(fields, draftValues);
-          const calculated = CalculationEngine.recalculateCalculatedFields(fields, draftValues);
+          let calculated = draftValues;
+          try {
+            calculated = CalculationEngine.recalculateCalculatedFields(fields, draftValues);
+          } catch (err) {
+            console.warn('[FormRenderer] Draft calculation error:', err.message);
+          }
           const finalStates = RuleEngine.applyRules(fields, calculated);
 
           setValues(calculated);
@@ -285,7 +295,13 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
     }
 
     // 5. Run CalculationEngine.recalculate()
-    const calculatedValues = CalculationEngine.recalculateCalculatedFields(fields, currentValues);
+    let calculatedValues = currentValues;
+    try {
+      calculatedValues = CalculationEngine.recalculateCalculatedFields(fields, currentValues);
+    } catch (err) {
+      // Logic: if a formula results in division by zero (e.g. while typing), just keep the current values.
+      console.warn('[FormRenderer] Calculation error:', err.message);
+    }
 
     // If calculations changed values, we might need a quick re-run of rules to update UI state (visible/required)
     // based on the new calculated values.
@@ -467,7 +483,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
           // Backend sends { field: fieldKey, message: string }
           if (error && typeof error === 'object' && error.field && error.message) {
             const key = error.field;
-            if (key === '__general__') {
+            if (key === '__general__' || key === 'form' || key === 'general') {
               unmatched.push(error.message);
             } else {
               // Match by fieldKey directly (primary) or label (fallback)
@@ -492,7 +508,13 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
           const el = document.getElementById(`field-${firstKey}`);
           if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
         }
-        if (unmatched.length) setServerError(unmatched.join(' · '));
+        if (unmatched.length) {
+          setServerError(unmatched.join(' · '));
+        } else if (Object.keys(fieldErrs).length) {
+          // If we have field errors but no unmatched, still show a friendly top-level reminder
+          const count = Object.keys(fieldErrs).length;
+          setServerError(`Please fix the ${count} field${count > 1 ? 's' : ''} highlighted below.`);
+        }
       } else {
         setServerError(err?.message || 'Submission failed. Please try again.');
       }
@@ -563,8 +585,17 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
       </div>
 
       {serverError && (
-        <div className="auth-error" style={{ margin: '0 32px 16px', borderRadius: 10 }}>
-          <span>⚠</span> {serverError}
+        <div className={`auth-error ${serverError.includes('fixed') || serverError.includes('highlighted') ? 'validation-summary-banner' : ''}`} 
+             style={{ margin: '0 32px 24px', borderRadius: 12, padding: '16px 20px', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <span style={{ fontSize: '20px' }}>⚠️</span>
+            <div style={{ flex: 1 }}>
+              <strong style={{ display: 'block', marginBottom: '4px', color: '#ff8e8e', fontSize: '15px' }}>
+                Form Validation Failed
+              </strong>
+              <div style={{ fontSize: '14px', opacity: 0.9 }}>{serverError}</div>
+            </div>
+          </div>
         </div>
       )}
 

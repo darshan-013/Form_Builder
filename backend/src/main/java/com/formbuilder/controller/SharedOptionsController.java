@@ -1,5 +1,7 @@
 package com.formbuilder.controller;
 
+import com.formbuilder.constants.AppConstants;
+
 import com.formbuilder.entity.SharedOptionsEntity;
 import com.formbuilder.service.FormService;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +20,7 @@ import java.util.UUID;
  * PUT  /api/shared-options/{id}      → update options_json of a shared row (all linked fields see this instantly)
  */
 @RestController
-@RequestMapping("/api/shared-options")
+@RequestMapping(AppConstants.API_SHARED_OPTIONS)
 @RequiredArgsConstructor
 public class SharedOptionsController {
 

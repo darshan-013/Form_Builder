@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS forms (
     updated_at    TIMESTAMP     NOT NULL DEFAULT NOW()
 )^
 
+-- Ensure columns exist before commenting (for systems with older schemas)
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS form_code VARCHAR(50)^
+
 COMMENT ON TABLE  forms              IS 'Master registry of every form created by admins.'^
 COMMENT ON COLUMN forms.form_code    IS 'Unique string identifier for the form, used in URL logic and table naming.'^
 COMMENT ON COLUMN forms.table_name  IS 'Name of the dedicated PostgreSQL table that stores submissions for this form.'^
@@ -70,6 +73,10 @@ CREATE TABLE IF NOT EXISTS form_versions (
     UNIQUE(form_id, version_number)
 )^
 
+-- Ensure columns exist before indexing or usage (for systems with older schemas)
+ALTER TABLE form_versions ADD COLUMN IF NOT EXISTS published_at TIMESTAMP^
+ALTER TABLE form_versions ADD COLUMN IF NOT EXISTS created_by VARCHAR(100)^
+
 
 -- ─────────────────────────────────────────────
 --  TABLE: form_fields
@@ -89,6 +96,7 @@ CREATE TABLE IF NOT EXISTS form_fields (
     validation_regex  TEXT,
     validation_json   TEXT,
     ui_config_json    TEXT,
+    validation_message TEXT,
     shared_options_id UUID                            -- FK -> shared_options.id
                        REFERENCES shared_options (id) ON DELETE SET NULL,
     is_disabled       BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -98,6 +106,21 @@ CREATE TABLE IF NOT EXISTS form_fields (
     
     CONSTRAINT uq_form_field_key UNIQUE (form_version_id, field_key)
 )^
+
+-- Ensure columns exist before indexing or usage (for systems with older schemas)
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS form_version_id UUID^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS group_id UUID^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS validation_json TEXT^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS ui_config_json TEXT^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS is_disabled BOOLEAN DEFAULT FALSE^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS is_read_only BOOLEAN DEFAULT FALSE^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS rules_json TEXT^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS is_calculated BOOLEAN DEFAULT FALSE^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS formula_expression TEXT^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS dependencies_json TEXT^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS calc_precision INT^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS lock_after_calc BOOLEAN DEFAULT FALSE^
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS validation_message TEXT^
 
 COMMENT ON TABLE  form_fields               IS 'Field definitions for each form. Each field becomes a column in the form''s submission table.'^
 COMMENT ON COLUMN form_fields.field_key     IS 'Snake_case identifier used as column name in the dynamic submission table.'^
@@ -163,6 +186,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     related_user_id        INT,
     related_username       VARCHAR(100)
 )^
+
+-- Ensure columns exist before indexing or usage (for systems with older schemas)
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS related_role_id INT^
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS related_role_name VARCHAR(100)^
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS related_user_id INT^
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS related_username VARCHAR(100)^
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
     ON audit_logs (created_at)^

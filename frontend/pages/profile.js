@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
 import UserProfileChip from '../components/UserProfileChip';
-import { getProfile, updateProfile, changePassword, uploadProfilePhoto } from '../services/api';
+import { getProfile, updateProfile, changePassword, uploadProfilePhoto, getFileViewUrl } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { toastSuccess, toastError } from '../services/toast';
 import { 
@@ -42,10 +42,11 @@ const ProfilePage = () => {
         try {
             setLoading(true);
             const response = await getProfile();
+            const userData = response.user || response; // Support both old and new response structure
             setProfileData({
-                name: response.name || '',
-                email: response.email || '',
-                username: response.username || ''
+                name: userData.name || '',
+                email: userData.email || '',
+                username: userData.username || ''
             });
             setError(null);
         } catch (err) {
@@ -191,7 +192,7 @@ const ProfilePage = () => {
                                         <div className="avatar-circle">
                                             {user?.profilePic ? (
                                                 <img 
-                                                    src={`/api/uploads/${user.profilePic}`} 
+                                                    src={getFileViewUrl(user.profilePic)} 
                                                     alt={user.name} 
                                                     className="avatar-img"
                                                 />

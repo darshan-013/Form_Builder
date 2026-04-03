@@ -1,5 +1,6 @@
 package com.formbuilder.config;
 
+import com.formbuilder.constants.AppConstants;
 import com.formbuilder.rbac.security.PermissionInterceptor;
 import jakarta.servlet.SessionCookieConfig;
 import jakarta.servlet.ServletContext;
@@ -18,54 +19,35 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final PermissionInterceptor permissionInterceptor;
 
-    /**
-     * Configure the JSESSIONID cookie so Edge / Chrome tracking prevention
-     * does NOT block it when the Next.js proxy (port 3000) forwards to Spring (port 8080).
-     *
-     * Key settings:
-     *  - domain left null  → browser scopes cookie to the responding host only
-     *  - sameSite = Lax    → sent on top-level navigations, not blocked as third-party
-     *  - httpOnly = true   → JS cannot read it (security)
-     *  - secure = false    → works over plain HTTP in dev (set true in prod)
-     */
     @Bean
     public ServletContextInitializer sessionCookieInitializer() {
         return (ServletContext ctx) -> {
             SessionCookieConfig config = ctx.getSessionCookieConfig();
             config.setHttpOnly(true);
-            config.setSecure(false);   // flip to true in production (HTTPS)
-            config.setPath("/");       // cookie valid for all paths on the origin
-            // Do NOT set domain — browser scopes it to the responding host (localhost:3000 via proxy)
-            // SameSite=Strict is set via application.yml — prevents Edge tracking-prevention blocking
+            config.setSecure(false);
+            config.setPath("/");
         };
     }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
-                .allowedOriginPatterns("http://localhost:3000", "http://127.0.0.1:3000")
+        registry.addMapping(AppConstants.API_BASE + "/**")
+                .allowedOriginPatterns(AppConstants.FRONTEND_URL, "http://127.0.0.1:3000")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
                 .allowedHeaders("*")
-                .exposedHeaders("Set-Cookie")          // allow frontend to see Set-Cookie
-                .allowCredentials(true)                // required for session cookies
+                .exposedHeaders("Set-Cookie")
+                .allowCredentials(true)
                 .maxAge(3600);
     }
 
-    /**
-     * Register the RBAC PermissionInterceptor.
-     * It only acts on handler methods annotated with @RequirePermission —
-     * unannotated endpoints pass through untouched.
-     *
-     * Excluded paths: public auth routes, public form endpoints, Swagger UI.
-     */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(permissionInterceptor)
-                .addPathPatterns("/api/**")
+                .addPathPatterns(AppConstants.API_BASE + "/**")
                 .excludePathPatterns(
-                        "/api/auth/login",
-                        "/api/auth/register",
-                        "/api/auth/logout",
+                        AppConstants.API_AUTH + AppConstants.AUTH_LOGIN,
+                        AppConstants.API_AUTH + "/register",
+                        AppConstants.API_AUTH + AppConstants.AUTH_LOGOUT,
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html"
@@ -74,7 +56,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("/api/uploads/**")
+        registry.addResourceHandler(AppConstants.API_BASE + "/uploads/**")
                 .addResourceLocations("file:uploads/");
     }
 }

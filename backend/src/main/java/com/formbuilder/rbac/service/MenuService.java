@@ -10,7 +10,11 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,14 +44,18 @@ public class MenuService {
         return menu;
     }
 
-    private void addFixedItems(List<MenuDto> menu, List<String> roleNames) {
-        boolean isAdmin = roleNames.contains("Admin");
-        boolean isRoleAdmin = roleNames.contains("Role Administrator");
-        boolean isBuilder = roleNames.contains("Builder");
-        boolean isViewer = roleNames.contains("Viewer");
-        boolean isCreator = roleNames.contains("Creator");
-        boolean hasManagementRole = isAdmin || isRoleAdmin;
-        boolean hasWorkflowRole = isAdmin || isBuilder || isViewer || isCreator || roleNames.contains("Approver") || roleNames.contains("Manager");
+    private void addFixedItems(List<MenuDto> menu, List<String> authorities) {
+        boolean isAdmin = authorities.contains("Admin");
+        boolean isRoleAdmin = authorities.contains("Role Administrator");
+        boolean hasAuditPerm = authorities.contains("AUDIT");
+        boolean hasManagePerm = authorities.contains("MANAGE");
+        
+        boolean isBuilder = authorities.contains("Builder");
+        boolean isViewer = authorities.contains("Viewer");
+        boolean isCreator = authorities.contains("Creator");
+        
+        boolean hasManagementSection = isAdmin || isRoleAdmin || hasManagePerm || hasAuditPerm;
+        boolean hasWorkflowRole = isAdmin || isBuilder || isViewer || isCreator || authorities.contains("Approver") || authorities.contains("Manager");
 
         // General Section
         MenuDto general = MenuDto.builder().section("General").items(new ArrayList<>()).build();
@@ -55,31 +63,40 @@ public class MenuService {
         menu.add(general);
 
         // Management Section
-        if (hasManagementRole) {
+        if (hasManagementSection) {
             MenuDto management = MenuDto.builder().section("Management").items(new ArrayList<>()).build();
-            management.getItems().add(MenuDto.MenuItemDto.builder().label("Users").href("/users").icon("👥").build());
-            management.getItems().add(MenuDto.MenuItemDto.builder().label("Roles").href("/roles").icon("🛡️").build());
             
-            // Admin specific items (Module Management, Mapping, Audit Logs)
+            if (isAdmin || isRoleAdmin || hasManagePerm) {
+                management.getItems().add(MenuDto.MenuItemDto.builder().label("Users").href("/users").icon("👥").build());
+                management.getItems().add(MenuDto.MenuItemDto.builder().label("Roles").href("/roles").icon("🛡️").build());
+            }
+            
+            // Admin specific items (Module Management, Mapping)
             if (isAdmin) {
                 management.getItems().add(MenuDto.MenuItemDto.builder().label("Module Management").href("/admin/modules").icon("🧩").build());
                 management.getItems().add(MenuDto.MenuItemDto.builder().label("Role-Menu Mapping").href("/admin/roles/mapping").icon("🗺️").build());
+            }
+
+            // Audit Logs (visible to anyone with AUDIT permission — typically Admin, Role Admin, Manager)
+            if (hasAuditPerm || isAdmin) {
                 management.getItems().add(MenuDto.MenuItemDto.builder().label("Audit Logs").href("/logs/admin").icon("🧾").build());
             }
 
-            // Role Logs (visible to both Admin and Role Administrator)
+            // Role Logs (visible to Admin and Role Administrator)
             if (isAdmin || isRoleAdmin) {
                 management.getItems().add(MenuDto.MenuItemDto.builder().label("Role Logs").href("/logs/role-assignments").icon("📜").build());
             }
 
-            menu.add(management);
+            if (!management.getItems().isEmpty()) {
+                menu.add(management);
+            }
         }
 
         // Workflows Section
         if (hasWorkflowRole) {
             MenuDto workflows = MenuDto.builder().section("Workflows").items(new ArrayList<>()).build();
             
-            if (isBuilder || roleNames.contains("Approver") || roleNames.contains("Manager")) {
+            if (isBuilder || authorities.contains("Approver") || authorities.contains("Manager")) {
                 workflows.getItems().add(MenuDto.MenuItemDto.builder().label("Approval Inbox").href("/admin/approvals").icon("✓").build());
             }
             

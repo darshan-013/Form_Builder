@@ -1,5 +1,6 @@
 package com.formbuilder.controller;
 
+import com.formbuilder.constants.AppConstants;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,26 +21,23 @@ public class RootController {
                 "version", "1.0.0",
                 "status", "running",
                 "timestamp", LocalDateTime.now().toString(),
+                "basePath", AppConstants.API_BASE,
                 "endpoints", Map.of(
                         "auth", Map.of(
-                                "register", "POST /api/auth/register",
-                                "login", "POST /api/auth/login",
-                                "logout", "POST /api/auth/logout",
-                                "me", "GET /api/auth/me"
+                                "register", "POST " + AppConstants.API_AUTH + "/register",
+                                "login", "POST " + AppConstants.API_AUTH + AppConstants.AUTH_LOGIN,
+                                "logout", "POST " + AppConstants.API_AUTH + AppConstants.AUTH_LOGOUT,
+                                "me", "GET " + AppConstants.API_AUTH + AppConstants.AUTH_ME
                         ),
                         "forms", Map.of(
-                                "list", "GET /api/forms",
-                                "get", "GET /api/forms/{id}",
-                                "create", "POST /api/forms",
-                                "update", "PUT /api/forms/{id}",
-                                "delete", "DELETE /api/forms/{id}"
-                        ),
-                        "submissions", Map.of(
-                                "submit", "POST /api/forms/{id}/submit",
-                                "list", "GET /api/forms/{id}/submissions"
+                                "list", "GET " + AppConstants.API_FORMS,
+                                "get", "GET " + AppConstants.API_FORMS + "/{id}",
+                                "create", "POST " + AppConstants.API_FORMS,
+                                "update", "PUT " + AppConstants.API_FORMS + "/{id}",
+                                "delete", "DELETE " + AppConstants.API_FORMS + "/{id}"
                         )
                 ),
-                "documentation", "Access the API endpoints listed above"
+                "documentation", "Access the v1 API endpoints listed above"
         ));
     }
 

@@ -1,5 +1,6 @@
 package com.formbuilder.service;
 
+import com.formbuilder.dto.CustomValidationRuleDTO;
 import com.formbuilder.dto.FormDTO;
 import com.formbuilder.dto.FormFieldDTO;
 import com.formbuilder.entity.*;
@@ -8,10 +9,13 @@ import com.formbuilder.rbac.repository.UserRepository;
 import com.formbuilder.repository.*;
 import com.formbuilder.workflow.repository.WorkflowInstanceRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,9 +35,12 @@ public class FormService {
     private final SharedOptionsRepository sharedOptionsRepo;
     private final StaticFormFieldRepository staticRepo;
     private final FormGroupRepository groupRepo;
+    private final CustomValidationRuleRepository customValidationRepo;
     private final DynamicTableService dynamicTable;
     private final UserRepository userRepo;
     private final WorkflowInstanceRepository workflowInstanceRepo;
+    @PersistenceContext
+    private EntityManager entityManager;
     private final ObjectMapper objectMapper;
     private final SubmissionService submissionService;
 
@@ -181,6 +188,12 @@ public class FormService {
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + id));
     }
 
+    /** Returns an active form by its unique form code. */
+    public FormEntity getFormByCode(String code) {
+        return formRepo.findByFormCodeAndSoftDeletedFalse(code)
+                .orElseThrow(() -> new NoSuchElementException("Form not found with code: " + code));
+    }
+
     /**
      * Returns a form by ID scoped to the authenticated owner.
      * Throws NoSuchElementException (→ 404) if form doesn't exist OR belongs to
@@ -236,11 +249,13 @@ public class FormService {
     @Transactional
     public FormEntity createForm(FormDTO dto, String owner) {
         validateUniqueFieldKeys(dto.getFields());
+        validateTotalRules(dto.getFields());
+        validateMaxGroups(dto.getGroups());
         String formCode = dto.getFormCode();
         if (formCode == null || formCode.isBlank()) {
             formCode = dto.getName().toLowerCase()
-                    .replaceAll("[^a-z0-9]+", "_")
-                    .replaceAll("^_+|_+$", "");
+                    .replaceAll("[^a-z0-9]+", "") // SRS Decision 4.1: Non-alphanumeric characters stripped
+                    .substring(0, Math.min(dto.getName().length(), 100));
         }
         String tableName = dynamicTable.generateTableName(formCode);
 
@@ -275,21 +290,35 @@ public class FormService {
         savedForm.getVersions().add(savedVersion);
 
         // 3. Save static fields (linked to version)
-        saveStaticFields(savedVersion, dto.getStaticFields(), true);
+        saveStaticFields(savedVersion, dto.getStaticFields());
 
         // 4. Save groups (linked to version)
-        saveGroups(savedVersion, dto.getGroups(), true);
-        groupRepo.flush();
+        Map<UUID, UUID> groupIdMap = saveGroups(savedVersion, dto.getGroups());
 
         // 5. Map and save dynamic fields (linked to version)
         if (dto.getFields() != null) {
             for (FormFieldDTO f : dto.getFields()) {
-                savedVersion.getFields().add(toFieldEntity(f, savedVersion, true));
+                savedVersion.getFields().add(toFieldEntity(f, savedVersion, groupIdMap));
             }
             versionRepo.save(savedVersion);
         }
 
-        // 6. Update definition_json snapshot
+        // 6. Save custom validation rules (linked to version)
+        if (dto.getCustomValidationRules() != null) {
+            for (CustomValidationRuleDTO ruleDto : dto.getCustomValidationRules()) {
+                CustomValidationRuleEntity rule = CustomValidationRuleEntity.builder()
+                        .formVersion(savedVersion)
+                        .scope(ruleDto.getScope())
+                        .fieldKey(ruleDto.getFieldKey())
+                        .expression(ruleDto.getExpression())
+                        .errorMessage(ruleDto.getErrorMessage())
+                        .executionOrder(ruleDto.getExecutionOrder())
+                        .build();
+                customValidationRepo.save(rule);
+            }
+        }
+
+        // 7. Update definition_json snapshot
         updateDefinitionJson(savedVersion);
 
         // 7. Create dynamic table (Schema is per-form)
@@ -304,6 +333,8 @@ public class FormService {
     @Transactional
     public FormEntity updateForm(UUID id, FormDTO dto, String owner, boolean isAdmin, boolean isBuilder, UUID targetVersionId) {
         validateUniqueFieldKeys(dto.getFields());
+        validateTotalRules(dto.getFields());
+        validateMaxGroups(dto.getGroups());
 
         FormEntity existingForm = getFormForAction(id, owner, isAdmin);
 
@@ -377,18 +408,15 @@ public class FormService {
 
         // 5. Update Versioned Content (Groups, Static Fields, Fields)
         // Rely on orphanRemoval = true to handle deletions via collection clear
-        activeVersion.getStaticFields().clear();
-        activeVersion.getGroups().clear();
         activeVersion.getFields().clear();
-
-        // Save new versioned content
-        saveStaticFields(activeVersion, dto.getStaticFields(), isNewDraft);
-        saveGroups(activeVersion, dto.getGroups(), isNewDraft);
-        groupRepo.flush();
-
+        
+        // Use ID Mapping to ensure linkages are preserved while rotating all IDs to avoid session collisions
+        Map<UUID, UUID> groupIdMap = saveGroups(activeVersion, dto.getGroups());
+        saveStaticFields(activeVersion, dto.getStaticFields());
+        
         if (dto.getFields() != null) {
             for (FormFieldDTO dtoField : dto.getFields()) {
-                activeVersion.getFields().add(toFieldEntity(dtoField, activeVersion, isNewDraft));
+                activeVersion.getFields().add(toFieldEntity(dtoField, activeVersion, groupIdMap));
             }
         }
 
@@ -432,6 +460,57 @@ public class FormService {
         log.info("Form version '{}' (v{}) soft-deleted by '{}'", form.getName(), target.getVersionNumber(), owner);
     }
 
+    /** Returns only soft-deleted forms. RBAC: Admin sees all, Builder sees own only. */
+    public List<FormEntity> getDeletedForms(String username, Set<String> roleNames) {
+        boolean isAdmin = roleNames.contains("Admin") || roleNames.contains("Role Administrator");
+        List<FormEntity> allDeleted = formRepo.findAllBySoftDeletedTrueOrderByDeletedAtDesc();
+
+        if (isAdmin) {
+            return allDeleted;
+        }
+
+        // For non-admins, show only forms they created (owned trash)
+        return allDeleted.stream()
+                .filter(f -> username.equalsIgnoreCase(f.getCreatedBy()))
+                .collect(Collectors.toList());
+    }
+
+    /** Restores a soft-deleted form. */
+    @Transactional
+    public void restoreForm(UUID id, String username, boolean isAdmin) {
+        FormEntity form = formRepo.findByIdAndSoftDeletedTrue(id)
+                .orElseThrow(() -> new NoSuchElementException("Deleted form not found: " + id));
+
+        if (!isAdmin && !username.equalsIgnoreCase(form.getCreatedBy())) {
+            throw new NoSuchElementException("Access denied to restore form: " + id);
+        }
+
+        form.setSoftDeleted(false);
+        form.setDeletedAt(null);
+        formRepo.save(form);
+        log.info("Form '{}' restored by '{}'", form.getName(), username);
+    }
+
+    /** Permanently deletes a form (drops table and removes record). */
+    @Transactional
+    public void permanentlyDeleteForm(UUID id, String username, boolean isAdmin) {
+        FormEntity form = formRepo.findByIdAndSoftDeletedTrue(id)
+                .orElseThrow(() -> new NoSuchElementException("Deleted form not found: " + id));
+
+        if (!isAdmin && !username.equalsIgnoreCase(form.getCreatedBy())) {
+            throw new NoSuchElementException("Access denied to permanently delete form: " + id);
+        }
+
+        // 1. Drop the dynamic table
+        dynamicTable.dropTable(form.getTableName());
+
+        // 2. Remove all related metadata (submissions, versions, fields, groups are handled by JPA cascades/orphanRemoval if configured, but let's be explicit if needed)
+        // Actually, FormEntity has @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true) for versions.
+        
+        formRepo.delete(form);
+        log.info("Form '{}' permanently deleted by '{}'", form.getName(), username);
+    }
+
     // ── Status (Publish / Unpublish) ──────────────────────────────────────────
 
     @Transactional
@@ -450,6 +529,9 @@ public class FormService {
         }
 
         FormVersionEntity draftVersion = draftOpt.get();
+
+        // SRS Decision 4.3: Block publish if drift is detected.
+        dynamicTable.validateSchema(form.getTableName(), draftVersion.getId());
 
         // Permission checks
         boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
@@ -507,6 +589,9 @@ public class FormService {
             throw new IllegalStateException("Version is already published.");
         }
 
+        // SRS Decision 4.3: Block publish if drift is detected.
+        dynamicTable.validateSchema(form.getTableName(), targetVersion.getId());
+
         // Permission checks
         boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
                 .map(user -> user.getRoles().stream().anyMatch(role -> "Builder".equals(role.getRoleName())))
@@ -563,6 +648,92 @@ public class FormService {
         return formRepo.save(form);
     }
 
+    @Transactional
+    public FormFieldEntity updateField(UUID formId, UUID versionId, String fieldKey, FormFieldDTO dto, String owner, boolean isAdmin) {
+        FormEntity form = getFormForAction(formId, owner, isAdmin);
+        FormVersionEntity version = versionRepo.findById(versionId)
+                .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
+        
+        if (!version.getForm().getId().equals(formId)) {
+            throw new IllegalArgumentException("Version dose not belong to form: " + formId);
+        }
+
+        FormFieldEntity field = version.getFields().stream()
+                .filter(f -> f.getFieldKey().equals(fieldKey))
+                .findFirst()
+                .orElse(null);
+
+        if (field == null) {
+            // Create new if not exists
+            field = toFieldEntity(dto, version, null); // Manual creation uses ID rotation by default
+            version.getFields().add(field);
+        } else {
+            // Update existing
+            field.setLabel(dto.getLabel());
+            field.setFieldType(dto.getFieldType());
+            field.setRequired(dto.isRequired());
+            field.setReadOnly(dto.isReadOnly());
+            field.setDefaultValue(dto.getDefaultValue());
+            field.setFieldOrder(dto.getFieldOrder());
+            field.setUiConfigJson(dto.getUiConfigJson());
+            field.setValidationJson(dto.getValidationJson());
+            field.setGridJson(dto.getGridJson());
+            field.setTableRefJson(dto.getTableRefJson());
+        }
+
+        versionRepo.save(version);
+        return field;
+    }
+
+    @Transactional
+    public void updateValidation(UUID formId, UUID versionId, UUID validationId, Map<String, Object> req, String owner, boolean isAdmin) {
+        log.info("Granular validation update triggered for validationId={}", validationId);
+    }
+
+    @Transactional
+    public com.formbuilder.entity.CustomValidationRuleEntity addCustomValidationRule(UUID formId, UUID versionId, com.formbuilder.dto.CustomValidationRuleDTO dto, String owner, boolean isAdmin) {
+        getFormForAction(formId, owner, isAdmin); // Permission check
+        FormVersionEntity version = versionRepo.findById(versionId)
+                .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
+        
+        com.formbuilder.entity.CustomValidationRuleEntity rule = com.formbuilder.entity.CustomValidationRuleEntity.builder()
+                .formVersion(version)
+                .scope(dto.getScope())
+                .fieldKey(dto.getFieldKey())
+                .expression(dto.getExpression())
+                .errorMessage(dto.getErrorMessage())
+                .executionOrder(dto.getExecutionOrder())
+                .build();
+        
+        return customValidationRepo.save(rule);
+    }
+    @Transactional
+    public com.formbuilder.entity.CustomValidationRuleEntity updateCustomValidationRule(UUID formId, UUID versionId, UUID ruleId, com.formbuilder.dto.CustomValidationRuleDTO dto, String owner, boolean isAdmin) {
+        getFormForAction(formId, owner, isAdmin); // Permission check
+        com.formbuilder.entity.CustomValidationRuleEntity rule = customValidationRepo.findById(ruleId)
+                .orElseThrow(() -> new NoSuchElementException("Validation rule not found: " + ruleId));
+        
+        rule.setScope(dto.getScope());
+        
+        // Normalize fieldKey for Global rules
+        if (dto.getScope() == com.formbuilder.entity.CustomValidationRuleEntity.ValidationRuleScope.FORM) {
+            rule.setFieldKey("__general__");
+        } else {
+            rule.setFieldKey(dto.getFieldKey());
+        }
+        
+        rule.setExpression(dto.getExpression());
+        rule.setErrorMessage(dto.getErrorMessage());
+        rule.setExecutionOrder(dto.getExecutionOrder());
+        
+        return customValidationRepo.save(rule);
+    }
+    @Transactional
+    public void deleteCustomValidationRule(UUID formId, UUID versionId, UUID ruleId, String owner, boolean isAdmin) {
+        getFormForAction(formId, owner, isAdmin); // Permission check
+        customValidationRepo.deleteById(ruleId);
+    }
+
     // ── Shared Options CRUD ───────────────────────────────────────────────────
 
     /**
@@ -607,12 +778,12 @@ public class FormService {
         return staticRepo.findByFormVersionIdOrderByFieldOrderAsc(versionId);
     }
 
-    private void saveStaticFields(FormVersionEntity version, List<FormDTO.StaticFieldDTO> staticDTOs, boolean isNewDraft) {
+    private void saveStaticFields(FormVersionEntity version, List<FormDTO.StaticFieldDTO> staticDTOs) {
         if (staticDTOs == null || staticDTOs.isEmpty())
             return;
         for (FormDTO.StaticFieldDTO sf : staticDTOs) {
             StaticFormFieldEntity entity = StaticFormFieldEntity.builder()
-                    .id(!isNewDraft && sf.getId() != null ? sf.getId() : UUID.randomUUID())
+                    .id(UUID.randomUUID()) // Always new ID to avoid session collision
                     .formVersion(version)
                     .fieldType(sf.getFieldType())
                     .data(sf.getData())
@@ -628,12 +799,19 @@ public class FormService {
         return groupRepo.findByFormVersionIdOrderByGroupOrderAsc(versionId);
     }
 
-    private void saveGroups(FormVersionEntity version, List<FormDTO.GroupDTO> groupDTOs, boolean isNewDraft) {
+    private Map<UUID, UUID> saveGroups(FormVersionEntity version, List<FormDTO.GroupDTO> groupDTOs) {
         if (groupDTOs == null || groupDTOs.isEmpty())
-            return;
+            return Map.of();
+            
+        Map<UUID, UUID> mapping = new HashMap<>();
         for (FormDTO.GroupDTO g : groupDTOs) {
+            UUID newId = UUID.randomUUID();
+            if (g.getId() != null) {
+                mapping.put(g.getId(), newId);
+            }
+            
             FormGroupEntity entity = FormGroupEntity.builder()
-                    .id(!isNewDraft && g.getId() != null ? g.getId() : UUID.randomUUID())
+                    .id(newId) // New ID for all saves/updates
                     .formVersion(version)
                     .groupTitle(g.getGroupTitle())
                     .groupDescription(g.getGroupDescription())
@@ -643,6 +821,8 @@ public class FormService {
             groupRepo.save(entity);
             version.getGroups().add(entity);
         }
+        groupRepo.flush();
+        return mapping;
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────
@@ -667,9 +847,14 @@ public class FormService {
         return newDraft;
     }
 
-    private FormFieldEntity toFieldEntity(FormFieldDTO dto, FormVersionEntity parent, boolean isNewDraft) {
+    private FormFieldEntity toFieldEntity(FormFieldDTO dto, FormVersionEntity parent, Map<UUID, UUID> groupIdMap) {
+        UUID newGroupId = null;
+        if (dto.getGroupId() != null) {
+            newGroupId = groupIdMap.get(dto.getGroupId());
+        }
+
         return FormFieldEntity.builder()
-                .id(!isNewDraft && dto.getId() != null ? dto.getId() : UUID.randomUUID())
+                .id(UUID.randomUUID()) // Always new ID to avoid session collision
                 .formVersion(parent)
                 .fieldKey(dto.getFieldKey())
                 .label(dto.getLabel())
@@ -691,7 +876,10 @@ public class FormService {
                 .precision(dto.getPrecision())
                 .lockAfterCalculation(dto.getLockAfterCalculation())
                 .parentGroupKey(dto.getParentGroupKey())
-                .groupId(dto.getGroupId())
+                .groupId(newGroupId)
+                .validationMessage(dto.getValidationMessage())
+                .gridJson(dto.getGridJson())
+                .tableRefJson(dto.getTableRefJson())
                 .build();
     }
 
@@ -708,12 +896,21 @@ public class FormService {
     private void validateUniqueFieldKeys(List<FormFieldDTO> fields) {
         if (fields == null || fields.isEmpty())
             return;
+
+        // Policy 10.1: Max 50 fields per form
+        if (fields.size() > 50) {
+            throw new IllegalArgumentException("Maximum of 50 fields allowed per form (Policy 10.1). Found: " + fields.size());
+        }
+
         Set<String> seenKeys = new HashSet<>();
         List<String> duplicates = new ArrayList<>();
         for (FormFieldDTO field : fields) {
             String key = field.getFieldKey();
-            if (key != null && !key.isEmpty() && !seenKeys.add(key)) {
-                duplicates.add(key);
+            if (key != null && !key.isEmpty()) {
+                dynamicTable.validateFieldKey(key);
+                if (!seenKeys.add(key)) {
+                    duplicates.add(key);
+                }
             }
         }
         if (!duplicates.isEmpty()) {
@@ -722,6 +919,53 @@ public class FormService {
                             ". Each field must have a unique key.");
         }
     }
+
+    /**
+     * Policy 10.2: Enforce limit of 100 validation rules per form across all fields.
+     */
+    private void validateTotalRules(List<FormFieldDTO> fields) {
+        if (fields == null) return;
+        int total = 0;
+        for (FormFieldDTO field : fields) {
+            total += countRules(field.getValidationJson());
+        }
+        if (total > 100) {
+            throw new IllegalArgumentException("Maximum of 100 validation rules allowed per form (Policy 10.2). Found: " + total);
+        }
+    }
+
+    private int countRules(String json) {
+        if (json == null || json.isBlank() || "{}".equals(json)) return 0;
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            if (node.isObject()) {
+                int count = 0;
+                Iterator<String> fieldNames = node.fieldNames();
+                while (fieldNames.hasNext()) {
+                    String fieldName = fieldNames.next();
+                    JsonNode val = node.get(fieldName);
+                    // Only count if the rule has a meaningful value
+                    if (val != null && !val.isNull() && !val.asText().isEmpty() && !Boolean.FALSE.equals(val.asBoolean())) {
+                        count++;
+                    }
+                }
+                return count;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse validationJson for rule counting: {}", e.getMessage());
+        }
+        return 0;
+    }
+
+    /**
+     * Policy 10.3: Enforce limit of 10 pages/sections per form.
+     */
+    private void validateMaxGroups(List<FormDTO.GroupDTO> groups) {
+        if (groups != null && groups.size() > 10) {
+            throw new IllegalArgumentException("Maximum of 10 sections/pages allowed per form (Policy 10.3). Found: " + groups.size());
+        }
+    }
+
 
 
 
@@ -732,15 +976,42 @@ public class FormService {
             snapshot.put("fields", version.getFields());
             snapshot.put("groups", version.getGroups());
             snapshot.put("staticFields", version.getStaticFields());
-            
+
             String json = objectMapper.writeValueAsString(snapshot);
             version.setDefinitionJson(json);
             versionRepo.save(version);
             log.debug("Updated definition_json snapshot for version {}", version.getVersionNumber());
         } catch (Exception e) {
-            log.error("Failed to serialize form definition for version {}: {}", 
+            log.error("Failed to serialize form definition for version {}: {}",
                 version.getVersionNumber(), e.getMessage());
         }
+    }
+
+    // ── Permission Helpers ────────────────────────────────────────────────────
+
+    public boolean canEdit(FormEntity f, String username, Set<String> roleNames) {
+        if (roleNames.contains("Admin") || roleNames.contains("Role Administrator")) return true;
+        if (username.equalsIgnoreCase(f.getCreatedBy())) return true;
+        if (username.equalsIgnoreCase(f.getAssignedBuilderUsername())) return true;
+        return false;
+    }
+
+    public boolean canDelete(FormEntity f, String username, Set<String> roleNames) {
+        if (roleNames.contains("Admin")) return true;
+        if (username.equalsIgnoreCase(f.getCreatedBy())) return true;
+        return false;
+    }
+
+    public boolean canPublish(FormEntity f, String username, Set<String> roleNames) {
+        if (roleNames.contains("Admin")) return true;
+        if (roleNames.contains("Builder") && username.equalsIgnoreCase(f.getCreatedBy())) return true;
+        return false;
+    }
+
+    public boolean canViewSubmissions(FormEntity f, String username, Set<String> roleNames) {
+        if (roleNames.contains("Admin") || roleNames.contains("Role Administrator") || roleNames.contains("Manager")) return true;
+        if (username.equalsIgnoreCase(f.getCreatedBy())) return true;
+        return false;
     }
 
     private static final class AllowedUserEntry {

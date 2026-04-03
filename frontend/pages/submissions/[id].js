@@ -259,8 +259,16 @@ export default function SubmissionsPage() {
     /** Format a raw cell value to a plain string for CSV / PDF */
     const formatCellValue = (field, rawValue) => {
         if (rawValue === null || rawValue === undefined || rawValue === '') return '';
-        const v = rawValue;
-        if (field.fieldType === 'boolean') return v === true || v === 'true' ? 'Yes' : 'No';
+        let v = rawValue;
+
+        // SRS Decision 7.2: CSV Injection Protection
+        // Any value starting with =, +, -, or @ shall be prefixed with a single quote (')
+        const strV = String(v);
+        if (['=', '+', '-', '@'].some(indicator => strV.startsWith(indicator))) {
+            v = `'${strV}`;
+        }
+
+        if (field.fieldType === 'boolean') return v === true || v === 'true' || v === "'true" ? 'Yes' : 'No';
         if (field.fieldType === 'date') {
             const d = new Date(v);
             return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -303,9 +311,10 @@ export default function SubmissionsPage() {
 
     /** Build flat headers + rows array shared by all export formats */
     const buildExportRows = () => {
-        const dynFields = (form?.fields || []).filter(
-            f => !['section_header', 'label_text', 'description_block', 'page_break'].includes(f.fieldType)
-        );
+        // SRS Decision 7.1: Order strictly follows form definition
+        const dynFields = (form?.fields || [])
+            .filter(f => !['section_header', 'label_text', 'description_block', 'page_break'].includes(f.fieldType))
+            .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
         const showTs = form?.showTimestamp ?? true;
         const headers = ['#', 'Submission ID', 'Status', ...dynFields.map(f => f.label || f.fieldKey), ...(showTs ? ['Submitted At'] : [])];
         const rows = submissions.map((sub, i) => [
@@ -1193,6 +1202,9 @@ export default function SubmissionsPage() {
                             </Link>
                             <Link href={`/preview/${id}`} className="btn btn-secondary">
                                 👁 Preview Form
+                            </Link>
+                            <Link href={`/submissions/trash/${id}`} className="btn btn-secondary" title="View deleted submissions">
+                                🗑 Trash
                             </Link>
                             {/* Export buttons — only shown when there are submissions and user has EXPORT perm */}
                             {submissions.length > 0 && can('EXPORT') && (

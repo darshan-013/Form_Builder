@@ -1,5 +1,7 @@
 package com.formbuilder.rbac.controller;
 
+import com.formbuilder.constants.AppConstants;
+
 import com.formbuilder.rbac.entity.Module;
 import com.formbuilder.rbac.entity.RoleModule;
 import com.formbuilder.rbac.service.ModuleService;
@@ -11,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/modules")
+@RequestMapping(AppConstants.API_MODULES)
 @RequiredArgsConstructor
 @RequirePermission("MANAGE")
 public class ModuleController {
@@ -28,18 +30,18 @@ public class ModuleController {
         return moduleService.createModule(module);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping(AppConstants.BY_ID)
     public Module updateModule(@PathVariable Long id, @RequestBody Module module) {
         return moduleService.updateModule(id, module);
     }
 
-    @PostMapping("/role/{roleId}")
+    @PostMapping(AppConstants.MODULE_BY_ROLE)
     public ResponseEntity<Void> assignToRole(@PathVariable Integer roleId, @RequestBody List<Long> moduleIds) {
         moduleService.assignModulesToRole(roleId, moduleIds);
         return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/role/{roleId}")
+    @GetMapping(AppConstants.MODULE_BY_ROLE)
     public List<RoleModule> getByRole(@PathVariable Integer roleId) {
         return moduleService.getModulesByRole(roleId);
     }

@@ -334,20 +334,32 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                             </div>
                         )}
 
-                        {/* Validation Regex */}
+                        {/* Validation Regex & Message */}
                         {(local.fieldType === 'text' || local.fieldType === 'number') && local.fieldType !== 'field_group' && (
-                            <div className="form-group">
-                                <label className="form-label" htmlFor="cfg-regex">Validation Regex</label>
-                                <input
-                                    id="cfg-regex"
-                                    className="form-input"
-                                    value={local.validationRegex || ''}
-                                    onChange={(e) => set('validationRegex', e.target.value)}
-                                    placeholder="e.g. ^[A-Za-z ]+$"
-                                    style={{ fontFamily: 'Courier New, monospace' }}
-                                />
-                                <p className="form-help">Applied on both frontend and backend. Leave blank to skip.</p>
-                            </div>
+                            <>
+                                <div className="form-group">
+                                    <label className="form-label" htmlFor="cfg-regex">Validation Regex</label>
+                                    <input
+                                        id="cfg-regex"
+                                        className="form-input"
+                                        value={local.validationRegex || ''}
+                                        onChange={(e) => set('validationRegex', e.target.value)}
+                                        placeholder="e.g. ^[A-Za-z ]+$"
+                                        style={{ fontFamily: 'Courier New, monospace' }}
+                                    />
+                                    <p className="form-help">Applied on both frontend and backend. Leave blank to skip.</p>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Validation Error Message</label>
+                                    <input
+                                        className="form-input"
+                                        value={validationRules.message || ''}
+                                        onChange={(e) => setValidation('message', e.target.value)}
+                                        placeholder="Custom text to show on error"
+                                    />
+                                    <p className="form-help">Custom text shown if the regex or other rules fail.</p>
+                                </div>
+                            </>
                         )}
 
                         {/* ── Calculated Field Settings — Visual Formula Builder ── */}
@@ -922,6 +934,20 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                             {validationExpanded && (
                                 <div className="validation-content">
 
+                                    <div className="validation-group" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 15, marginBottom: 15 }}>
+                                        <h4 className="validation-group-title" style={{ color: 'var(--accent)' }}>General Error Message</h4>
+                                        <div className="form-group">
+                                            <label className="form-label">Custom Validation Message</label>
+                                            <input
+                                                type="text"
+                                                className="form-input"
+                                                value={local.validationMessage || ''}
+                                                onChange={(e) => set('validationMessage', e.target.value)}
+                                                placeholder="e.g. Please enter a valid 10-digit phone number"
+                                            />
+                                            <p className="form-help">If any validation rule fails, this message will be shown to the user.</p>
+                                        </div>
+                                    </div>
                                     {/* ========== TEXT FIELD VALIDATIONS ========== */}
                                     {local.fieldType === 'text' && (
                                         <>
@@ -1929,11 +1955,25 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                     </div>
 
                     {/* Footer */}
-                    <div className="modal-footer">
-                        <button className="btn btn-secondary btn-sm" onClick={onClose}>Cancel</button>
-                        <button className="btn btn-primary btn-sm" onClick={handleSave} id="modal-save-btn">
-                            Apply Changes
-                        </button>
+                    <div className="modal-footer" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 20 }}>
+                        {saveError && (
+                            <div className="error-message" style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>
+                                {saveError}
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                            <button className="btn btn-secondary" onClick={onClose} disabled={saving}>
+                                Cancel
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleSave}
+                                disabled={saving}
+                                style={{ background: 'var(--accent)', borderColor: 'var(--accent)' }}
+                            >
+                                {saving ? 'Saving...' : 'Save Field'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1954,9 +1994,8 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
 function toKey(label = '') {
     return label
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '')
-        .substring(0, 60) || '';
+        .replace(/[^a-z0-9_]/g, '') // SRS Decision 4.1: Strip non-alphanumeric (except _)
+        .substring(0, 100) || '';   // SRS Decision 4.1: max 100 characters
 }
 
 /**

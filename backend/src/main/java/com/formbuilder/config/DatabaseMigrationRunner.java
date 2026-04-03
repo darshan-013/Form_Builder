@@ -26,10 +26,15 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
 
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
+    private final com.formbuilder.repository.FormJpaRepository formRepo;
+    private final com.formbuilder.service.DynamicTableService dynamicTableService;
 
     @Override
     public void run(ApplicationArguments args) {
         log.info("=== Running DB migration ===");
+
+        // 0. SRS Decision 4.3: Startup Schema Drift Detection
+        validateActiveFormsSchema();
 
         // 1. Drop abandoned tables
         exec("DROP TABLE IF EXISTS field_options    CASCADE");
@@ -381,6 +386,33 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
             log.info("OK: {}", label);
         } catch (Exception e) {
             log.warn("SKIP ({}): {}", e.getMessage(), sql.trim().lines().findFirst().orElse(""));
+        }
+    }
+
+    private void validateActiveFormsSchema() {
+        log.info("Checking for schema drift in active forms...");
+        try {
+            List<com.formbuilder.entity.FormEntity> activeForms = formRepo.findAllByStatus(com.formbuilder.entity.FormEntity.FormStatus.PUBLISHED);
+            for (com.formbuilder.entity.FormEntity form : activeForms) {
+                form.getPublishedVersion().ifPresent(version -> {
+                    try {
+                        dynamicTableService.validateSchema(form.getTableName(), version.getId());
+                        log.info("Schema OK for form: {}", form.getFormCode());
+                    } catch (com.formbuilder.exception.SchemaDriftException e) {
+                        log.error("CRITICAL SCHEMA DRIFT DETECTED: Form '{}' (table '{}') is out of sync with its metadata! Errors: {}", 
+                            form.getName(), form.getTableName(), e.getMessage());
+                        // In a real "fail-fast" scenario, we might throw an exception here to stop startup.
+                        // However, per user request "Application startup fails fast if drift is detected", 
+                        // I will throw a RuntimeException to halt the application.
+                        throw new RuntimeException("Application startup blocked due to schema drift in form: " + form.getFormCode(), e);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            if (e instanceof RuntimeException && e.getMessage().contains("startup blocked")) {
+                throw (RuntimeException) e;
+            }
+            log.warn("Could not perform startup schema drift check: {}", e.getMessage());
         }
     }
 }

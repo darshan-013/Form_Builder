@@ -9,6 +9,7 @@ import StaticFieldModal from '../../components/Builder/StaticFieldModal';
 import GroupConfigModal from '../../components/Builder/GroupConfigModal';
 import { assignBuilder, createForm, getVisibilityCandidates, getWorkflowCandidates } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
+import CustomValidationsPanel from '../../components/Builder/CustomValidationsPanel';
 import { useAuth } from '../../context/AuthContext';
 
 const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
@@ -30,6 +31,8 @@ export default function NewBuilderPage() {
     // removed visibility state
     const [showSettings, setShowSettings] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
+    const [activeView, setActiveView] = useState('canvas');
+    const [customValidationRules, setCustomValidationRules] = useState([]);
 
     // Resizable panels state
     const [leftWidth, setLeftWidth] = useState(264);
@@ -63,6 +66,10 @@ export default function NewBuilderPage() {
         };
     }, [resizing]);
 
+
+    const dynamicFields = useMemo(() => 
+        fields.filter(f => !STATIC_TYPES.has(f.fieldType)),
+    [fields]);
 
     // active configuration tracking
     const [editField, setEditFieldState] = useState(null);
@@ -208,6 +215,13 @@ export default function NewBuilderPage() {
             allowedUsers,
             showTimestamp: true,
             expiresAt: expiresAt ? expiresAt : null,
+            customValidationRules: customValidationRules.map(r => ({
+                scope: r.scope,
+                fieldKey: r.fieldKey,
+                expression: r.expression,
+                errorMessage: r.errorMessage,
+                executionOrder: r.executionOrder
+            }))
         };
     }
 
@@ -299,6 +313,17 @@ export default function NewBuilderPage() {
     const pageBreakCount = fields.filter(f => f.fieldType === 'page_break').length;
     const pageCount = pageBreakCount + 1; // pages = breaks + 1
     const singleSubmissionEnabled = !allowMultipleSubmissions;
+
+    // Policy 10 Limits
+    const totalValidationCount = fields.reduce((acc, f) => {
+        try {
+            const rules = JSON.parse(f.validationJson || '{}');
+            return acc + Object.values(rules).filter(v => v !== null && v !== undefined && v !== '' && v !== false).length;
+        } catch (e) { return acc; }
+    }, 0);
+
+    const canAddField = dynamicCount < 50 && totalValidationCount < 100;
+    const canAddGroup = groups.length < 10;
 
     return (
         <>
@@ -546,6 +571,21 @@ export default function NewBuilderPage() {
                                 '💾 Save Form'
                             )}
                         </button>
+
+                        <div className="view-toggle">
+                            <button
+                                className={`view-toggle-btn ${activeView === 'canvas' ? 'active' : ''}`}
+                                onClick={() => setActiveView('canvas')}
+                            >
+                                🎨 Canvas
+                            </button>
+                            <button
+                                className={`view-toggle-btn ${activeView === 'validations' ? 'active' : ''}`}
+                                onClick={() => setActiveView('validations')}
+                            >
+                                🛡️ Validations
+                            </button>
+                        </div>
                     </div>
                 </header>
 
@@ -554,17 +594,29 @@ export default function NewBuilderPage() {
                     className={`panel-resizer left-resizer ${resizing === 'left' ? 'resizing' : ''}`}
                     onMouseDown={() => setResizing('left')}
                 />
-                <FieldPalette />
+                <FieldPalette canAddField={canAddField} canAddGroup={canAddGroup} />
 
                 {/* ── Canvas ───────────────────────────────────────────── */}
                 <main className="builder-canvas-wrap">
-                    <Canvas
-                        fields={fields} setFields={setFields}
-                        groups={groups} setGroups={setGroups}
-                        setEditField={setEditField}
-                        setEditStaticField={setEditStaticField}
-                        setEditGroupConfig={setEditGroupConfig}
-                    />
+                    {activeView === 'canvas' ? (
+                        <Canvas
+                            fields={fields} setFields={setFields}
+                            groups={groups} setGroups={setGroups}
+                            setEditField={setEditField}
+                            setEditStaticField={setEditStaticField}
+                            setEditGroupConfig={setEditGroupConfig}
+                            canAddField={canAddField}
+                            canAddGroup={canAddGroup}
+                        />
+                    ) : (
+                        <div style={{ padding: '20px', height: '100%', overflowY: 'auto' }}>
+                            <CustomValidationsPanel 
+                                fields={dynamicFields} 
+                                initialRules={customValidationRules}
+                                onRulesChange={setCustomValidationRules}
+                            />
+                        </div>
+                    )}
                 </main>
                 <div 
                     className={`panel-resizer right-resizer ${resizing === 'right' ? 'resizing' : ''}`}

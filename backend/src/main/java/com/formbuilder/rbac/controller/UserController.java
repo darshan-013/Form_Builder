@@ -1,5 +1,7 @@
 package com.formbuilder.rbac.controller;
 
+import com.formbuilder.constants.AppConstants;
+
 import com.formbuilder.rbac.entity.Permission;
 import com.formbuilder.rbac.entity.User;
 import com.formbuilder.rbac.security.RequirePermission;
@@ -34,7 +36,7 @@ import java.util.*;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping(AppConstants.API_USERS)
 @RequiredArgsConstructor
 @RequirePermission("MANAGE")
 public class UserController {
@@ -119,7 +121,7 @@ public class UserController {
      * }
      * </pre>
      */
-    @PutMapping("/{id}")
+    @PutMapping(AppConstants.BY_ID)
     public ResponseEntity<?> updateUser(@PathVariable Integer id,
                                         @RequestBody UpdateUserRequest body) {
 
@@ -133,7 +135,7 @@ public class UserController {
     /**
      * Deletes an RBAC user profile. CASCADE in DB handles user_roles cleanup.
      */
-    @DeleteMapping("/{id}")
+    @DeleteMapping(AppConstants.BY_ID)
     public ResponseEntity<?> deleteUser(@PathVariable Integer id,
                                         Authentication auth,
                                         HttpSession session) {
@@ -190,7 +192,7 @@ public class UserController {
      * Uses INSERT INTO user_roles(user_id, role_id) VALUES (?, ?)
      * ON CONFLICT DO NOTHING — idempotent.
      */
-    @PostMapping("/{id}/roles")
+    @PostMapping(AppConstants.BY_ID_ROLES)
     public ResponseEntity<?> assignRole(@PathVariable Integer id,
                                         @RequestBody AssignRoleRequest body,
                                         Authentication auth,
@@ -241,7 +243,7 @@ public class UserController {
     /**
      * Removes a role from a user.
      */
-    @DeleteMapping("/{id}/roles/{roleId}")
+    @DeleteMapping(AppConstants.BY_ID_ROLE_BY_ID)
     public ResponseEntity<?> removeRole(@PathVariable Integer id,
                                         @PathVariable Integer roleId,
                                         Authentication auth,
@@ -279,7 +281,7 @@ public class UserController {
      * }
      * </pre>
      */
-    @GetMapping("/{id}/permissions")
+    @GetMapping(AppConstants.BY_ID_PERMISSIONS)
     public ResponseEntity<?> getUserPermissions(@PathVariable Integer id) {
 
         Set<String> permissionKeys = userRoleService.getUserPermissionKeysById(id);

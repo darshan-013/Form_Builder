@@ -30,8 +30,13 @@ const STATIC_TYPES = [
     { type: 'page_break', label: 'Page Break', icon: '⊸', iconClass: 'icon-page-break', desc: 'Split form into multiple steps (wizard mode)' },
 ];
 
-export default function FieldPalette() {
+export default function FieldPalette({ canAddField = true, canAddGroup = true }) {
     const handleDragStart = (e, type) => {
+        const isGroup = type === 'field_group';
+        if ((isGroup && !canAddGroup) || (!isGroup && !canAddField)) {
+            e.preventDefault();
+            return;
+        }
         e.dataTransfer.setData('source', 'palette');
         e.dataTransfer.setData('fieldType', type);
         e.dataTransfer.setData('application/x-field-type', type);
@@ -46,10 +51,10 @@ export default function FieldPalette() {
                 <div
                     key={type}
                     id={`palette-${type}`}
-                    className="palette-field palette-field-section"
-                    draggable
+                    className={`palette-field palette-field-section ${!canAddGroup ? 'palette-field-disabled' : ''}`}
+                    draggable={canAddGroup}
                     onDragStart={(e) => handleDragStart(e, type)}
-                    title={desc}
+                    title={!canAddGroup ? 'Maximum of 10 sections reached' : desc}
                 >
                     <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
                     <span>{label}</span>
@@ -62,10 +67,10 @@ export default function FieldPalette() {
                 <div
                     key={type}
                     id={`palette-${type}`}
-                    className="palette-field"
-                    draggable
+                    className={`palette-field ${!canAddField ? 'palette-field-disabled' : ''}`}
+                    draggable={canAddField}
                     onDragStart={(e) => handleDragStart(e, type)}
-                    title={desc}
+                    title={!canAddField ? 'Maximum of 50 fields reached' : desc}
                 >
                     <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
                     <span>{label}</span>
@@ -78,15 +83,16 @@ export default function FieldPalette() {
                 <div
                     key={type}
                     id={`palette-${type}`}
-                    className="palette-field palette-field-static"
-                    draggable
+                    className={`palette-field palette-field-static ${!canAddField ? 'palette-field-disabled' : ''}`}
+                    draggable={canAddField}
                     onDragStart={(e) => handleDragStart(e, type)}
-                    title={desc}
+                    title={!canAddField ? 'Maximum of 50 fields reached' : desc}
                 >
                     <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
                     <span>{label}</span>
                 </div>
             ))}
+
 
             <p className="palette-hint">
                 ← Drag a field onto the canvas to add it to your form

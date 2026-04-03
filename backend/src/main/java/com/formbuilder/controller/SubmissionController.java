@@ -1,6 +1,8 @@
 package com.formbuilder.controller;
 
+import com.formbuilder.constants.AppConstants;
 import com.formbuilder.entity.FormEntity;
+import com.formbuilder.entity.FormVersionEntity;
 import com.formbuilder.rbac.service.UserRoleService;
 import com.formbuilder.service.AuditLogService;
 import com.formbuilder.service.FormService;
@@ -22,9 +24,11 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
 
+
+
 @Slf4j
 @RestController
-@RequestMapping("/api/forms")
+@RequestMapping(AppConstants.API_RUNTIME)
 @RequiredArgsConstructor
 public class SubmissionController {
 
@@ -61,24 +65,29 @@ public class SubmissionController {
     }
 
     /**
-     * POST /api/forms/{id}/submit — JSON body
+     * POST /api/v1/runtime/forms/{idOrCode}/submit — JSON body
      */
-    @PostMapping(value = "/{id}/submit", consumes = { "application/json", "application/json;charset=UTF-8" })
+    @PostMapping(value = AppConstants.RUNTIME_SUBMIT, consumes = { "application/json", "application/json;charset=UTF-8" })
     public ResponseEntity<?> submitJson(
-            @PathVariable UUID id,
+            @PathVariable(name = "idOrCode") String idOrCode,
             @RequestBody(required = false) Map<String, Object> rawBody,
             HttpSession session,
             Authentication auth) {
 
+        UUID id = resolveId(idOrCode);
         validateFormAccess(id, session);
-
         Map<String, Object> data = new HashMap<>();
         if (rawBody != null) {
             Object inner = rawBody.get("data");
-            if (rawBody.size() == 1 && inner instanceof Map) {
+            if (inner instanceof Map) {
+                // Flatten the 'data' block sent by the frontend
                 @SuppressWarnings("unchecked")
                 Map<String, Object> wrapped = (Map<String, Object>) inner;
                 data.putAll(wrapped);
+                // Merge in any other top-level keys (like formVersionId)
+                rawBody.forEach((k, v) -> {
+                    if (!"data".equals(k)) data.put(k, v);
+                });
             } else {
                 data.putAll(rawBody);
             }
@@ -87,13 +96,14 @@ public class SubmissionController {
         log.info("JSON submit — form={} keys={}", id, data.keySet());
         log.debug("JSON submit data: {}", data);
 
-        // B2/B3: Finalize a specific submission (draft) if provided
-        UUID submissionId = null;
-        if (data.containsKey("submissionId")) {
-            submissionId = UUID.fromString(data.get("submissionId").toString());
-        } else if (data.containsKey("id")) {
-             submissionId = UUID.fromString(data.get("id").toString());
-        }
+        // Metadata extraction
+        UUID submissionId = getUuid(data, "submissionId", "id");
+        data.remove("submissionId");
+        data.remove("id");
+        
+        // FormVersionId tracking if provided
+        UUID formVersionId = getUuid(data, "formVersionId");
+        data.remove("formVersionId");
 
         if (submissionId == null) {
             // Path A: New submission. Version is resolved authoritatively in saveDraft
@@ -123,23 +133,24 @@ public class SubmissionController {
     }
 
     /**
-     * GET /api/forms/{id}/draft
+     * GET /api/v1/runtime/forms/{idOrCode}/draft
      */
-    @GetMapping("/{id}/draft")
-    public ResponseEntity<?> getDraft(@PathVariable UUID id, Authentication auth) {
+    @GetMapping(AppConstants.RUNTIME_DRAFT)
+    public ResponseEntity<?> getDraft(@PathVariable(name = "idOrCode") String idOrCode, Authentication auth) {
         if (auth == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
+        UUID id = resolveId(idOrCode);
         Map<String, Object> draft = submissionService.findDraft(id, auth.getName());
         return ResponseEntity.ok(draft != null ? draft : Map.of());
     }
 
     /**
-     * POST /api/forms/{id}/draft
+     * POST /api/v1/runtime/forms/{id}/draft
      */
-    @PostMapping("/{id}/draft")
+    @PostMapping(AppConstants.RUNTIME_DRAFT)
     public ResponseEntity<?> saveDraft(
-            @PathVariable UUID id,
+            @PathVariable(name = "idOrCode") String idOrCode,
             @RequestBody Map<String, Object> rawBody,
             Authentication auth) {
         if (auth == null) {
@@ -158,27 +169,26 @@ public class SubmissionController {
             }
         }
 
-        UUID submissionId = null;
-        if (data.containsKey("id")) {
-            submissionId = UUID.fromString(data.get("id").toString());
-        } else if (data.containsKey("submissionId")) {
-            submissionId = UUID.fromString(data.get("submissionId").toString());
-        }
+        UUID submissionId = getUuid(data, "id", "submissionId");
+        data.remove("id");
+        data.remove("submissionId");
 
+        UUID id = resolveId(idOrCode);
         UUID savedId = submissionService.saveDraft(id, auth.getName(), data, submissionId);
         return ResponseEntity.ok(Map.of("message", "Draft saved successfully", "submissionId", savedId, "timestamp", LocalDateTime.now()));
     }
 
     /**
-     * POST /api/forms/{id}/submit — multipart/form-data (file uploads)
+     * POST /api/v1/runtime/forms/{idOrCode}/submit — multipart/form-data (file uploads)
      */
-    @PostMapping(value = "/{id}/submit", consumes = "multipart/form-data")
+    @PostMapping(value = AppConstants.RUNTIME_SUBMIT, consumes = "multipart/form-data")
     public ResponseEntity<?> submitMultipart(
-            @PathVariable UUID id,
+            @PathVariable(name = "idOrCode") String idOrCode,
             MultipartHttpServletRequest multipart,
             HttpSession session,
             Authentication auth) {
 
+        UUID id = resolveId(idOrCode);
         validateFormAccess(id, session);
 
         Map<String, Object> data = new HashMap<>();
@@ -225,13 +235,10 @@ public class SubmissionController {
                     data.put(e.getKey(), saveFile(e.getValue()));
             }
 
-            // B2/B3: Finalize a specific submission (draft) if provided
-            UUID submissionId = null;
-            if (data.containsKey("submissionId")) {
-                submissionId = UUID.fromString(data.get("submissionId").toString());
-            } else if (data.containsKey("id")) {
-                 submissionId = UUID.fromString(data.get("id").toString());
-            }
+            // Metadata extraction
+            UUID submissionId = getUuid(data, "submissionId", "id");
+            data.remove("submissionId");
+            data.remove("id");
             
             if (submissionId == null) {
                 submissionId = submissionService.saveDraft(id, auth != null ? auth.getName() : null, data, null);
@@ -284,7 +291,7 @@ public class SubmissionController {
         return roles.contains("Admin") || roles.contains("Role Administrator");
     }
 
-    @GetMapping("/{id}/submissions")
+    @GetMapping(AppConstants.BY_ID_SUBMISSIONS)
     public ResponseEntity<List<Map<String, Object>>> getSubmissions(
             @PathVariable UUID id,
             @RequestParam(required = false, defaultValue = "true") boolean activeOnly,
@@ -294,7 +301,38 @@ public class SubmissionController {
         return ResponseEntity.ok(submissionService.getSubmissions(id, activeOnly, versionId));
     }
 
-    @GetMapping("/{id}/submissions/{submissionId}")
+    @GetMapping(AppConstants.RUNTIME_SUBMISSIONS_TRASH)
+    public ResponseEntity<List<Map<String, Object>>> getDeletedSubmissions(
+            @PathVariable UUID id,
+            Authentication auth) {
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
+        return ResponseEntity.ok(submissionService.getDeletedSubmissions(id));
+    }
+
+    @PostMapping(AppConstants.RUNTIME_SUBMISSION_RESTORE)
+    public ResponseEntity<?> restoreSubmission(
+            @PathVariable UUID id,
+            @PathVariable UUID submissionId,
+            Authentication auth) {
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
+        try {
+            submissionService.restoreSubmission(id, submissionId);
+            return ResponseEntity.ok(Map.of("message", "Submission restored successfully"));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @DeleteMapping(AppConstants.RUNTIME_SUBMISSIONS_TRASH)
+    public ResponseEntity<Void> purgeDeletedSubmissions(
+            @PathVariable UUID id,
+            Authentication auth) {
+        formService.getFormForAction(id, auth.getName(), isAdmin(auth));
+        submissionService.purgeDeletedSubmissions(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping(AppConstants.BY_ID_SUBMISSION_BY_ID)
     public ResponseEntity<?> getSubmission(
             @PathVariable UUID id,
             @PathVariable UUID submissionId,
@@ -307,7 +345,7 @@ public class SubmissionController {
         }
     }
 
-    @DeleteMapping("/{id}/submissions/{submissionId}")
+    @DeleteMapping(AppConstants.BY_ID_SUBMISSION_BY_ID)
     public ResponseEntity<?> deleteSubmission(
             @PathVariable UUID id,
             @PathVariable UUID submissionId,
@@ -321,7 +359,7 @@ public class SubmissionController {
         }
     }
 
-    @PutMapping("/{id}/submissions/{submissionId}")
+    @PutMapping(AppConstants.BY_ID_SUBMISSION_BY_ID)
     public ResponseEntity<?> updateSubmission(
             @PathVariable UUID id,
             @PathVariable UUID submissionId,
@@ -336,6 +374,48 @@ public class SubmissionController {
             return ResponseEntity.notFound().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Runtime form fetch (v1 standard)
+     */
+    @GetMapping(AppConstants.RUNTIME_FORM_RENDER)
+    public ResponseEntity<?> getRuntimeForm(@PathVariable String idOrCode) {
+        UUID id = resolveId(idOrCode);
+        FormEntity form = formService.getFormById(id);
+        FormVersionEntity version = form.getPublishedVersion()
+                .orElseThrow(() -> new IllegalStateException("Form not published"));
+        
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("formId", form.getId());
+        response.put("formVersionId", version.getId());
+        response.put("definitionJson", version.getDefinitionJson());
+        response.put("fields", version.getFields());
+        // Validations are bundled in definitionJson/fields in current architecture
+        
+        return ResponseEntity.ok(response);
+    }
+
+    private UUID getUuid(Map<String, Object> map, String... keys) {
+        for (String key : keys) {
+            Object val = map.get(key);
+            if (val != null && !val.toString().isBlank() && !"null".equalsIgnoreCase(val.toString())) {
+                try {
+                    return UUID.fromString(val.toString());
+                } catch (IllegalArgumentException e) {
+                    log.warn("Invalid UUID format for key {}: {}", key, val);
+                }
+            }
+        }
+        return null;
+    }
+
+    private UUID resolveId(String idOrCode) {
+        try {
+            return UUID.fromString(idOrCode);
+        } catch (IllegalArgumentException e) {
+            return formService.getFormByCode(idOrCode).getId();
         }
     }
 }

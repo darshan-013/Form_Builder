@@ -88,6 +88,7 @@ public class FormRenderDTO {
         private boolean lockAfterCalculation;
         private String parentGroupKey;
         private UUID groupId;
+        private String validationMessage;
     }
 
     @Data

@@ -48,6 +48,7 @@ export function AuthProvider({ children }) {
                 email: data.email,
                 profilePic: data.profilePic,
                 authorities: data.authorities || [],
+                role: (data.roles && data.roles.length > 0) ? data.roles[0].roleName : 'Viewer'
             });
             setRoles(data.roles || []);
             setPermissions(data.permissions || []);

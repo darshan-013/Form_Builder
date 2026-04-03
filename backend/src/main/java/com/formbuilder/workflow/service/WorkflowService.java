@@ -285,6 +285,11 @@ public class WorkflowService {
         return out;
     }
 
+    @Transactional(readOnly = true)
+    public WorkflowInstance getWorkflowForForm(UUID formId) {
+        return instanceRepo.findByForm_IdAndStatus(formId, WorkflowInstanceStatus.ACTIVE).orElse(null);
+    }
+
     @Transactional
     public int rejectActiveWorkflowsForUser(Integer userId, String reason) {
         List<WorkflowInstance> instances = instanceRepo.findActiveInvolvingUser(userId);

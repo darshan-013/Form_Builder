@@ -4,7 +4,9 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../components/Navbar';
 import UserProfileChip from '../components/UserProfileChip';
-import { getForms, deleteForm, publishForm } from '../services/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FileText, CheckCircle, Edit3, MessageSquare, Clock, Plus } from 'lucide-react';
+import { getForms, deleteForm, publishForm, getDashboardStats } from '../services/api';
 import { toastSuccess, toastError } from '../services/toast';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,6 +18,7 @@ export default function DashboardPage() {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [deleting, setDeleting] = useState(false);
     const [statusLoading, setStatusLoading] = useState({});
+    const [stats, setStats] = useState(null);
 
     // ── Per-section search ─────────────────────────────────
     const [publishedSearch, setPublishedSearch] = useState('');
@@ -37,10 +40,17 @@ export default function DashboardPage() {
     useEffect(() => {
         if (authLoading) return; // wait for auth context to resolve
         if (!user) { router.replace('/login'); return; }
-        getForms()
-            .then((data) => setForms(Array.isArray(data) ? data : []))
-            .catch(() => toastError('Failed to load forms.'))
-            .finally(() => setLoading(false));
+        
+        Promise.all([
+            getForms(),
+            getDashboardStats()
+        ])
+        .then(([formsData, statsData]) => {
+            setForms(Array.isArray(formsData) ? formsData : []);
+            setStats(statsData);
+        })
+        .catch(() => toastError('Failed to load dashboard data.'))
+        .finally(() => setLoading(false));
     }, [authLoading, user, router]);
 
     // Reset page on search
@@ -335,27 +345,83 @@ export default function DashboardPage() {
                             {(can('WRITE') || hasRole('Viewer')) && (
                                 <Link href="/builder/new" className="btn btn-primary" id="new-form-btn">+ New Form</Link>
                             )}
+                            <Link href="/forms/trash" className="btn btn-secondary" title="View deleted forms">
+                                🗑 Trash
+                            </Link>
                         </div>
                     </div>
 
-                    {/* Stats */}
+                    {/* Stats Section with Framer Motion */}
                     <div className="dashboard-stats">
-                        <div className="stat-card">
+                        <motion.div 
+                            className="stat-card"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1 }}
+                        >
+                            <div className="stat-icon-bg" style={{ background: 'rgba(139, 92, 246, 0.1)' }}>
+                                <FileText size={20} color="#8B5CF6" />
+                            </div>
                             <div className="stat-label">Total Forms</div>
-                            <div className="stat-value">{forms.length}</div>
-                        </div>
-                        <div className="stat-card">
-                            <div className="stat-label">Published</div>
-                            <div className="stat-value">{allPublished.length}</div>
-                        </div>
-                        <div className="stat-card">
-                            <div className="stat-label">Drafts</div>
-                            <div className="stat-value">{allDraft.length}</div>
-                        </div>
-                        <div className="stat-card">
-                            <div className="stat-label">Total Fields</div>
-                            <div className="stat-value">{forms.reduce((a, f) => a + (f.fields?.length || 0), 0)}</div>
-                        </div>
+                            <div className="stat-value">{stats?.totalForms ?? 0}</div>
+                        </motion.div>
+
+                        <motion.div 
+                            className="stat-card"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2 }}
+                        >
+                            <div className="stat-icon-bg" style={{ background: 'rgba(16, 185, 129, 0.1)' }}>
+                                <CheckCircle size={20} color="#10B981" />
+                            </div>
+                            <div className="stat-label">Published Forms</div>
+                            <div className="stat-value">{stats?.publishedCount ?? 0}</div>
+                        </motion.div>
+
+                        <motion.div 
+                            className="stat-card"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.3 }}
+                        >
+                            <div className="stat-icon-bg" style={{ background: 'rgba(245, 158, 11, 0.1)' }}>
+                                <Edit3 size={20} color="#F59E0B" />
+                            </div>
+                            <div className="stat-label">Draft Forms</div>
+                            <div className="stat-value">{stats?.draftCount ?? 0}</div>
+                        </motion.div>
+
+                        <motion.div 
+                            className="stat-card"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.4 }}
+                        >
+                            <div className="stat-icon-bg" style={{ background: 'rgba(6, 182, 212, 0.1)' }}>
+                                <MessageSquare size={20} color="#06B6D4" />
+                            </div>
+                            <div className="stat-label">Total Submissions</div>
+                            <div className="stat-value">{stats?.totalSubmissions ?? 0}</div>
+                        </motion.div>
+
+                        <motion.div 
+                            className="stat-card"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.5 }}
+                        >
+                            <div className="stat-icon-bg" style={{ background: 'rgba(99, 102, 241, 0.1)' }}>
+                                <Clock size={20} color="#6366F1" />
+                            </div>
+                            <div className="stat-label">Last Modified</div>
+                            <div className="stat-value" style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {stats?.recentForms?.[0]?.name || 'N/A'}
+                            </div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                                {stats?.recentForms?.[0] ? formatDate(stats.recentForms[0].updatedAt) : 'No recent activity'}
+                            </div>
+                        </motion.div>
                     </div>
 
                     {loading ? (

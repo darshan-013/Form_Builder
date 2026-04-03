@@ -8,12 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.Set;
-import java.util.HashSet;
+import java.util.*;
 
 /**
  * Core DDL service — creates / alters / drops the physical submission table
@@ -38,12 +33,13 @@ public class DynamicTableService {
     private static final Map<String, String> SQL_TYPE = Map.ofEntries(
             Map.entry("text", "TEXT"),
             Map.entry("number", "INTEGER"),
-            Map.entry("decimal", "NUMERIC"), // New support for NUMERIC type
-            Map.entry("numeric", "NUMERIC"), // New support for NUMERIC type
+            Map.entry("decimal", "NUMERIC"),
+            Map.entry("numeric", "NUMERIC"),
             Map.entry("date", "DATE"),
             Map.entry("boolean", "BOOLEAN"),
+            // Normalize all string fields to TEXT for easier comparison in drift detection
             Map.entry("dropdown", "TEXT"),
-            Map.entry("radio", "VARCHAR(255)"),
+            Map.entry("radio", "TEXT"),
             Map.entry("multiple_choice", "TEXT"),
             Map.entry("linear_scale", "INTEGER"),
             Map.entry("file", "TEXT"),
@@ -53,6 +49,14 @@ public class DynamicTableService {
     );
 
     private final JdbcTemplate jdbc;
+
+    private static final Set<String> RESERVED_KEYWORDS = Set.of(
+            "SELECT", "INSERT", "UPDATE", "DELETE", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "FULL",
+            "GROUP", "ORDER", "BY", "HAVING", "LIMIT", "OFFSET", "UNION", "DISTINCT",
+            "TABLE", "COLUMN", "INDEX", "PRIMARY", "FOREIGN", "KEY", "CONSTRAINT", "REFERENCES",
+            "VIEW", "SEQUENCE", "TRIGGER", "USER", "ROLE", "GRANT", "REVOKE",
+            "ID", "CREATED_AT", "UPDATED_AT", "FORM_VERSION_ID", "IS_DRAFT", "IS_SOFT_DELETED", "DELETED_AT"
+    );
 
     // ── Table Name Generation ─────────────────────────────────────────────────
 
@@ -71,6 +75,21 @@ public class DynamicTableService {
     }
 
     // ── Public DDL API ────────────────────────────────────────────────────────
+
+    public void validateFieldKey(String key) {
+        if (key == null || key.isBlank()) {
+            throw new IllegalArgumentException("Field key cannot be empty.");
+        }
+        if (key.length() > 100) {
+            throw new IllegalArgumentException("Field key '" + key + "' exceeds maximum length of 100 characters.");
+        }
+        if (!key.matches("^[a-z0-9_]+$")) {
+            throw new IllegalArgumentException("Field key '" + key + "' must contain only lowercase alphanumeric characters and underscores.");
+        }
+        if (RESERVED_KEYWORDS.contains(key.toUpperCase())) {
+            throw new IllegalArgumentException("Field key '" + key + "' is a reserved keyword and cannot be used.");
+        }
+    }
 
     /**
      * Step 1: CREATE TABLE with base columns only.
@@ -211,21 +230,62 @@ public class DynamicTableService {
     public void validateSchema(String tableName, UUID versionId) {
         // 1. Get metadata fields
         List<Map<String, Object>> metadataFields = jdbc.queryForList(
-                "SELECT field_key FROM form_fields WHERE form_version_id = ?", versionId);
+                "SELECT field_key, field_type FROM form_fields WHERE form_version_id = ?", versionId);
 
-        // 2. Get actual columns
-        Set<String> actualColumns = new HashSet<>(jdbc.queryForList(
-                "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
-                String.class, tableName));
+        // 2. Get actual columns from information_schema
+        Map<String, String> actualColumns = new HashMap<>();
+        // Postgres information_schema uses lowercase for unquoted table names
+        jdbc.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = ?",
+                (java.sql.ResultSet rs) -> {
+                    while (rs.next()) {
+                        actualColumns.put(rs.getString("column_name"), rs.getString("data_type").toLowerCase());
+                    }
+                    return null;
+                }, tableName.toLowerCase());
 
+        List<String> errors = new ArrayList<>();
         for (Map<String, Object> field : metadataFields) {
             String fieldKey = (String) field.get("field_key");
-            if (!actualColumns.contains(fieldKey)) {
-                throw new SchemaDriftException(String.format(
-                    "Decision 4.3 Violation: Physical table '%s' is missing column '%s' required by version %s. Submission blocked.",
-                    tableName, fieldKey, versionId));
+            String fieldType = (String) field.get("field_type");
+            
+            if (!actualColumns.containsKey(fieldKey)) {
+                errors.add(String.format("Column '%s' is missing", fieldKey));
+                continue;
+            }
+
+            String expectedSqlType = sqlType(fieldType).toLowerCase();
+            String actualSqlType = actualColumns.get(fieldKey);
+            
+            if (!isTypeCompatible(expectedSqlType, actualSqlType)) {
+                errors.add(String.format("Column '%s' type mismatch (Expected logic: %s, Database: %s)", 
+                        fieldKey, expectedSqlType, actualSqlType));
             }
         }
+
+        if (!errors.isEmpty()) {
+            throw new SchemaDriftException(String.format(
+                "Decision 4.3 Violation: Physical table '%s' has drifted from metadata in version %s. Errors: [%s]",
+                tableName, versionId, String.join("; ", errors)));
+        }
+    }
+
+    private boolean isTypeCompatible(String expected, String actual) {
+        if (expected.equals("text")) {
+            return actual.equals("text") || actual.equals("character varying") || actual.equals("varchar");
+        }
+        if (expected.equals("integer")) {
+            return actual.equals("integer") || actual.equals("int4");
+        }
+        if (expected.equals("numeric")) {
+            return actual.equals("numeric") || actual.equals("decimal");
+        }
+        if (expected.equals("boolean")) {
+            return actual.equals("boolean") || actual.equals("bool");
+        }
+        if (expected.equals("date")) {
+            return actual.equals("date");
+        }
+        return actual.equals(expected);
     }
 
     /**
