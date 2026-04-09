@@ -1,5 +1,9 @@
 package com.formbuilder.config;
 
+import com.formbuilder.entity.FormEntity;
+import com.formbuilder.entity.FormVersionEntity;
+import com.formbuilder.exception.SchemaDriftException;
+import com.formbuilder.exception.StartupSchemaDriftException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -9,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Runs idempotent DB cleanup/migration on every startup.
@@ -391,28 +396,34 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
 
     private void validateActiveFormsSchema() {
         log.info("Checking for schema drift in active forms...");
-        try {
-            List<com.formbuilder.entity.FormEntity> activeForms = formRepo.findAllByStatus(com.formbuilder.entity.FormEntity.FormStatus.PUBLISHED);
-            for (com.formbuilder.entity.FormEntity form : activeForms) {
-                form.getPublishedVersion().ifPresent(version -> {
-                    try {
-                        dynamicTableService.validateSchema(form.getTableName(), version.getId());
-                        log.info("Schema OK for form: {}", form.getFormCode());
-                    } catch (com.formbuilder.exception.SchemaDriftException e) {
-                        log.error("CRITICAL SCHEMA DRIFT DETECTED: Form '{}' (table '{}') is out of sync with its metadata! Errors: {}", 
-                            form.getName(), form.getTableName(), e.getMessage());
-                        // In a real "fail-fast" scenario, we might throw an exception here to stop startup.
-                        // However, per user request "Application startup fails fast if drift is detected", 
-                        // I will throw a RuntimeException to halt the application.
-                        throw new RuntimeException("Application startup blocked due to schema drift in form: " + form.getFormCode(), e);
-                    }
-                });
+
+        List<FormEntity> activeForms = formRepo.findAllByStatus(FormEntity.FormStatus.PUBLISHED);
+        for (FormEntity form : activeForms) {
+            Optional<FormVersionEntity> publishedVersion = form.getPublishedVersion();
+            if (publishedVersion.isEmpty()) {
+                continue;
             }
-        } catch (Exception e) {
-            if (e instanceof RuntimeException && e.getMessage().contains("startup blocked")) {
-                throw (RuntimeException) e;
+
+            FormVersionEntity version = publishedVersion.get();
+            String tableName = dynamicTableService.generateTableName(form.getCode());
+            try {
+                dynamicTableService.validateSchema(tableName, version.getId());
+                log.info("Schema OK for form: {}", form.getCode());
+            } catch (SchemaDriftException drift) {
+                String firstMismatch = drift.getDriftErrors().isEmpty()
+                        ? "unknown mismatch"
+                        : drift.getDriftErrors().get(0).getField() + ": " + drift.getDriftErrors().get(0).getMessage();
+                String message = String.format(
+                        "Startup blocked by schema drift. formCode=%s, formName=%s, table=%s, versionId=%s, firstMismatch=%s",
+                        form.getCode(),
+                        form.getName(),
+                        tableName,
+                        version.getId(),
+                        firstMismatch
+                );
+                log.error("CRITICAL SCHEMA DRIFT DETECTED: {}", message);
+                throw new StartupSchemaDriftException(message, drift);
             }
-            log.warn("Could not perform startup schema drift check: {}", e.getMessage());
         }
     }
 }

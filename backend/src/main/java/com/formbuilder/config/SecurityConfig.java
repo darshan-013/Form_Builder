@@ -70,6 +70,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,  AppConstants.API_FORMS + "/{id}/render").permitAll()
                 .requestMatchers(HttpMethod.POST, AppConstants.API_FORMS + "/{id}/submit").permitAll()
                 .requestMatchers(HttpMethod.POST, AppConstants.API_RUNTIME + "/forms/{id}/submit").permitAll()
+                .requestMatchers(HttpMethod.POST, AppConstants.API_RUNTIME + "/forms/{idOrCode}/submissions/submit").permitAll()
                 .requestMatchers(HttpMethod.GET,  AppConstants.API_RUNTIME + "/forms/{idOrCode}").permitAll()
                 // Authenticated endpoints
                 .requestMatchers(AppConstants.API_FORMS + "/**").authenticated()
@@ -109,7 +110,7 @@ public class SecurityConfig {
                             session.setAttribute("USER_ID", userId);
                             log.debug("Stored USER_ID={} in session for '{}'", userId, auth.getName());
 
-                            response.put("userId", userId);
+                            response.put("userId", String.valueOf(userId));
                             response.put("name", rbacUser.get("name"));
                             response.put("email", rbacUser.get("email"));
 
@@ -118,13 +119,15 @@ public class SecurityConfig {
                                     "FROM user_roles ur JOIN roles r ON r.id = ur.role_id " +
                                     "WHERE ur.user_id = ? ORDER BY r.role_name",
                                     userId);
-                            response.put("roles", roleRows.stream().map(row -> {
+                            List<Map<String, Object>> roleObjects = roleRows.stream().map(row -> {
                                 Map<String, Object> role = new LinkedHashMap<>();
                                 role.put("id", row.get("id"));
                                 role.put("roleName", row.get("role_name"));
                                 role.put("isSystemRole", row.get("is_system_role"));
                                 return role;
-                            }).toList());
+                            }).toList();
+                            response.put("roleObjects", roleObjects);
+                            response.put("roles", roleRows.stream().map(row -> String.valueOf(row.get("role_name"))).toList());
 
                             List<String> perms = jdbc.queryForList(
                                     "SELECT DISTINCT p.permission_key " +
@@ -137,11 +140,13 @@ public class SecurityConfig {
                         } else {
                             log.warn("No RBAC profile found for '{}' after successful auth", auth.getName());
                             response.put("roles", List.of());
+                            response.put("roleObjects", List.of());
                             response.put("permissions", List.of());
                         }
                     } catch (Exception e) {
                         log.warn("Could not resolve RBAC profile for '{}': {}", auth.getName(), e.getMessage());
                         response.put("roles", List.of());
+                        response.put("roleObjects", List.of());
                         response.put("permissions", List.of());
                     }
 
@@ -168,7 +173,7 @@ public class SecurityConfig {
                 .logoutSuccessHandler((req, res, auth) -> {
                     res.setStatus(HttpStatus.OK.value());
                     res.setContentType("application/json");
-                    res.getWriter().write("{\"message\":\"Logged out successfully\"}");
+                    res.getWriter().write("{\"message\":\"Logged out\"}");
                 })
                 .permitAll()
             )
@@ -183,7 +188,9 @@ public class SecurityConfig {
             )
 
             .sessionManagement(session -> session
-                .maximumSessions(10)
+                .maximumSessions(1)
+                .expiredUrl("/login?expired=true")
+                .maxSessionsPreventsLogin(false)
             );
 
         return http.build();

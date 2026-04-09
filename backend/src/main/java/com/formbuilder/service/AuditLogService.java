@@ -19,6 +19,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RequiredArgsConstructor
 public class AuditLogService {
 
+    public record PagedResult(List<Map<String, Object>> content, long totalElements) {
+    }
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final AtomicBoolean ensured = new AtomicBoolean(false);
@@ -96,64 +99,90 @@ public class AuditLogService {
     }
 
     public List<Map<String, Object>> getAdminLogs(String action, String user, LocalDate fromDate, LocalDate toDate) {
+        return getAdminLogsPaged(action, user, fromDate, toDate, 0, Integer.MAX_VALUE).content();
+    }
+
+    public PagedResult getAdminLogsPaged(String action, String user, LocalDate fromDate, LocalDate toDate, int page, int size) {
         ensureAuditLogStore();
-        StringBuilder sql = new StringBuilder(
-                "SELECT id, action, performed_by_user_id, performed_by_username, target_entity, target_entity_id, " +
-                        "description, created_at, metadata " +
-                        "FROM audit_logs WHERE 1=1");
+        StringBuilder where = new StringBuilder(" FROM audit_logs WHERE 1=1");
 
         List<Object> params = new ArrayList<>();
 
         if (action != null && !action.isBlank()) {
-            sql.append(" AND action = ?");
+            where.append(" AND action = ?");
             params.add(action.trim());
         }
         if (user != null && !user.isBlank()) {
-            sql.append(" AND performed_by_username ILIKE ?");
+            where.append(" AND performed_by_username ILIKE ?");
             params.add("%" + user.trim() + "%");
         }
         if (fromDate != null) {
-            sql.append(" AND created_at >= ?");
+            where.append(" AND created_at >= ?");
             params.add(fromDate.atStartOfDay());
         }
         if (toDate != null) {
-            sql.append(" AND created_at < ?");
+            where.append(" AND created_at < ?");
             params.add(toDate.plusDays(1).atStartOfDay());
         }
 
-        sql.append(" ORDER BY created_at DESC");
-        return jdbc.queryForList(sql.toString(), params.toArray());
+        long total = jdbc.queryForObject("SELECT COUNT(*)" + where, Long.class, params.toArray());
+        if (size == Integer.MAX_VALUE) {
+            String selectSql = "SELECT id, action, performed_by_user_id, performed_by_username, target_entity, target_entity_id, " +
+                    "description, created_at, metadata" + where + " ORDER BY created_at DESC";
+            return new PagedResult(jdbc.queryForList(selectSql, params.toArray()), total);
+        }
+
+        String dataSql = "SELECT id, action, performed_by_user_id, performed_by_username, target_entity, target_entity_id, " +
+                "description, created_at, metadata" + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        List<Object> dataParams = new ArrayList<>(params);
+        dataParams.add(size);
+        dataParams.add((long) page * size);
+        return new PagedResult(jdbc.queryForList(dataSql, dataParams.toArray()), total);
     }
 
     public List<Map<String, Object>> getRoleAssignmentLogs(Integer roleId, String username, LocalDate fromDate, LocalDate toDate) {
+        return getRoleAssignmentLogsPaged(roleId, username, fromDate, toDate, 0, Integer.MAX_VALUE).content();
+    }
+
+    public PagedResult getRoleAssignmentLogsPaged(Integer roleId, String username, LocalDate fromDate, LocalDate toDate, int page, int size) {
         ensureAuditLogStore();
-        StringBuilder sql = new StringBuilder(
-                "SELECT id, action, created_at, performed_by_username, description, " +
-                        "related_role_id, related_role_name, related_user_id, related_username " +
-                        "FROM audit_logs " +
-                        "WHERE action IN ('ASSIGN_ROLE', 'REMOVE_ROLE', 'UPDATE_PERMISSION')");
+        StringBuilder where = new StringBuilder(
+                " FROM audit_logs WHERE action IN ('ASSIGN_ROLE', 'REMOVE_ROLE', 'UPDATE_PERMISSION')");
 
         List<Object> params = new ArrayList<>();
 
         if (roleId != null) {
-            sql.append(" AND related_role_id = ?");
+            where.append(" AND related_role_id = ?");
             params.add(roleId);
         }
         if (username != null && !username.isBlank()) {
-            sql.append(" AND related_username ILIKE ?");
+            where.append(" AND related_username ILIKE ?");
             params.add("%" + username.trim() + "%");
         }
         if (fromDate != null) {
-            sql.append(" AND created_at >= ?");
+            where.append(" AND created_at >= ?");
             params.add(fromDate.atStartOfDay());
         }
         if (toDate != null) {
-            sql.append(" AND created_at < ?");
+            where.append(" AND created_at < ?");
             params.add(toDate.plusDays(1).atStartOfDay());
         }
 
-        sql.append(" ORDER BY created_at DESC");
-        return jdbc.queryForList(sql.toString(), params.toArray());
+        long total = jdbc.queryForObject("SELECT COUNT(*)" + where, Long.class, params.toArray());
+        if (size == Integer.MAX_VALUE) {
+            String selectSql = "SELECT id, action, created_at, performed_by_username, description, " +
+                    "related_role_id, related_role_name, related_user_id, related_username" + where +
+                    " ORDER BY created_at DESC";
+            return new PagedResult(jdbc.queryForList(selectSql, params.toArray()), total);
+        }
+
+        String dataSql = "SELECT id, action, created_at, performed_by_username, description, " +
+                "related_role_id, related_role_name, related_user_id, related_username" + where +
+                " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        List<Object> dataParams = new ArrayList<>(params);
+        dataParams.add(size);
+        dataParams.add((long) page * size);
+        return new PagedResult(jdbc.queryForList(dataSql, dataParams.toArray()), total);
     }
 
     public Integer getSessionUserId(Object sessionUserId) {

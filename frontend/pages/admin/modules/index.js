@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
 import Navbar from '../../../components/Navbar';
+import PaginationControls from '../../../components/PaginationControls';
 import { getAllModules, createModule, updateModule } from '../../../services/api';
 import { toastSuccess, toastError } from '../../../services/toast';
 
 export default function ModuleManagerPage() {
     const [modules, setModules] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(0);
+    const [size, setSize] = useState(10);
+    const [totalElements, setTotalElements] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingModule, setEditingModule] = useState(null);
 
@@ -29,13 +34,19 @@ export default function ModuleManagerPage() {
     ];
 
     useEffect(() => {
-        fetchModules();
+        fetchModules(0, size);
     }, []);
 
-    const fetchModules = async () => {
+    const fetchModules = async (nextPage = page, nextSize = size) => {
+        setLoading(true);
         try {
-            const data = await getAllModules();
-            setModules(data || []);
+            const data = await getAllModules({ page: nextPage, size: nextSize });
+            const content = Array.isArray(data) ? data : (Array.isArray(data?.content) ? data.content : []);
+            setModules(content || []);
+            setPage(Array.isArray(data) ? nextPage : Number(data?.page ?? nextPage));
+            setSize(Array.isArray(data) ? nextSize : Number(data?.size ?? nextSize));
+            setTotalElements(Array.isArray(data) ? content.length : Number(data?.totalElements ?? content.length));
+            setTotalPages(Array.isArray(data) ? (content.length > 0 ? 1 : 0) : Number(data?.totalPages ?? 0));
         } catch (err) {
             toastError('Failed to fetch modules');
         } finally {
@@ -91,7 +102,7 @@ export default function ModuleManagerPage() {
                 toastSuccess('Module created successfully');
             }
             setIsModalOpen(false);
-            fetchModules();
+            await fetchModules(page, size);
         } catch (err) {
             toastError(err.message || 'Operation failed');
         }
@@ -204,6 +215,18 @@ export default function ModuleManagerPage() {
                             </table>
                         </div>
                     )}
+
+                    <div style={{ padding: '0 24px 20px' }}>
+                        <PaginationControls
+                            page={page}
+                            size={size}
+                            totalElements={totalElements}
+                            totalPages={totalPages}
+                            loading={loading}
+                            onPageChange={(nextPage) => fetchModules(nextPage, size)}
+                            onSizeChange={(nextSize) => fetchModules(0, nextSize)}
+                        />
+                    </div>
                 </div>
             </main>
 

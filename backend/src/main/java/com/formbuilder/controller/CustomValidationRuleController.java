@@ -91,6 +91,7 @@ public class CustomValidationRuleController {
     private CustomValidationRuleDTO toDTO(CustomValidationRuleEntity entity) {
         return CustomValidationRuleDTO.builder()
                 .id(entity.getId())
+                .validationType(entity.getValidationType())
                 .scope(entity.getScope())
                 .fieldKey(entity.getFieldKey())
                 .expression(entity.getExpression())

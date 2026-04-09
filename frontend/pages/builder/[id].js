@@ -1,18 +1,39 @@
-import { useState, useEffect, useMemo } from 'react';
+    import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { AnimatePresence, motion } from 'framer-motion';
 import FieldPalette from '../../components/Builder/FieldPalette';
 import Canvas from '../../components/Builder/Canvas';
 import FieldConfigModal from '../../components/Builder/FieldConfigModal';
 import StaticFieldModal from '../../components/Builder/StaticFieldModal';
 import GroupConfigModal from '../../components/Builder/GroupConfigModal';
 import CustomValidationsPanel from '../../components/Builder/CustomValidationsPanel';
-import { getForm, updateForm, getVisibilityCandidates, getFormVersions, publishForm, publishVersion, deleteFormVersion } from '../../services/api';
+import { createForm, getForm, updateForm, getVisibilityCandidates, getFormVersions, publishForm, publishVersion, deleteFormVersion, isSchemaDriftError, saveSchemaDriftReport } from '../../services/api';
 import { toastSuccess, toastError, toastInfo } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
 
 const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
+const FORM_NAME_ALLOWED_REGEX = /^[A-Za-z_][A-Za-z0-9_ ]*$/;
+const NEW_FORM_ROUTE_ID = 'new-form';
+const NEW_FORM_META_KEY = 'builder_new_form_meta_v1';
+const VIEW_ORDER = { canvas: 0, validations: 1, versions: 2 };
+
+const sanitizeFormName = (value = '') => value.replace(/[^A-Za-z0-9_ ]+/g, '').replace(/\s{2,}/g, ' ');
+
+const getFormNameError = (value, { requireValue = false } = {}) => {
+    const normalized = sanitizeFormName(value).trim();
+    if (!normalized) {
+        return requireValue ? 'Form name is required.' : '';
+    }
+    if (normalized.length < 3) {
+        return 'Form name must be at least 3 characters.';
+    }
+    if (!FORM_NAME_ALLOWED_REGEX.test(normalized)) {
+        return 'Form name must start with a letter or underscore and contain only letters, numbers, spaces, and underscores.';
+    }
+    return '';
+};
 
 /**
  * Edit Form Builder Page — /builder/[id]
@@ -22,10 +43,12 @@ const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block
 export default function EditBuilderPage() {
     const router = useRouter();
     const { id, versionId } = router.query;
+    const isCreateMode = id === NEW_FORM_ROUTE_ID;
     const { hasRole } = useAuth();
     const isViewer = hasRole('Viewer');
 
     const [formName, setFormName] = useState('');
+    const [nameError, setNameError] = useState('');
     const [formDescription, setFormDescription] = useState('');
     const [fields, setFields] = useState([]);
     const [groups, setGroups] = useState([]);
@@ -40,11 +63,13 @@ export default function EditBuilderPage() {
     const [branching, setBranching] = useState(false);
     const [versions, setVersions] = useState([]);
     const [activeView, setActiveView] = useState('canvas'); // 'canvas' | 'versions'
+    const [viewDirection, setViewDirection] = useState(1);
     const [confirmModal, setConfirmModal] = useState(null); // { type: 'publish'|'delete', versionId, versionNumber }
     const [actioning, setActioning] = useState(null); // tracking loading state for version actions
     const [isDirty, setIsDirty] = useState(false);
     const [initialSignature, setInitialSignature] = useState(null);
     const [currentVersionNumber, setCurrentVersionNumber] = useState(null);
+    const [code, setCode] = useState('');
 
     // Resizable panels state
     const [leftWidth, setLeftWidth] = useState(264);
@@ -166,6 +191,58 @@ export default function EditBuilderPage() {
         setEditStaticField(null);
         setEditGroupConfig(null);
 
+        if (isCreateMode) {
+            try {
+                const raw = typeof window !== 'undefined' ? window.sessionStorage.getItem(NEW_FORM_META_KEY) : null;
+                if (!raw) {
+                    toastError('Please enter form details first.');
+                    router.replace('/builder/new');
+                    return;
+                }
+
+                const meta = JSON.parse(raw);
+                const metaName = sanitizeFormName(meta?.name || '');
+                const metaCode = String(meta?.code || '');
+                const metaDescription = String(meta?.description || '');
+
+                if (!metaName || !metaCode) {
+                    toastError('Please enter valid form details first.');
+                    router.replace('/builder/new');
+                    return;
+                }
+
+                setFormName(metaName);
+                setNameError(getFormNameError(metaName));
+                setCode(metaCode);
+                setFormDescription(metaDescription);
+                setAllowMultipleSubmissions(true);
+                setExpiresAt('');
+                setAllowedUsers([]);
+                setVersionStatus('DRAFT');
+                setCurrentVersionNumber(null);
+                setVersions([]);
+
+                const loadedSignature = JSON.stringify({
+                    formName: metaName,
+                    formDescription: metaDescription,
+                    allowMultipleSubmissions: true,
+                    expiresAt: '',
+                    allowedUsers: [],
+                    fields: [],
+                    groups: []
+                });
+                setInitialSignature(loadedSignature);
+                setIsDirty(false);
+            } catch {
+                toastError('Failed to load pending form details. Please start again.');
+                router.replace('/builder/new');
+                return;
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
         getForm(id, versionId)
             .then((form) => {
                 // If no versionId in URL, redirect to the active version
@@ -175,10 +252,13 @@ export default function EditBuilderPage() {
                     return; // useEffect will re-run with the versionId
                 }
 
-                setFormName(form.name || '');
+                setFormName(sanitizeFormName(form.name || ''));
+                setNameError('');
+                setCode(form.code || '');
                 setFormDescription(form.description || '');
                 setAllowMultipleSubmissions(form.allowMultipleSubmissions ?? true);
-                setVersionStatus(form.versionStatus || 'DRAFT');
+                const resolvedCurrentStatus = String(form.versionStatus || (form.isActive ? 'PUBLISHED' : 'DRAFT')).toUpperCase();
+                setVersionStatus(resolvedCurrentStatus === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT');
                 setCurrentVersionNumber(form.versionNumber ?? null);
 
                 // Load allowed users from form data
@@ -289,7 +369,7 @@ export default function EditBuilderPage() {
         getFormVersions(id)
             .then(setVersions)
             .catch(() => console.error('Failed to load version history'));
-    }, [id, versionId]);
+    }, [id, versionId, isCreateMode]);
 
     useEffect(() => {
         if (initialSignature === null) return;
@@ -320,10 +400,47 @@ export default function EditBuilderPage() {
         setEditGroupConfig(null);
     };
 
-    const handleSave = async () => {
-        if (!formName.trim()) {
-            toastError("Form name is required.");
-            return;
+    const hasSelection = !!(editField || editStaticField || editGroupConfig);
+    const rightPanelRef = useRef(null);
+
+    const handleViewChange = (nextView) => {
+        if (nextView === activeView) return;
+        const currentRank = VIEW_ORDER[activeView] ?? 0;
+        const nextRank = VIEW_ORDER[nextView] ?? 0;
+        setViewDirection(nextRank >= currentRank ? 1 : -1);
+        setActiveView(nextView);
+    };
+
+    useEffect(() => {
+        if (!hasSelection) return;
+
+        const handleOutsidePointerDown = (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+
+            // Ignore interactions inside right panel or on selectable builder cards.
+            if (rightPanelRef.current?.contains(target)) return;
+            if (target.closest('.field-card')) return;
+            if (target.closest('.group-container')) return;
+            if (target.closest('.group-container-header')) return;
+
+            setEditField(null);
+            setEditStaticField(null);
+            setEditGroupConfig(null);
+        };
+
+        document.addEventListener('pointerdown', handleOutsidePointerDown);
+        return () => document.removeEventListener('pointerdown', handleOutsidePointerDown);
+    }, [hasSelection]);
+
+    const handleSave = async ({ redirectAfterSave = true } = {}) => {
+        const normalizedName = sanitizeFormName(formName).trim();
+        const formNameValidationError = getFormNameError(normalizedName, { requireValue: true });
+
+        if (formNameValidationError) {
+            setNameError(formNameValidationError);
+            toastError(formNameValidationError);
+            return false;
         }
 
         // Validate field labels
@@ -331,7 +448,7 @@ export default function EditBuilderPage() {
         const missingLabel = dynamicFields.some(f => !f.label || !f.label.trim());
         if (missingLabel) {
             toastError("All fields must have a label.");
-            return;
+            return false;
         }
 
         const dynamicFieldsList = [];
@@ -374,7 +491,8 @@ export default function EditBuilderPage() {
         });
 
         const dto = {
-            name: formName.trim(),
+            name: normalizedName,
+            code: code || null,
             description: formDescription.trim() || null,
             fields: dynamicFieldsList,
             staticFields: staticFields,
@@ -393,16 +511,95 @@ export default function EditBuilderPage() {
 
         setSaving(true);
         try {
-            await updateForm(id, versionId, dto);
+            let savedFormId = null;
+
+            if (isCreateMode) {
+                const created = await createForm(dto);
+                savedFormId = created?.formId ?? created?.id ?? null;
+                if (!savedFormId) {
+                    throw new Error('Form created, but no id was returned.');
+                }
+                if (typeof window !== 'undefined') {
+                    window.sessionStorage.removeItem(NEW_FORM_META_KEY);
+                }
+            } else {
+                await updateForm(id, versionId, dto);
+            }
+
             setSaveSuccess(true);
-            toastSuccess('Form Updated Successfully! ✓');
-            setTimeout(() => {
-                router.push('/dashboard');
-            }, 800);
+            toastSuccess(isCreateMode ? 'Form created successfully! ✓' : 'Form Updated Successfully! ✓');
+
+            const currentSignature = JSON.stringify({
+                formName,
+                formDescription,
+                allowMultipleSubmissions,
+                expiresAt,
+                allowedUsers,
+                fields,
+                groups
+            });
+            setInitialSignature(currentSignature);
+            setIsDirty(false);
+
+            if (redirectAfterSave) {
+                setTimeout(() => {
+                    if (isCreateMode && savedFormId) {
+                        router.replace(`/builder/${savedFormId}`);
+                    } else {
+                        router.push('/forms/vault');
+                    }
+                }, 800);
+            }
+            return savedFormId || true;
         } catch (err) {
-            toastError(err.message || 'Failed to update form.');
+            const nameMsg = Array.isArray(err?.errors)
+                ? err.errors.find((e) => e?.field === 'name')?.message
+                : null;
+            if (nameMsg) {
+                setNameError(nameMsg);
+            }
+            toastError(nameMsg || err.message || 'Failed to update form.');
+            return false;
+        } finally {
             setSaving(false);
         }
+    };
+
+    const handleOpenPreview = async () => {
+        if (!id || saving) return;
+
+        let canOpen = true;
+        let previewFormId = id;
+        if (isDirty || isCreateMode) {
+            toastInfo('Saving latest changes before opening preview...');
+            const saveResult = await handleSave({ redirectAfterSave: false });
+            canOpen = !!saveResult;
+            if (typeof saveResult === 'string') {
+                previewFormId = saveResult;
+            }
+        }
+
+        if (!canOpen) return;
+
+        const previewHref = `/preview/${previewFormId}${versionId && !isCreateMode ? `?versionId=${versionId}` : ''}`;
+        router.push(previewHref);
+    };
+
+    const redirectToDriftPage = (error, actionLabel) => {
+        const driftReport = {
+            source: 'builder',
+            formId: id || null,
+            formCode: code || null,
+            action: actionLabel,
+            at: new Date().toISOString(),
+            message: error?.message || 'Schema drift detected',
+            errorCode: error?.errorCode,
+            errors: Array.isArray(error?.errors) ? error.errors : [],
+            details: error?.details || null,
+        };
+        saveSchemaDriftReport(driftReport);
+        toastError('Schema drift detected for this form. Publish is blocked until schema is fixed.');
+        router.push('/schema-drift');
     };
 
     const handleActionConfirm = async () => {
@@ -426,7 +623,11 @@ export default function EditBuilderPage() {
                 }
             }
         } catch (error) {
-            toastError("Failed to perform action.");
+            if (isSchemaDriftError(error)) {
+                redirectToDriftPage(error, 'publishVersion');
+                return;
+            }
+            toastError('Failed to perform action.');
             console.error(error);
         } finally {
             setActioning(null);
@@ -441,8 +642,12 @@ export default function EditBuilderPage() {
         try {
             await publishForm(id);
             toastSuccess('Form published successfully!');
-            router.push('/dashboard');
+            router.push('/forms/vault');
         } catch (error) {
+            if (isSchemaDriftError(error)) {
+                redirectToDriftPage(error, 'publishForm');
+                return;
+            }
             toastError(error.message || 'Failed to publish form');
         } finally {
             setSaving(false);
@@ -475,6 +680,11 @@ export default function EditBuilderPage() {
     const canAddField = dynamicCount < 50 && totalValidationCount < 100;
     const canAddGroup = groups.length < 10;
 
+    const resolveVersionStatus = (version) => {
+        const raw = version?.versionStatus ?? version?.status ?? (version?.isActive ? 'PUBLISHED' : 'DRAFT');
+        return String(raw).toUpperCase() === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT';
+    };
+
     return (
         <>
             <Head><title>Edit Form — FormCraft Builder</title></Head>
@@ -482,23 +692,76 @@ export default function EditBuilderPage() {
 
 
 
-            <div className="builder-page" style={{ gridTemplateColumns: `${leftWidth}px 1fr ${rightWidth}px` }}>
+            <div className="builder-page" style={{ gridTemplateColumns: hasSelection ? `${leftWidth}px 1fr ${rightWidth}px` : `${leftWidth}px 1fr` }}>
                 <header className="builder-topbar">
                     <Link href="/dashboard" className="builder-topbar-brand">⚡ FormCraft</Link>
 
-                    <input
-                        className="builder-form-name-input"
-                        placeholder="Form name…"
-                        value={formName}
-                        onChange={(e) => setFormName(e.target.value)}
-                    />
-                    <input
-                        className="builder-form-name-input"
-                        style={{ maxWidth: 240, fontWeight: 400, fontSize: 13 }}
-                        placeholder="Description (optional)"
-                        value={formDescription}
-                        onChange={(e) => setFormDescription(e.target.value)}
-                    />
+                    <div className="builder-topbar-meta">
+                        <input
+                            className="builder-form-name-input builder-topbar-title-input"
+                            placeholder="Form name…"
+                            value={formName}
+                            onChange={(e) => {
+                                const nextValue = sanitizeFormName(e.target.value);
+                                setFormName(nextValue);
+                                setNameError(getFormNameError(nextValue));
+                                setIsDirty(true);
+                                setSaveSuccess(false);
+                            }}
+                            aria-invalid={!!nameError}
+                            title={nameError || 'Name must be at least 3 characters and can contain letters, numbers, spaces, and underscores.'}
+                            style={nameError ? {
+                                borderColor: 'rgba(248, 113, 113, 0.85)',
+                                boxShadow: '0 0 0 1px rgba(248, 113, 113, 0.45)'
+                            } : undefined}
+                        />
+                        <input
+                            className="builder-form-name-input builder-topbar-desc-input"
+                            placeholder="Description (optional)"
+                            value={formDescription}
+                            onChange={(e) => {
+                                setFormDescription(e.target.value);
+                                setIsDirty(true);
+                                setSaveSuccess(false);
+                            }}
+                        />
+                    </div>
+
+                    <div className="builder-topbar-left">
+                        <div className="liquid-group" role="radiogroup" aria-label="Builder view toggle">
+                            <input
+                                type="radio"
+                                id="builder-view-canvas"
+                                name="builder-view-radio"
+                                value="canvas"
+                                checked={activeView === 'canvas'}
+                                onChange={() => handleViewChange('canvas')}
+                            />
+                            <label htmlFor="builder-view-canvas">Canvas</label>
+
+                            <input
+                                type="radio"
+                                id="builder-view-validations"
+                                name="builder-view-radio"
+                                value="validations"
+                                checked={activeView === 'validations'}
+                                onChange={() => handleViewChange('validations')}
+                            />
+                            <label htmlFor="builder-view-validations">Validations</label>
+
+                            <input
+                                type="radio"
+                                id="builder-view-versions"
+                                name="builder-view-radio"
+                                value="versions"
+                                checked={activeView === 'versions'}
+                                onChange={() => handleViewChange('versions')}
+                            />
+                            <label htmlFor="builder-view-versions">Versions</label>
+
+                            <div className="liquid-slider" aria-hidden="true" />
+                        </div>
+                    </div>
 
                     <div className="builder-topbar-actions">
                         {fields.length > 0 && (
@@ -649,7 +912,14 @@ export default function EditBuilderPage() {
                                 )}
                             </div>
                         )}
-                        <Link href={`/preview/${id}`} className="btn btn-secondary btn-sm">👁 Preview</Link>
+                        <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={handleOpenPreview}
+                            disabled={saving}
+                        >
+                            👁 Preview
+                        </button>
 
 
                         {/* Save Changes button always visible, label changes based on status */}
@@ -661,11 +931,12 @@ export default function EditBuilderPage() {
                         >
                             {saveSuccess ? '✓ Saved!' : saving
                                 ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</>
-                                : versionStatus === 'PUBLISHED' ? '💾 Save as New Draft' : '💾 Save Changes'}
+                                : isCreateMode ? '💾 Create Form'
+                                    : versionStatus === 'PUBLISHED' ? '💾 Save as New Draft' : '💾 Save Changes'}
                         </button>
                         
                         {/* Publish Version button only visible for Drafts */}
-                        {versionStatus === 'DRAFT' && (
+                        {!isCreateMode && versionStatus === 'DRAFT' && (
                             <button
                                 className="btn btn-primary btn-sm"
                                 onClick={handlePublish}
@@ -676,27 +947,6 @@ export default function EditBuilderPage() {
                             </button>
                         )}
 
-                        {/* Version Switcher / History View Toggle */}
-                        <div className="view-toggle">
-                            <button
-                                className={`view-toggle-btn ${activeView === 'canvas' ? 'active' : ''}`}
-                                onClick={() => setActiveView('canvas')}
-                            >
-                                🎨 Canvas
-                            </button>
-                            <button
-                                className={`view-toggle-btn ${activeView === 'validations' ? 'active' : ''}`}
-                                onClick={() => setActiveView('validations')}
-                            >
-                                🛡️ Validations
-                            </button>
-                            <button
-                                className={`view-toggle-btn ${activeView === 'versions' ? 'active' : ''}`}
-                                onClick={() => setActiveView('versions')}
-                            >
-                                📜 Versions
-                            </button>
-                        </div>
                     </div>
                 </header>
 
@@ -728,6 +978,16 @@ export default function EditBuilderPage() {
                     </div>
                 )}
 
+                <AnimatePresence mode="wait" initial={false} custom={viewDirection}>
+                    <motion.div
+                        key={activeView}
+                        custom={viewDirection}
+                        initial={{ opacity: 0, x: viewDirection > 0 ? 22 : -22, y: 4 }}
+                        animate={{ opacity: 1, x: 0, y: 0 }}
+                        exit={{ opacity: 0, x: viewDirection > 0 ? -16 : 16, y: -2 }}
+                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        style={{ display: 'contents' }}
+                    >
                 {activeView === 'canvas' ? (
                     <>
                         <div 
@@ -738,13 +998,20 @@ export default function EditBuilderPage() {
                         <main className="builder-canvas-wrap">
                             {/* Version info badge */}
                             <div style={{
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                padding: '8px 20px', background: 'var(--bg-card)',
-                                borderBottom: '1px solid var(--border)',
-                                fontSize: 13
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 10,
+                                padding: '8px 14px',
+                                margin: '8px 12px 10px',
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 12,
+                                fontSize: 12,
+                                whiteSpace: 'nowrap',
+                                overflowX: 'auto'
                             }}>
                                 <span style={{
-                                    padding: '3px 12px', borderRadius: 20, fontWeight: 700, fontSize: 12,
+                                    padding: '2px 10px', borderRadius: 999, fontWeight: 700, fontSize: 11,
                                     background: versionStatus === 'PUBLISHED' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
                                     color: versionStatus === 'PUBLISHED' ? '#34D399' : '#FCD34D',
                                     border: `1px solid ${versionStatus === 'PUBLISHED' ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
@@ -753,15 +1020,26 @@ export default function EditBuilderPage() {
                                     {versionStatus === 'PUBLISHED' ? '✅ Active' : '📝 Draft'}
                                 </span>
                                 {currentVersionNumber && (
-                                    <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
                                         Version {currentVersionNumber}
                                     </span>
                                 )}
                                 {versionStatus === 'PUBLISHED' && (
-                                    <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
                                         — This is the live version. Saving will create a new draft.
                                     </span>
                                 )}
+                                <span style={{ width: 1, height: 18, background: 'var(--border)', opacity: 0.7, flexShrink: 0 }} />
+                                <div className="builder-code-block" style={{ maxWidth: 'none', margin: 0 }}>
+                                    <span className="builder-code-badge" title={`Form code: ${code}`}>
+                                        <span style={{ opacity: 0.88 }}>🔖</span>
+                                        <span style={{ fontSize: 11 }}>Code:</span>
+                                        <strong className="builder-code-value">{code || '—'}</strong>
+                                    </span>
+                                    <span className="builder-code-help" style={{ marginLeft: 8, fontSize: 11 }}>
+                                        Locked after first save.
+                                    </span>
+                                </div>
                             </div>
                             <Canvas
                                 fields={fields} setFields={setFields}
@@ -773,39 +1051,46 @@ export default function EditBuilderPage() {
                                 canAddGroup={canAddGroup}
                             />
                         </main>
-                        <div 
-                            className={`panel-resizer right-resizer ${resizing === 'right' ? 'resizing' : ''}`}
-                            onMouseDown={() => setResizing('right')}
-                        />
-                        <aside className="builder-right-panel">
-                            {editField ? (
-                                <FieldConfigModal
-                                    field={editField}
-                                    onSave={updateField}
-                                    onClose={() => setEditField(null)}
-                                    siblingFields={fields.filter(f => f.id !== editField.id)}
-                                />
-                            ) : editStaticField ? (
-                                <StaticFieldModal
-                                    field={editStaticField}
-                                    onSave={updateStaticField}
-                                    onClose={() => setEditStaticField(null)}
-                                />
-                            ) : editGroupConfig ? (
-                                <GroupConfigModal
-                                    group={editGroupConfig}
-                                    onSave={updateGroup}
-                                    onClose={() => setEditGroupConfig(null)}
-                                    siblingFields={fields}
-                                />
-                            ) : (
-                                <div className="right-panel-empty">
-                                    <div className="right-panel-empty-icon">⚙️</div>
-                                    <h3>Field Settings</h3>
-                                    <p>Select a field or section on the canvas to configure its properties.</p>
-                                </div>
+                        <AnimatePresence initial={false}>
+                            {hasSelection && (
+                                <>
+                                    <div
+                                        className={`panel-resizer right-resizer ${resizing === 'right' ? 'resizing' : ''}`}
+                                        onMouseDown={() => setResizing('right')}
+                                    />
+                                    <motion.aside
+                                        ref={rightPanelRef}
+                                        className="builder-right-panel"
+                                        initial={{ x: 20, opacity: 0 }}
+                                        animate={{ x: 0, opacity: 1 }}
+                                        exit={{ x: 20, opacity: 0 }}
+                                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                                    >
+                                        {editField ? (
+                                            <FieldConfigModal
+                                                field={editField}
+                                                onSave={updateField}
+                                                onClose={() => setEditField(null)}
+                                                siblingFields={fields.filter(f => f.id !== editField.id)}
+                                            />
+                                        ) : editStaticField ? (
+                                            <StaticFieldModal
+                                                field={editStaticField}
+                                                onSave={updateStaticField}
+                                                onClose={() => setEditStaticField(null)}
+                                            />
+                                        ) : editGroupConfig ? (
+                                            <GroupConfigModal
+                                                group={editGroupConfig}
+                                                onSave={updateGroup}
+                                                onClose={() => setEditGroupConfig(null)}
+                                                siblingFields={fields}
+                                            />
+                                        ) : null}
+                                    </motion.aside>
+                                </>
                             )}
-                        </aside>
+                        </AnimatePresence>
                     </>
                 ) : activeView === 'validations' ? (
                     <div className="vh-full-view" style={{ gridColumn: '1 / -1', padding: '40px', overflowY: 'auto', background: 'var(--bg-base)' }}>
@@ -826,7 +1111,8 @@ export default function EditBuilderPage() {
                             </div>
                             <div className="timeline">
                                 {versions.map((v, index) => {
-                                    const st = v.status.toLowerCase(); 
+                                    const normalizedStatus = resolveVersionStatus(v);
+                                    const st = normalizedStatus.toLowerCase();
                                     const isLast = index === versions.length - 1;
                                     const isCurrentlyViewing = v.id === (versionId || versions[0]?.id);
                                     
@@ -865,7 +1151,7 @@ export default function EditBuilderPage() {
                                                         color: st === 'published' ? 'var(--success)' : 'var(--warning)',
                                                         background: st === 'published' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
                                                         border: `1px solid ${st === 'published' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`
-                                                    }}>{v.status}</span>
+                                                    }}>{normalizedStatus}</span>
                                                 </div>
 
                                                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
@@ -920,6 +1206,8 @@ export default function EditBuilderPage() {
                         </div>
                     </div>
                 )}
+                    </motion.div>
+                </AnimatePresence>
             </div>
 
             <style jsx global>{`

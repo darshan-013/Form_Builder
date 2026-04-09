@@ -2,14 +2,16 @@ package com.formbuilder.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "form_versions")
+@Table(
+        name = "form_versions",
+        uniqueConstraints = @UniqueConstraint(name = "uk_form_versions_form_id_version_number", columnNames = {"form_id", "version_number"})
+)
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor
 @Builder
@@ -29,34 +31,16 @@ public class FormVersionEntity {
     @Column(name = "is_active", nullable = false)
     private boolean isActive;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "definition_json", nullable = false, columnDefinition = "JSONB")
     @Builder.Default
-    private FormVersionStatus status = FormVersionStatus.DRAFT;
+    private String definitionJson = "{}";
 
-    @Column(name = "definition_json", columnDefinition = "TEXT")
-    private String definitionJson;
+    @Column(name = "created_by", nullable = false, length = 100)
+    private String createdBy;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
-
-    @Column(name = "published_at")
-    private LocalDateTime publishedAt;
-
-    @Column(name = "is_soft_deleted", nullable = false)
-    @Builder.Default
-    private boolean isSoftDeleted = false;
-
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
-
-    @Column(name = "created_by", length = 100)
-    private String createdBy;
 
     // Sub-components are now children of the version, not the form.
     @OneToMany(mappedBy = "formVersion", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
@@ -78,8 +62,4 @@ public class FormVersionEntity {
     @Builder.Default
     @com.fasterxml.jackson.annotation.JsonManagedReference
     private List<CustomValidationRuleEntity> customValidationRules = new ArrayList<>();
-
-    public enum FormVersionStatus {
-        DRAFT, PUBLISHED
-    }
 }

@@ -77,7 +77,7 @@ export default function FormsTrashPage() {
 
     const filteredForms = forms.filter(f =>
         f.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        f.formCode?.toLowerCase().includes(searchTerm.toLowerCase())
+        f.code?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const formatDate = (dt) =>
@@ -85,7 +85,7 @@ export default function FormsTrashPage() {
 
     return (
         <>
-            <Head><title>Trash Bin — FormCraft</title></Head>
+            <Head><title>Archived Forms — FormCraft</title></Head>
 
             <div className="page">
                 <Navbar />
@@ -96,10 +96,10 @@ export default function FormsTrashPage() {
                         <div>
                             <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                 <Trash2 className="text-danger" size={32} />
-                                Trash Bin
+                                Archived Forms
                             </h1>
                             <p className="page-subtitle">
-                                Manage deleted forms. Restored forms will reappear in your active dashboard.
+                                Manage archived forms. Restored forms will return to DRAFT.
                             </p>
                         </div>
                         <div style={{ display: 'flex', gap: 12 }}>
@@ -113,7 +113,7 @@ export default function FormsTrashPage() {
                         <div className="section-bar-top">
                             <div className="section-bar-title">
                                 <span className="section-bar-icon">🗑</span>
-                                <h2 className="dashboard-section-title">Deleted Forms</h2>
+                                <h2 className="dashboard-section-title">Archived Forms</h2>
                                 <span className="dashboard-section-count">{filteredForms.length}</span>
                             </div>
                         </div>
@@ -139,8 +139,8 @@ export default function FormsTrashPage() {
                     ) : filteredForms.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-state-icon">🗑️</div>
-                            <h3>Trash bin is empty</h3>
-                            <p>No deleted forms found.</p>
+                            <h3>No archived forms</h3>
+                            <p>Archived forms will appear here.</p>
                         </div>
                     ) : (
                         <>
@@ -185,8 +185,8 @@ export default function FormsTrashPage() {
                                             color: 'var(--text-muted)'
                                         }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                                <span>Deleted At:</span>
-                                                <span style={{ color: '#F87171' }}>{formatDate(form.deletedAt)}</span>
+                                                <span>Archived At:</span>
+                                                <span style={{ color: '#F87171' }}>{formatDate(form.archivedAt)}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                 <span>Created By:</span>
@@ -196,7 +196,7 @@ export default function FormsTrashPage() {
 
                                         <div className="form-card-footer" style={{ marginTop: 12 }}>
                                             <div className="form-card-meta">
-                                                <span>Code: {form.formCode}</span>
+                                                <span>Code: {form.code}</span>
                                             </div>
                                             <div className="form-card-actions">
                                                 <button 

@@ -6,6 +6,9 @@ public class AppConstants {
 
     // Base path
     public static final String API_BASE = "/api/v1";
+    public static final int DEFAULT_PAGE = 0;
+    public static final int DEFAULT_PAGE_SIZE = 10;
+    public static final int MAX_PAGE_SIZE = 100;
 
     // Base API Endpoints (v1)
     public static final String API_AUTH = API_BASE + "/auth";
@@ -46,6 +49,7 @@ public class AppConstants {
     public static final String FORM_VERSIONS = "/{id}/versions";
     public static final String FORM_VERSION_BY_ID = "/{id}/versions/{versionId}";
     public static final String FORM_VERSION_PUBLISH = "/{id}/versions/{versionId}/publish";
+    public static final String FORM_VERSION_ACTIVATE = "/{id}/versions/{versionId}/activate";
     public static final String FORM_STATS = "/stats";
     public static final String FORM_TRASH = "/trash";
     public static final String FORM_RESTORE = "/{id}/restore";
@@ -67,6 +71,8 @@ public class AppConstants {
     public static final String RUNTIME_FORM_RENDER = "/forms/{idOrCode}";
     public static final String RUNTIME_SUBMIT = "/forms/{idOrCode}/submit";
     public static final String RUNTIME_DRAFT = "/forms/{idOrCode}/draft";
+    public static final String RUNTIME_SUBMIT_V2 = "/forms/{idOrCode}/submissions/submit";
+    public static final String RUNTIME_DRAFT_V2 = "/forms/{idOrCode}/submissions/draft";
     public static final String RUNTIME_SUBMISSIONS_TRASH = "/{id}/submissions/trash";
     public static final String RUNTIME_SUBMISSION_RESTORE = "/{id}/submissions/{submissionId}/restore";
     
@@ -81,6 +87,8 @@ public class AppConstants {
 
     // Submission Sub-Endpoints
     public static final String BY_ID_SUBMISSION_BY_ID = "/{id}/submissions/{submissionId}";
+    public static final String BY_ID_SUBMISSIONS_BULK = "/{id}/submissions/bulk";
+    public static final String BY_ID_SUBMISSIONS_EXPORT = "/{id}/submissions/export";
 
     // Module Sub-Endpoints
     public static final String MODULE_BY_ROLE = "/role/{roleId}";

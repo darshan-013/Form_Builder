@@ -4,6 +4,7 @@ import RuleEngine, { setDefaultValues } from '../services/RuleEngine';
 import CalculationEngine from '../services/CalculationEngine';
 import { getDraft, saveDraft } from '../services/api';
 import { toastInfo, showWarning } from '../services/toast';
+import { translateApiError } from '../services/errorTranslator';
 
 /**
  * FormRenderer — enterprise dynamic form renderer with Conditional Rule Engine.
@@ -516,7 +517,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
           setServerError(`Please fix the ${count} field${count > 1 ? 's' : ''} highlighted below.`);
         }
       } else {
-        setServerError(err?.message || 'Submission failed. Please try again.');
+        setServerError(translateApiError(err));
       }
     } finally {
       setSubmitting(false);
@@ -955,6 +956,40 @@ function FieldInput({ field, value, errors, touched, onChange, onBlur, disabled,
           </>
         );
       })()}
+
+      {/* ── time ───────────────────────────────────────────────── */}
+      {field.fieldType === 'time' && (
+        <input
+          id={id}
+          type="time"
+          className={inputClass}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => onBlur(e.target.value)}
+          min={min ?? undefined}
+          max={max ?? undefined}
+          disabled={disabled}
+          aria-describedby={hasError ? `${id}-err` : undefined}
+          aria-invalid={hasError || undefined}
+        />
+      )}
+
+      {/* ── date_time ──────────────────────────────────────────── */}
+      {field.fieldType === 'date_time' && (
+        <input
+          id={id}
+          type="datetime-local"
+          className={inputClass}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => onBlur(e.target.value)}
+          min={min ?? undefined}
+          max={max ?? undefined}
+          disabled={disabled}
+          aria-describedby={hasError ? `${id}-err` : undefined}
+          aria-invalid={hasError || undefined}
+        />
+      )}
 
       {/* ── boolean ────────────────────────────────────────────── */}
       {field.fieldType === 'boolean' && (

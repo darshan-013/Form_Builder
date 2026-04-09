@@ -14,6 +14,8 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.Period;
 import java.time.format.DateTimeParseException;
 import java.util.*;
@@ -97,6 +99,8 @@ public class ValidationService {
             case "text" -> validateTextField(field, strValue, rules, errors, tableName);
             case "number" -> validateNumberField(field, strValue, rules, errors, tableName);
             case "date" -> validateDateField(field, strValue, rules, errors);
+            case "time" -> validateTimeField(field, strValue, rules, errors);
+            case "date_time" -> validateDateTimeField(field, strValue, rules, errors);
             case "boolean" -> validateBooleanField(field, value, rules, errors);
             case "dropdown" -> validateDropdownField(field, strValue, rules, errors);
             case "radio" -> validateRadioField(field, strValue, rules, errors);
@@ -398,6 +402,94 @@ public class ValidationService {
         if ("MM/DD/YYYY".equals(format))
             return String.format("%02d/%02d/%04d", date.getMonthValue(), date.getDayOfMonth(), date.getYear());
         return date.toString();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TIME FIELD VALIDATION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private void validateTimeField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
+        String label = field.getLabel();
+
+        LocalTime time;
+        try {
+            time = LocalTime.parse(value);
+        } catch (DateTimeParseException e) {
+            errors.add(label + " must be a valid time (HH:mm or HH:mm:ss)");
+            return;
+        }
+
+        if (rules.has("minTime") && !rules.get("minTime").asText("").isBlank()) {
+            try {
+                LocalTime min = LocalTime.parse(rules.get("minTime").asText());
+                if (time.isBefore(min)) {
+                    errors.add(label + " must be at or after " + min.toString());
+                }
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+
+        if (rules.has("maxTime") && !rules.get("maxTime").asText("").isBlank()) {
+            try {
+                LocalTime max = LocalTime.parse(rules.get("maxTime").asText());
+                if (time.isAfter(max)) {
+                    errors.add(label + " must be at or before " + max.toString());
+                }
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+
+        LocalTime now = LocalTime.now();
+        if (rules.has("pastOnly") && rules.get("pastOnly").asBoolean() && !time.isBefore(now)) {
+            errors.add(label + " must be a past time");
+        }
+        if (rules.has("futureOnly") && rules.get("futureOnly").asBoolean() && !time.isAfter(now)) {
+            errors.add(label + " must be a future time");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // DATETIME FIELD VALIDATION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private void validateDateTimeField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
+        String label = field.getLabel();
+
+        LocalDateTime dateTime;
+        try {
+            dateTime = LocalDateTime.parse(value.replace(" ", "T"));
+        } catch (DateTimeParseException e) {
+            errors.add(label + " must be a valid date-time");
+            return;
+        }
+
+        if (rules.has("minDateTime") && !rules.get("minDateTime").asText("").isBlank()) {
+            try {
+                LocalDateTime min = LocalDateTime.parse(rules.get("minDateTime").asText().replace(" ", "T"));
+                if (dateTime.isBefore(min)) {
+                    errors.add(label + " must be on or after " + min);
+                }
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+
+        if (rules.has("maxDateTime") && !rules.get("maxDateTime").asText("").isBlank()) {
+            try {
+                LocalDateTime max = LocalDateTime.parse(rules.get("maxDateTime").asText().replace(" ", "T"));
+                if (dateTime.isAfter(max)) {
+                    errors.add(label + " must be on or before " + max);
+                }
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (rules.has("pastOnly") && rules.get("pastOnly").asBoolean() && !dateTime.isBefore(now)) {
+            errors.add(label + " must be a past date-time");
+        }
+        if (rules.has("futureOnly") && rules.get("futureOnly").asBoolean() && !dateTime.isAfter(now)) {
+            errors.add(label + " must be a future date-time");
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════

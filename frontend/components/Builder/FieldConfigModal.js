@@ -326,7 +326,13 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                 <input
                                     id="cfg-default"
                                     className="form-input"
-                                    type={local.fieldType === 'number' ? 'number' : local.fieldType === 'date' ? 'date' : 'text'}
+                                    type={
+                                        local.fieldType === 'number' ? 'number'
+                                            : local.fieldType === 'date' ? 'date'
+                                                : local.fieldType === 'time' ? 'time'
+                                                    : local.fieldType === 'date_time' ? 'datetime-local'
+                                                        : 'text'
+                                    }
                                     value={local.defaultValue || ''}
                                     onChange={(e) => set('defaultValue', e.target.value)}
                                     placeholder="Optional default"
@@ -363,7 +369,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                         )}
 
                         {/* ── Calculated Field Settings — Visual Formula Builder ── */}
-                        {local.fieldType !== 'field_group' && (local.fieldType === 'text' || local.fieldType === 'number' || local.fieldType === 'date') && (() => {
+                        {local.fieldType !== 'field_group' && (local.fieldType === 'text' || local.fieldType === 'number' || local.fieldType === 'date' || local.fieldType === 'date_time') && (() => {
                             // Live validation feedback while user types
                             const formulaError = local.isCalculated && local.formulaExpression
                                 ? CalculationEngine.validateFormula(
@@ -397,9 +403,9 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                 : [];
 
                             const typeBadge = (ft) => ({
-                                bg: ft === 'number' ? 'rgba(99,102,241,0.15)' : ft === 'date' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
-                                color: ft === 'number' ? '#818cf8' : ft === 'date' ? '#34d399' : '#fbbf24',
-                                label: ft === 'number' ? 'num' : ft === 'date' ? 'date' : 'txt',
+                                bg: ft === 'number' ? 'rgba(99,102,241,0.15)' : (ft === 'date' || ft === 'date_time') ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                                color: ft === 'number' ? '#818cf8' : (ft === 'date' || ft === 'date_time') ? '#34d399' : '#fbbf24',
+                                label: ft === 'number' ? 'num' : (ft === 'date' || ft === 'date_time') ? 'date' : 'txt',
                             });
 
                             const OPERATORS = [
@@ -458,7 +464,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                                     value={local.formulaExpression || ''}
                                                     onChange={(e) => set('formulaExpression', e.target.value)}
                                                     placeholder={
-                                                        local.fieldType === 'date' ? 'e.g.  end_date - start_date' :
+                                                        (local.fieldType === 'date' || local.fieldType === 'date_time') ? 'e.g.  end_date - start_date' :
                                                             local.fieldType === 'text' ? 'e.g.  first_name + " " + last_name' :
                                                                 'e.g.  price * quantity'
                                                     }
@@ -502,7 +508,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                                 <div>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
                                                         <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                                                            {showAllFields ? 'All Fields' : `Suggested ${local.fieldType === 'number' ? 'Numeric' : local.fieldType === 'date' ? 'Date' : 'Relevant'} Fields`} — click to insert
+                                                            {showAllFields ? 'All Fields' : `Suggested ${local.fieldType === 'number' ? 'Numeric' : (local.fieldType === 'date' || local.fieldType === 'date_time') ? 'Date' : 'Relevant'} Fields`} — click to insert
                                                         </div>
                                                         <label style={{ fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                             <input type="checkbox" checked={showAllFields} onChange={e => setShowAllFields(e.target.checked)} style={{ width: 12, height: 12 }} />
@@ -513,7 +519,7 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                                         {siblingFields
                                                             .filter(f => showAllFields ||
                                                                 (local.fieldType === 'number' ? f.fieldType === 'number' :
-                                                                    local.fieldType === 'date' ? f.fieldType === 'date' :
+                                                                    (local.fieldType === 'date' || local.fieldType === 'date_time') ? (f.fieldType === 'date' || f.fieldType === 'date_time') :
                                                                         true)) // text/others show all by default
                                                             .map(f => {
                                                                 const b = typeBadge(f.fieldType);
@@ -1395,6 +1401,86 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                                                         onChange={(e) => setValidation('notOlderThanXYears', e.target.value ? parseInt(e.target.value) : '')}
                                                         placeholder="e.g. 100"
                                                         min="1"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* ========== TIME FIELD VALIDATIONS ========== */}
+                                    {local.fieldType === 'time' && (
+                                        <>
+                                            <div className="validation-group">
+                                                <h4 className="validation-group-title">Range</h4>
+
+                                                <div className="form-group">
+                                                    <label className="form-label">Min Time</label>
+                                                    <input
+                                                        type="time"
+                                                        className="form-input"
+                                                        value={validationRules.minTime || ''}
+                                                        onChange={(e) => setValidation('minTime', e.target.value)}
+                                                    />
+                                                </div>
+
+                                                <div className="form-group">
+                                                    <label className="form-label">Max Time</label>
+                                                    <input
+                                                        type="time"
+                                                        className="form-input"
+                                                        value={validationRules.maxTime || ''}
+                                                        onChange={(e) => setValidation('maxTime', e.target.value)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* ========== DATE_TIME FIELD VALIDATIONS ========== */}
+                                    {local.fieldType === 'date_time' && (
+                                        <>
+                                            <div className="validation-group">
+                                                <h4 className="validation-group-title">Basic</h4>
+
+                                                <label className="form-checkbox-row compact">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={validationRules.pastOnly || false}
+                                                        onChange={(e) => setValidation('pastOnly', e.target.checked)}
+                                                    />
+                                                    <span>Past Only</span>
+                                                </label>
+
+                                                <label className="form-checkbox-row compact">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={validationRules.futureOnly || false}
+                                                        onChange={(e) => setValidation('futureOnly', e.target.checked)}
+                                                    />
+                                                    <span>Future Only</span>
+                                                </label>
+                                            </div>
+
+                                            <div className="validation-group">
+                                                <h4 className="validation-group-title">Range</h4>
+
+                                                <div className="form-group">
+                                                    <label className="form-label">Min Date-Time</label>
+                                                    <input
+                                                        type="datetime-local"
+                                                        className="form-input"
+                                                        value={validationRules.minDateTime || ''}
+                                                        onChange={(e) => setValidation('minDateTime', e.target.value)}
+                                                    />
+                                                </div>
+
+                                                <div className="form-group">
+                                                    <label className="form-label">Max Date-Time</label>
+                                                    <input
+                                                        type="datetime-local"
+                                                        className="form-input"
+                                                        value={validationRules.maxDateTime || ''}
+                                                        onChange={(e) => setValidation('maxDateTime', e.target.value)}
                                                     />
                                                 </div>
                                             </div>

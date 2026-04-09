@@ -1,6 +1,5 @@
 package com.formbuilder.entity;
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -15,7 +14,7 @@ import jakarta.validation.constraints.Size;
 
 /**
  * JPA entity for the fixed 'forms' metadata table.
- * Submission data is stored in a SEPARATE dynamic table (form_data_<form_code>)
+ * Submission data is stored in a SEPARATE dynamic table (form_data_<code>)
  * managed by DynamicTableService — NOT by Hibernate.
  */
 @Entity
@@ -34,7 +33,8 @@ public class FormEntity {
         ASSIGNED,
         PENDING_APPROVAL,
         REJECTED,
-        PUBLISHED
+        PUBLISHED,
+        ARCHIVED
     }
 
     @Id
@@ -42,23 +42,18 @@ public class FormEntity {
     @Column(name = "id", updatable = false, nullable = false, columnDefinition = "UUID")
     private UUID id;
 
-    @Column(name = "name", nullable = false, length = 150)
+    @Column(name = "name", nullable = false, length = 255)
     @NotBlank(message = "Form name cannot be blank")
-    @Size(max = 150, message = "Form name must not exceed 150 characters")
+    @Size(max = 255, message = "Form name must not exceed 255 characters")
     private String name;
 
-    @Column(name = "form_code", nullable = false, unique = true, length = 50)
+    @Column(name = "code", nullable = false, unique = true, length = 100, updatable = false)
     @NotBlank(message = "Form code cannot be blank")
-    @Size(max = 50, message = "Form code must not exceed 50 characters")
-    private String formCode;
+    @Size(max = 100, message = "Form code must not exceed 100 characters")
+    private String code;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
-
-    @Column(name = "table_name", nullable = false, unique = true, length = 150)
-    @NotBlank(message = "Table name cannot be blank")
-    @Size(max = 150, message = "Table name must not exceed 150 characters")
-    private String tableName;
 
     /**
      * DRAFT = form is being built; submissions are blocked.
@@ -84,7 +79,7 @@ public class FormEntity {
      * Username of the user who created this form. Used to scope dashboard
      * visibility.
      */
-    @Column(name = "created_by", length = 150)
+    @Column(name = "created_by", length = 100)
     private String createdBy;
 
     /** Assigned Builder who is allowed to start workflow for this form. */
@@ -122,14 +117,6 @@ public class FormEntity {
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
 
-    /** Soft delete flag — true = in trash, false = active. */
-    @Column(name = "is_soft_deleted", nullable = false)
-    @Builder.Default
-    private boolean softDeleted = false;
-
-    /** Timestamp when soft delete occurred. Null when active. */
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
 
     @OneToMany(mappedBy = "form", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @Builder.Default
@@ -139,7 +126,6 @@ public class FormEntity {
     // Helper to get active version (latest if multiple exist)
     public Optional<FormVersionEntity> getActiveVersion() {
         return versions.stream()
-                .filter(v -> !v.isSoftDeleted())
                 .filter(FormVersionEntity::isActive)
                 .max(Comparator.comparingInt(FormVersionEntity::getVersionNumber));
     }
@@ -153,11 +139,9 @@ public class FormEntity {
     // Note: In our model, only one is active. All others are DRAFTs.
     // Requirement 4: activación generates activation of new version, discard of
     // drafts.
-    // Helper to get draft (status = DRAFT)
     public Optional<FormVersionEntity> getDraftVersion() {
         return versions.stream()
-                .filter(v -> !v.isSoftDeleted())
-                .filter(v -> v.getStatus() == FormVersionEntity.FormVersionStatus.DRAFT)
+                .filter(v -> !v.isActive())
                 .max(Comparator.comparingInt(FormVersionEntity::getVersionNumber));
     }
 

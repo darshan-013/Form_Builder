@@ -178,6 +178,10 @@ a {
   transition: var(--transition);
 }
 
+:root {
+  --sidebar-offset: 0px;
+}
+
 a:hover {
   color: #A78BFA;
 }
@@ -774,6 +778,8 @@ select optgroup,
 /* ── Page Container ─────────────────────────────────────────── */
 .page {
   min-height: 100vh;
+  padding-left: var(--sidebar-offset);
+  transition: padding-left 0.25s ease;
 }
 
 .container {
@@ -1510,6 +1516,10 @@ body::after,
 
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 768px) {
+  .page {
+    padding-left: 0;
+  }
+
   .container {
     padding: 0 16px;
   }
@@ -2106,3 +2116,6 @@ body::after,
   border-color: rgba(0, 0, 0, 0.12);
   color: #F9FAFB;
 }
+
+
+

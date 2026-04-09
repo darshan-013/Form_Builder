@@ -2,7 +2,7 @@ import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { getForm, getFormVersions, deleteFormVersion, publishVersion } from '../../../services/api';
+import { getForm, getFormVersions, deleteFormVersion, publishVersion, isSchemaDriftError, saveSchemaDriftReport } from '../../../services/api';
 import Navbar from '../../../components/Navbar';
 import { showSuccess, showError, showWarning } from '../../../services/toast';
 
@@ -36,6 +36,23 @@ export default function VersionHistory() {
         }
     };
 
+    const redirectToDriftPage = (error, versionId, versionNumber) => {
+        saveSchemaDriftReport({
+            source: 'versions',
+            formId: id || null,
+            versionId,
+            versionNumber,
+            action: 'publishVersion',
+            at: new Date().toISOString(),
+            message: error?.message || 'Schema drift detected',
+            errorCode: error?.errorCode,
+            errors: Array.isArray(error?.errors) ? error.errors : [],
+            details: error?.details || null,
+        });
+        showError('Schema drift detected for this form version. Activation is blocked.');
+        router.push('/schema-drift');
+    };
+
     const handleActionConfirm = async () => {
         if (!confirmModal) return;
         const { type, versionId, versionNumber } = confirmModal;
@@ -53,6 +70,10 @@ export default function VersionHistory() {
                 fetchData(); // reload list
             }
         } catch (err) {
+            if (isSchemaDriftError(err)) {
+                redirectToDriftPage(err, versionId, versionNumber);
+                return;
+            }
             showError(`Action failed: ` + (err.response?.data?.message || err.message));
         } finally {
             setActioning(null);
@@ -62,6 +83,11 @@ export default function VersionHistory() {
     const statusLabel = (status) => {
         if (status === 'PUBLISHED') return '✦ Live';
         return '✎ Draft';
+    };
+
+    const resolveVersionStatus = (version) => {
+        const raw = version?.versionStatus ?? version?.status ?? (version?.isActive ? 'PUBLISHED' : 'DRAFT');
+        return String(raw).toUpperCase() === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT';
     };
 
     if (loading) return (
@@ -130,7 +156,8 @@ export default function VersionHistory() {
                 {/* ── Timeline ───────────────────────────────────────────── */}
                 <div className="timeline">
                     {versions.map((v, index) => {
-                        const st = v.status.toLowerCase(); // 'published' | 'draft'
+                        const normalizedStatus = resolveVersionStatus(v);
+                        const st = normalizedStatus.toLowerCase(); // 'published' | 'draft'
                         const isLast = index === versions.length - 1;
                         return (
                             <div key={v.id} className={`tl-item ${st}`}>
@@ -148,7 +175,7 @@ export default function VersionHistory() {
                                     <div className="card-top">
                                         <div className="card-title-row">
                                             <span className="v-num">v{v.versionNumber}</span>
-                                            <span className={`badge badge-${st}`}>{statusLabel(v.status)}</span>
+                                            <span className={`badge badge-${st}`}>{statusLabel(normalizedStatus)}</span>
                                         </div>
                                         <div className="card-actions">
                                             {st === 'draft' && (

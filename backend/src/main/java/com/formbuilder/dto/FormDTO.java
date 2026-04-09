@@ -6,16 +6,23 @@ import java.util.List;
 import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 @Data
 public class FormDTO {
-    @NotBlank(message = "Form name cannot be blank")
-    @Size(max = 150, message = "Form name must not exceed 150 characters")
+    @NotBlank(message = "Form name is required")
+    @Size(min = 3, max = 255, message = "Form name must be between 3 and 255 characters")
+    @Pattern(
+            regexp = "^[A-Za-z_][A-Za-z0-9_ ]*$",
+            message = "Form name must start with a letter or underscore and contain only letters, numbers, spaces, and underscores"
+    )
     private String name;
  
-    @Size(max = 50, message = "Form code must not exceed 50 characters")
-    private String formCode;
+    @NotBlank(message = "Form code is required")
+    @Size(max = 100, message = "Form code must not exceed 100 characters")
+    @Pattern(regexp = "^[a-z_]+$", message = "Code must contain only lowercase letters and underscores. Numbers and special characters are not allowed.")
+    private String code;
 
     private String description;
 

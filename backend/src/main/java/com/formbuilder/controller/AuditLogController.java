@@ -18,8 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 @RestController
 @RequestMapping(AppConstants.API_LOGS)
@@ -42,7 +42,9 @@ public class AuditLogController {
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String user,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
 
         // Use a more robust check for Admin role
         boolean isAdmin = userRoleService.userHasRole(auth.getName(), "Admin");
@@ -53,8 +55,10 @@ public class AuditLogController {
                     .body(Map.of("error", "Only Admin can access the full system audit trail."));
         }
 
-        List<Map<String, Object>> logs = auditLogService.getAdminLogs(action, user, fromDate, toDate);
-        return ResponseEntity.ok(logs);
+        int safePage = normalizePage(page);
+        int safeSize = normalizeSize(size);
+        AuditLogService.PagedResult result = auditLogService.getAdminLogsPaged(action, user, fromDate, toDate, safePage, safeSize);
+        return ResponseEntity.ok(toPagedResponse(result.content(), safePage, safeSize, result.totalElements()));
     }
 
     /**
@@ -67,7 +71,9 @@ public class AuditLogController {
             @RequestParam(required = false) Integer roleId,
             @RequestParam(required = false) String user,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
 
         boolean isAdmin = userRoleService.userHasRole(auth.getName(), "Admin");
         boolean isRoleAdmin = userRoleService.userHasRole(auth.getName(), "Role Administrator");
@@ -78,8 +84,34 @@ public class AuditLogController {
                     .body(Map.of("error", "Only Admin or Role Administrator can access role assignment logs."));
         }
 
-        List<Map<String, Object>> logs = auditLogService.getRoleAssignmentLogs(roleId, user, fromDate, toDate);
-        return ResponseEntity.ok(logs);
+        int safePage = normalizePage(page);
+        int safeSize = normalizeSize(size);
+        AuditLogService.PagedResult result = auditLogService.getRoleAssignmentLogsPaged(roleId, user, fromDate, toDate, safePage, safeSize);
+        return ResponseEntity.ok(toPagedResponse(result.content(), safePage, safeSize, result.totalElements()));
+    }
+
+    private int normalizePage(Integer page) {
+        return page == null || page < AppConstants.DEFAULT_PAGE ? AppConstants.DEFAULT_PAGE : page;
+    }
+
+    private int normalizeSize(Integer size) {
+        if (size == null || size <= 0) {
+            return AppConstants.DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(size, AppConstants.MAX_PAGE_SIZE);
+    }
+
+    private Map<String, Object> toPagedResponse(List<Map<String, Object>> content, int page, int size, long totalElements) {
+        int totalPages = size <= 0 ? 0 : (int) Math.ceil((double) totalElements / size);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("content", content);
+        response.put("page", page);
+        response.put("size", size);
+        response.put("totalElements", totalElements);
+        response.put("totalPages", totalPages);
+        response.put("hasPrevious", page > 0);
+        response.put("hasNext", page + 1 < totalPages);
+        return response;
     }
 }
 

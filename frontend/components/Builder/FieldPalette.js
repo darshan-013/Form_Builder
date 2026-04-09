@@ -12,6 +12,8 @@ const FIELD_TYPES = [
     { type: 'text', label: 'Text', icon: '𝐓', iconClass: 'icon-text', desc: 'Short or long text input' },
     { type: 'number', label: 'Number', icon: '#', iconClass: 'icon-number', desc: 'Numeric value' },
     { type: 'date', label: 'Date', icon: '📅', iconClass: 'icon-date', desc: 'Date picker' },
+    { type: 'time', label: 'Time', icon: '🕒', iconClass: 'icon-date', desc: 'Time picker' },
+    { type: 'date_time', label: 'Date & Time', icon: '📆', iconClass: 'icon-date', desc: 'Date-time picker' },
     { type: 'boolean', label: 'Boolean', icon: '✓', iconClass: 'icon-boolean', desc: 'True / False toggle' },
     { type: 'dropdown', label: 'Dropdown', icon: '▼', iconClass: 'icon-dropdown', desc: 'Select from dropdown list' },
     { type: 'radio', label: 'Radio', icon: '◉', iconClass: 'icon-radio', desc: 'Single choice radio buttons' },
@@ -45,53 +47,57 @@ export default function FieldPalette({ canAddField = true, canAddGroup = true })
 
     return (
         <aside className="builder-palette">
-            <p className="palette-section-title">📁 Sections</p>
+            <div className="palette-block">
+                <p className="palette-section-title">Layout & Content</p>
+                <div className="palette-grid">
+                    {SECTION_TYPES.map(({ type, label, icon, iconClass, desc }) => (
+                        <div
+                            key={type}
+                            id={`palette-${type}`}
+                            className={`palette-field palette-field-section ${!canAddGroup ? 'palette-field-disabled' : ''}`}
+                            draggable={canAddGroup}
+                            onDragStart={(e) => handleDragStart(e, type)}
+                            title={!canAddGroup ? 'Maximum of 10 sections reached' : desc}
+                        >
+                            <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
+                            <span className="palette-field-label">{label}</span>
+                        </div>
+                    ))}
 
-            {SECTION_TYPES.map(({ type, label, icon, iconClass, desc }) => (
-                <div
-                    key={type}
-                    id={`palette-${type}`}
-                    className={`palette-field palette-field-section ${!canAddGroup ? 'palette-field-disabled' : ''}`}
-                    draggable={canAddGroup}
-                    onDragStart={(e) => handleDragStart(e, type)}
-                    title={!canAddGroup ? 'Maximum of 10 sections reached' : desc}
-                >
-                    <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
-                    <span>{label}</span>
+                    {STATIC_TYPES.map(({ type, label, icon, iconClass, desc }) => (
+                        <div
+                            key={type}
+                            id={`palette-${type}`}
+                            className={`palette-field palette-field-static ${!canAddField ? 'palette-field-disabled' : ''}`}
+                            draggable={canAddField}
+                            onDragStart={(e) => handleDragStart(e, type)}
+                            title={!canAddField ? 'Maximum of 50 fields reached' : desc}
+                        >
+                            <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
+                            <span className="palette-field-label">{label}</span>
+                        </div>
+                    ))}
                 </div>
-            ))}
+            </div>
 
-            <p className="palette-section-title" style={{ marginTop: 16 }}>Field Types</p>
-
-            {FIELD_TYPES.map(({ type, label, icon, iconClass, desc }) => (
-                <div
-                    key={type}
-                    id={`palette-${type}`}
-                    className={`palette-field ${!canAddField ? 'palette-field-disabled' : ''}`}
-                    draggable={canAddField}
-                    onDragStart={(e) => handleDragStart(e, type)}
-                    title={!canAddField ? 'Maximum of 50 fields reached' : desc}
-                >
-                    <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
-                    <span>{label}</span>
+            <div className="palette-block">
+                <p className="palette-section-title">Question Fields</p>
+                <div className="palette-grid">
+                    {FIELD_TYPES.map(({ type, label, icon, iconClass, desc }) => (
+                        <div
+                            key={type}
+                            id={`palette-${type}`}
+                            className={`palette-field ${!canAddField ? 'palette-field-disabled' : ''}`}
+                            draggable={canAddField}
+                            onDragStart={(e) => handleDragStart(e, type)}
+                            title={!canAddField ? 'Maximum of 50 fields reached' : desc}
+                        >
+                            <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
+                            <span className="palette-field-label">{label}</span>
+                        </div>
+                    ))}
                 </div>
-            ))}
-
-            <p className="palette-section-title" style={{ marginTop: 16 }}>Static Elements</p>
-
-            {STATIC_TYPES.map(({ type, label, icon, iconClass, desc }) => (
-                <div
-                    key={type}
-                    id={`palette-${type}`}
-                    className={`palette-field palette-field-static ${!canAddField ? 'palette-field-disabled' : ''}`}
-                    draggable={canAddField}
-                    onDragStart={(e) => handleDragStart(e, type)}
-                    title={!canAddField ? 'Maximum of 50 fields reached' : desc}
-                >
-                    <span className={`palette-field-icon ${iconClass}`}>{icon}</span>
-                    <span>{label}</span>
-                </div>
-            ))}
+            </div>
 
 
             <p className="palette-hint">

@@ -1,329 +1,88 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/router';
+import { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import FieldPalette from '../../components/Builder/FieldPalette';
-import Canvas from '../../components/Builder/Canvas';
-import FieldConfigModal from '../../components/Builder/FieldConfigModal';
-import StaticFieldModal from '../../components/Builder/StaticFieldModal';
-import GroupConfigModal from '../../components/Builder/GroupConfigModal';
-import { assignBuilder, createForm, getVisibilityCandidates, getWorkflowCandidates } from '../../services/api';
-import { toastSuccess, toastError } from '../../services/toast';
-import CustomValidationsPanel from '../../components/Builder/CustomValidationsPanel';
-import { useAuth } from '../../context/AuthContext';
+import { useRouter } from 'next/router';
+import { toastError } from '../../services/toast';
 
-const STATIC_TYPES = new Set(['section_header', 'label_text', 'description_block', 'page_break']);
+const CODE_REGEX = /^[a-z_]+$/;
+const FORM_NAME_ALLOWED_REGEX = /^[A-Za-z_][A-Za-z0-9_ ]*$/;
+const NEW_FORM_META_KEY = 'builder_new_form_meta_v1';
 
-/**
- * New Form Builder Page — /builder/new
- */
+const normalizeCode = (value = '') => value.toLowerCase().trim();
+const sanitizeFormName = (value = '') => value.replace(/[^A-Za-z0-9_ ]+/g, '').replace(/\s{2,}/g, ' ');
+
+const getFormNameError = (value, { requireValue = false } = {}) => {
+    const normalized = sanitizeFormName(value).trim();
+    if (!normalized) {
+        return requireValue ? 'Form name is required.' : '';
+    }
+    if (normalized.length < 3) {
+        return 'Form name must be at least 3 characters.';
+    }
+    if (!FORM_NAME_ALLOWED_REGEX.test(normalized)) {
+        return 'Form name must start with a letter or underscore and contain only letters, numbers, spaces, and underscores.';
+    }
+    return '';
+};
+
+const getCodeError = (value, { requireValue = false } = {}) => {
+    const normalized = normalizeCode(value);
+    if (!normalized) {
+        return requireValue ? 'Code is required and must use lowercase letters and underscores only.' : '';
+    }
+    if (!CODE_REGEX.test(normalized)) {
+        return 'Code must contain only lowercase letters and underscores. Numbers and special characters are not allowed.';
+    }
+    return '';
+};
+
 export default function NewBuilderPage() {
     const router = useRouter();
-    const { hasRole } = useAuth();
-    const isViewer = hasRole('Viewer');
     const [formName, setFormName] = useState('');
+    const [nameError, setNameError] = useState('');
+    const [code, setCode] = useState('');
+    const [codeError, setCodeError] = useState('');
     const [formDescription, setFormDescription] = useState('');
-    const [fields, setFields] = useState([]);
-    const [groups, setGroups] = useState([]);
     const [saving, setSaving] = useState(false);
-    const [allowMultipleSubmissions, setAllowMultipleSubmissions] = useState(true);
-    const [expiresAt, setExpiresAt] = useState('');
-    // removed visibility state
-    const [showSettings, setShowSettings] = useState(false);
-    const [saveSuccess, setSaveSuccess] = useState(false);
-    const [activeView, setActiveView] = useState('canvas');
-    const [customValidationRules, setCustomValidationRules] = useState([]);
 
-    // Resizable panels state
-    const [leftWidth, setLeftWidth] = useState(264);
-    const [rightWidth, setRightWidth] = useState(340);
-    const [resizing, setResizing] = useState(null); // 'left' or 'right'
+    const handleCreate = async (e) => {
+        e.preventDefault();
 
-    useEffect(() => {
-        if (!resizing) return;
+        const normalizedName = sanitizeFormName(formName).trim();
+        const normalizedCode = normalizeCode(code);
+        const formNameValidationError = getFormNameError(normalizedName, { requireValue: true });
+        const validationError = getCodeError(normalizedCode, { requireValue: true });
 
-        const handleMouseMove = (e) => {
-            if (resizing === 'left') {
-                const newWidth = Math.max(160, Math.min(450, e.clientX));
-                setLeftWidth(newWidth);
-            } else if (resizing === 'right') {
-                const newWidth = Math.max(280, Math.min(500, window.innerWidth - e.clientX));
-                setRightWidth(newWidth);
-            }
-        };
-
-        const handleMouseUp = () => {
-            setResizing(null);
-            document.body.classList.remove('is-resizing');
-        };
-
-        document.body.classList.add('is-resizing');
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, [resizing]);
-
-
-    const dynamicFields = useMemo(() => 
-        fields.filter(f => !STATIC_TYPES.has(f.fieldType)),
-    [fields]);
-
-    // active configuration tracking
-    const [editField, setEditFieldState] = useState(null);
-    const [editStaticField, setEditStaticFieldState] = useState(null);
-    const [editGroupConfig, setEditGroupConfigState] = useState(null);
-
-    const setEditField = (f) => {
-        setEditFieldState(f);
-        if (f) { setEditStaticFieldState(null); setEditGroupConfigState(null); }
-    };
-
-    const setEditStaticField = (f) => {
-        setEditStaticFieldState(f);
-        if (f) { setEditFieldState(null); setEditGroupConfigState(null); }
-    };
-
-    const setEditGroupConfig = (g) => {
-        setEditGroupConfigState(g);
-        if (g) { setEditFieldState(null); setEditStaticFieldState(null); }
-    };
-
-    // ── Role-based form access ──
-    const [builderCandidates, setBuilderCandidates] = useState([]);
-    const [showBuilderModal, setShowBuilderModal] = useState(false);
-    const [selectedBuilderId, setSelectedBuilderId] = useState('');
-    const [pendingDto, setPendingDto] = useState(null);
-
-    // ── User-based form access ──
-    const [allowedUsers, setAllowedUsers] = useState([]);
-    const [availableUsers, setAvailableUsers] = useState([]);
-    const [userSearch, setUserSearch] = useState('');
-
-    useEffect(() => {
-        if (!isViewer) {
-            getVisibilityCandidates()
-                .then((res) => {
-                    const users = Array.isArray(res?.users) ? res.users : [];
-                    setAvailableUsers(users);
-                })
-                .catch(() => setAvailableUsers([]));
+        if (formNameValidationError) {
+            setNameError(formNameValidationError);
+            toastError(formNameValidationError);
+            return;
         }
 
-        if (isViewer) {
-            getWorkflowCandidates()
-                .then((res) => {
-                    const builders = Array.isArray(res?.builders) ? res.builders : [];
-                    setBuilderCandidates(builders);
-                })
-                .catch(() => {
-                    setBuilderCandidates([]);
-                });
+        if (validationError) {
+            setCodeError(validationError);
+            toastError('Please provide a valid form code.');
+            return;
         }
-    }, [isViewer]);
 
-    const filteredVisibilityUsers = useMemo(() => {
-        const q = userSearch.trim().toLowerCase();
-        const selectedIds = new Set(allowedUsers.map(u => String(u.id ?? u.username)));
-        const source = availableUsers.filter(u => !selectedIds.has(String(u.id ?? u.username)));
-        if (!q) return source.slice(0, 12);
-        return source.filter(u => {
-            const username = (u.username || '').toLowerCase();
-            const name = (u.name || '').toLowerCase();
-            return username.includes(q) || name.includes(q);
-        }).slice(0, 12);
-    }, [availableUsers, allowedUsers, userSearch]);
-
-    function addAllowedUser(user) {
-        if (!user) return;
-        setAllowedUsers(prev => {
-            const exists = prev.some(u =>
-                (u.id != null && user.id != null && Number(u.id) === Number(user.id)) ||
-                (u.username && user.username && u.username.toLowerCase() === user.username.toLowerCase())
-            );
-            if (exists) return prev;
-            return [...prev, { id: user.id ?? null, username: user.username || '', name: user.name || '' }];
-        });
-        setUserSearch('');
-    }
-
-    function removeAllowedUser(user) {
-        setAllowedUsers(prev => prev.filter(u => {
-            if (user.id != null && u.id != null) return Number(u.id) !== Number(user.id);
-            return (u.username || '').toLowerCase() !== (user.username || '').toLowerCase();
-        }));
-    }
-
-    function clearAllowedUsers() {
-        setAllowedUsers([]);
-    }
-
-    function buildDto() {
-        const dynamicFields = [];
-        const staticFields = [];
-
-        fields.forEach((f, i) => {
-            if (STATIC_TYPES.has(f.fieldType)) {
-                staticFields.push({
-                    id: f.id,
-                    fieldType: f.fieldType,
-                    data: f.data || '',
-                    fieldOrder: i,
-                });
-            } else {
-                dynamicFields.push({
-                    id: f.id,
-                    fieldKey: f.fieldKey || `field_${i}`,
-                    label: f.label || `Field ${i + 1}`,
-                    fieldType: f.fieldType,
-                    required: f.required,
-                    defaultValue: f.defaultValue || null,
-                    validationRegex: f.validationRegex || null,
-                    validationJson: f.validationJson || null,
-                    rulesJson: f.rulesJson || null,
-                    uiConfigJson: f.uiConfigJson || null,
-                    sharedOptionsId: f.sharedOptionsId || null,
-                    fieldOrder: i,
-                    isCalculated: f.isCalculated || false,
-                    formulaExpression: f.isCalculated ? (f.formulaExpression || null) : null,
-                    precision: f.isCalculated ? (f.precision ?? 2) : 2,
-                    lockAfterCalculation: f.isCalculated ? (f.lockAfterCalculation || false) : false,
-                    parentGroupKey: f.parentGroupKey || null,
-                    dependencies: f.dependencies || [],
-                    disabled: f.disabled || false,
-                    readOnly: f.readOnly || false,
-                    groupId: f.groupId || null,
-                });
-            }
-        });
-
-        return {
-            name: formName.trim(),
-            description: formDescription.trim() || null,
-            fields: dynamicFields,
-            staticFields,
-            groups: groups.map((g, i) => ({
-                id: g.id,
-                groupTitle: g.groupTitle || 'Untitled Section',
-                groupDescription: g.groupDescription || '',
-                groupOrder: i,
-                rulesJson: g.rulesJson || null,
-            })),
-            allowMultipleSubmissions,
-            allowedUsers,
-            showTimestamp: true,
-            expiresAt: expiresAt ? expiresAt : null,
-            customValidationRules: customValidationRules.map(r => ({
-                scope: r.scope,
-                fieldKey: r.fieldKey,
-                expression: r.expression,
-                errorMessage: r.errorMessage,
-                executionOrder: r.executionOrder
-            }))
-        };
-    }
-
-    async function submitCreate(dto, builderIdForViewer = null) {
         setSaving(true);
         try {
-            const created = await createForm(dto);
+            const pendingMeta = {
+                name: normalizedName,
+                code: normalizedCode,
+                description: formDescription.trim() || null,
+            };
 
-            if (isViewer) {
-                await assignBuilder(created.id, Number(builderIdForViewer));
+            if (typeof window !== 'undefined') {
+                window.sessionStorage.setItem(NEW_FORM_META_KEY, JSON.stringify(pendingMeta));
             }
 
-            setSaveSuccess(true);
-            toastSuccess('Form Created Successfully! 🎉');
-
-            setTimeout(() => {
-                router.push('/dashboard');
-            }, 800);
+            router.push('/builder/new-form');
         } catch (err) {
-            toastError(err.message || 'Failed to create form.');
+            toastError(err.message || 'Failed to continue to builder.');
             setSaving(false);
         }
-    }
-
-
-    const updateField = (updated) => {
-        setFields((prev) => prev.map((f) => (f.id === updated.id ? { ...updated } : f)));
-        setEditField(null);
     };
-
-    const updateStaticField = (updated) => {
-        setFields((prev) => prev.map((f) => (f.id === updated.id ? { ...updated } : f)));
-        setEditStaticField(null);
-    };
-
-    const updateGroup = (updatedGroup) => {
-        setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? { ...updatedGroup } : g)));
-        setEditGroupConfig(null);
-    };
-
-    const handleSave = async () => {
-        if (!formName.trim()) {
-            toastError("Form name is required.");
-            return;
-        }
-
-        // Validate field labels
-        const dynamicFields = fields.filter(f => !STATIC_TYPES.has(f.fieldType));
-        const missingLabel = dynamicFields.some(f => !f.label || !f.label.trim());
-        if (missingLabel) {
-            toastError("All fields must have a label.");
-            return;
-        }
-
-        const dto = buildDto();
-
-        if (isViewer) {
-            if (!Array.isArray(builderCandidates) || builderCandidates.length === 0) {
-                toastError('No Builder is available right now. Please contact admin.');
-                return;
-            }
-            setPendingDto(dto);
-            setSelectedBuilderId('');
-            setShowBuilderModal(true);
-            return;
-        }
-
-        await submitCreate(dto);
-    };
-
-    const handleViewerConfirmBuilder = async () => {
-        if (!selectedBuilderId) {
-            toastError('Please select a Builder.');
-            return;
-        }
-        if (!pendingDto) {
-            toastError('Form data is missing. Please try saving again.');
-            return;
-        }
-
-        setShowBuilderModal(false);
-        await submitCreate(pendingDto, selectedBuilderId);
-        setPendingDto(null);
-    };
-
-    const totalCount = fields.length;
-    const dynamicCount = fields.filter(f => !STATIC_TYPES.has(f.fieldType)).length;
-    const staticCount = fields.filter(f => STATIC_TYPES.has(f.fieldType) && f.fieldType !== 'page_break').length;
-    const pageBreakCount = fields.filter(f => f.fieldType === 'page_break').length;
-    const pageCount = pageBreakCount + 1; // pages = breaks + 1
-    const singleSubmissionEnabled = !allowMultipleSubmissions;
-
-    // Policy 10 Limits
-    const totalValidationCount = fields.reduce((acc, f) => {
-        try {
-            const rules = JSON.parse(f.validationJson || '{}');
-            return acc + Object.values(rules).filter(v => v !== null && v !== undefined && v !== '' && v !== false).length;
-        } catch (e) { return acc; }
-    }, 0);
-
-    const canAddField = dynamicCount < 50 && totalValidationCount < 100;
-    const canAddGroup = groups.length < 10;
 
     return (
         <>
@@ -331,326 +90,108 @@ export default function NewBuilderPage() {
                 <title>New Form — FormCraft Builder</title>
             </Head>
 
-            <div className="builder-page" style={{ gridTemplateColumns: `${leftWidth}px 1fr ${rightWidth}px` }}>
-                {showBuilderModal && (
-                    <div className="confirm-dialog" onClick={() => !saving && setShowBuilderModal(false)}>
-                        <div className="confirm-box builder-assign-modal" onClick={(e) => e.stopPropagation()}>
-                            <div className="confirm-icon">🧭</div>
-                            <h3>Select Builder</h3>
-                            <p>Which Builder should verify and adopt this form?</p>
-                            <select
-                                className="form-input builder-assign-select"
-                                value={selectedBuilderId}
-                                onChange={(e) => setSelectedBuilderId(e.target.value)}
-                                disabled={saving}
-                            >
-                                <option value="">Select Builder</option>
-                                {builderCandidates.map((b) => (
-                                    <option key={b.id} value={b.id}>
-                                        {b.name || b.username} ({b.username})
-                                    </option>
-                                ))}
-                            </select>
-                            <div className="confirm-actions builder-assign-actions">
-                                <button
-                                    className="btn btn-secondary"
-                                    onClick={() => setShowBuilderModal(false)}
-                                    disabled={saving}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={handleViewerConfirmBuilder}
-                                    disabled={saving}
-                                >
-                                    {saving ? 'Saving...' : 'Confirm & Save'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ── Top Bar ─────────────────────────────────────────── */}
-                <header className="builder-topbar">
+            <div className="builder-page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+                <header className="builder-topbar" style={{ justifyContent: 'flex-start', gap: 14 }}>
                     <Link href="/dashboard" className="builder-topbar-brand" title="Back to Dashboard">
                         ⚡ FormCraft
                     </Link>
-
-                    <input
-                        id="form-name-input"
-                        className="builder-form-name-input"
-                        placeholder="Untitled Form…"
-                        value={formName}
-                        onChange={(e) => setFormName(e.target.value)}
-                        maxLength={150}
-                    />
-
-                    <input
-                        id="form-desc-input"
-                        className="builder-form-name-input"
-                        style={{ maxWidth: 240, fontWeight: 400, fontSize: 13 }}
-                        placeholder="Description (optional)"
-                        value={formDescription}
-                        onChange={(e) => setFormDescription(e.target.value)}
-                    />
-
-                    <div className="builder-topbar-actions">
-                        {/* Field count badge */}
-                        {totalCount > 0 && (
-                            <span className="badge badge-text">
-                                {dynamicCount} field{dynamicCount !== 1 ? 's' : ''}
-                                {staticCount > 0 ? ` + ${staticCount} static` : ''}
-                                {pageBreakCount > 0 ? ` · ${pageCount} pages` : ''}
-                            </span>
-                        )}
-
-                        {/* Settings button */}
-                        {!isViewer && (
-                            <div style={{ position: 'relative' }}>
-                                <button
-                                    className={`btn btn-secondary btn-sm${showSettings ? ' btn-active' : ''}`}
-                                    onClick={() => setShowSettings(v => !v)}
-                                    title="Form Settings"
-                                >
-                                    ⚙️ Settings
-                                </button>
-
-                                {/* Settings dropdown */}
-                                {showSettings && (
-                                    <>
-                                        <div className="settings-dropdown-backdrop" onClick={() => setShowSettings(false)} />
-                                        <div className="settings-dropdown">
-                                            <div className="settings-dropdown-header">
-                                                <span>⚙️ Form Settings</span>
-                                                <button className="settings-dropdown-close" onClick={() => setShowSettings(false)}>✕</button>
-                                            </div>
-
-                                            {/* Toggle: Limit to one submission */}
-                                            <div className="form-settings-toggle" onClick={() => setAllowMultipleSubmissions(v => !v)}>
-                                                <div className="form-settings-toggle-info">
-                                                    <span className="form-settings-toggle-label">🔒 Limit to one submission</span>
-                                                    <span className="form-settings-toggle-desc">
-                                                        {singleSubmissionEnabled
-                                                            ? 'Enabled: each person can submit only once per session'
-                                                            : 'Disabled: users can submit multiple times'}
-                                                    </span>
-                                                </div>
-                                                <div className={`toggle-switch${singleSubmissionEnabled ? ' toggle-on' : ''}`} role="switch" aria-checked={singleSubmissionEnabled}>
-                                                    <div className="toggle-knob" />
-                                                </div>
-                                            </div>
-
-                                            {/* Expiry date-time picker */}
-                                            <div className="form-settings-expiry">
-                                                <div className="form-settings-expiry-info">
-                                                    <span className="form-settings-toggle-label">📅 Form expiry</span>
-                                                    <span className="form-settings-toggle-desc">
-                                                        {expiresAt
-                                                            ? `Closes on ${new Date(expiresAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-                                                            : 'No expiry — form stays open indefinitely'}
-                                                    </span>
-                                                </div>
-                                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                                    <input
-                                                        type="datetime-local"
-                                                        className="form-input form-settings-date-input"
-                                                        value={expiresAt}
-                                                        min={new Date().toISOString().slice(0, 16)}
-                                                        onChange={e => setExpiresAt(e.target.value)}
-                                                        title="Set form expiry date and time"
-                                                    />
-                                                    {expiresAt && (
-                                                        <button
-                                                            className="btn btn-secondary btn-sm"
-                                                            onClick={() => setExpiresAt('')}
-                                                            title="Clear expiry"
-                                                            style={{ whiteSpace: 'nowrap', padding: '6px 10px' }}
-                                                        >
-                                                            ✕ Clear
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {!isViewer && (
-                                                <>
-                                                    {/* User-based form access */}
-                                                    <div className="form-settings-expiry">
-                                                        <div className="form-settings-expiry-info">
-                                                            <span className="form-settings-toggle-label">👥 Who can see this form?</span>
-                                                            <span className="form-settings-toggle-desc">
-                                                                {allowedUsers.length === 0
-                                                                    ? 'No explicit users selected. Default visibility rules apply.'
-                                                                    : `${allowedUsers.length} user${allowedUsers.length !== 1 ? 's' : ''} selected. Only selected users will see this published form.`}
-                                                            </span>
-                                                        </div>
-
-                                                        <div className="visibility-users-block">
-                                                            <input
-                                                                type="text"
-                                                                className="form-input visibility-users-search"
-                                                                placeholder="Search users by name or username"
-                                                                value={userSearch}
-                                                                onChange={(e) => setUserSearch(e.target.value)}
-                                                            />
-
-                                                            {filteredVisibilityUsers.length > 0 && (
-                                                                <div className="visibility-users-results">
-                                                                    {filteredVisibilityUsers.map(user => (
-                                                                        <button
-                                                                            key={`${user.id ?? 'u'}-${user.username}`}
-                                                                            type="button"
-                                                                            className="visibility-user-option"
-                                                                            onClick={() => addAllowedUser(user)}
-                                                                        >
-                                                                            <span className="visibility-user-name">{user.name || user.username}</span>
-                                                                            <span className="visibility-user-username">@{user.username}</span>
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-
-                                                            <div className="visibility-users-actions">
-                                                                <button
-                                                                    type="button"
-                                                                    className="btn btn-secondary btn-sm"
-                                                                    style={{ fontSize: 11, padding: '2px 8px' }}
-                                                                    onClick={clearAllowedUsers}
-                                                                    disabled={allowedUsers.length === 0}
-                                                                >
-                                                                    Clear users
-                                                                </button>
-                                                                <span style={{ color: 'var(--text-muted)', alignSelf: 'center' }}>
-                                                                    🔒 Admin & Role Admin always have access
-                                                                </span>
-                                                            </div>
-
-                                                            {allowedUsers.length > 0 && (
-                                                                <div className="visibility-users-chips">
-                                                                    {allowedUsers.map(user => (
-                                                                        <span key={`${user.id ?? 'u'}-${user.username}`} className="visibility-user-chip">
-                                                                            <span>{user.name || user.username}</span>
-                                                                            <span className="visibility-user-chip-username">@{user.username}</span>
-                                                                            <button
-                                                                                type="button"
-                                                                                className="visibility-user-chip-remove"
-                                                                                onClick={() => removeAllowedUser(user)}
-                                                                                aria-label={`Remove ${user.username}`}
-                                                                            >
-                                                                                ✕
-                                                                            </button>
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Preview (navigates to /preview/:id — only after save) */}
-                        <Link href="/dashboard" className="btn btn-secondary btn-sm">
-                            ← Cancel
-                        </Link>
-
-                        <button
-                            id="save-form-btn"
-                            className={`btn btn-primary btn-sm ${saveSuccess ? 'btn-success-anim' : ''}`}
-                            onClick={handleSave}
-                            disabled={saving || saveSuccess}
-                        >
-                            {saveSuccess ? '✓ Saved!' : saving ? (
-                                <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</>
-                            ) : (
-                                '💾 Save Form'
-                            )}
-                        </button>
-
-                        <div className="view-toggle">
-                            <button
-                                className={`view-toggle-btn ${activeView === 'canvas' ? 'active' : ''}`}
-                                onClick={() => setActiveView('canvas')}
-                            >
-                                🎨 Canvas
-                            </button>
-                            <button
-                                className={`view-toggle-btn ${activeView === 'validations' ? 'active' : ''}`}
-                                onClick={() => setActiveView('validations')}
-                            >
-                                🛡️ Validations
-                            </button>
-                        </div>
-                    </div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 13, marginLeft: 'auto' }}>Create a new form</span>
                 </header>
 
-                {/* ── Left Palette ─────────────────────────────────────── */}
-                <div 
-                    className={`panel-resizer left-resizer ${resizing === 'left' ? 'resizing' : ''}`}
-                    onMouseDown={() => setResizing('left')}
-                />
-                <FieldPalette canAddField={canAddField} canAddGroup={canAddGroup} />
+                <main className="builder-create-shell">
+                    <form onSubmit={handleCreate} className="builder-create-card card">
+                        <div className="builder-create-header">
+                            <span className="builder-create-kicker">New form</span>
+                            <h1 className="builder-create-title">Create your form details first</h1>
+                            <p className="builder-create-subtitle">
+                                Enter the form name, a unique lowercase code, and an optional description.
+                                After that, you’ll move into the builder to design fields. The form will be created only when you save from builder.
+                            </p>
+                        </div>
 
-                {/* ── Canvas ───────────────────────────────────────────── */}
-                <main className="builder-canvas-wrap">
-                    {activeView === 'canvas' ? (
-                        <Canvas
-                            fields={fields} setFields={setFields}
-                            groups={groups} setGroups={setGroups}
-                            setEditField={setEditField}
-                            setEditStaticField={setEditStaticField}
-                            setEditGroupConfig={setEditGroupConfig}
-                            canAddField={canAddField}
-                            canAddGroup={canAddGroup}
-                        />
-                    ) : (
-                        <div style={{ padding: '20px', height: '100%', overflowY: 'auto' }}>
-                            <CustomValidationsPanel 
-                                fields={dynamicFields} 
-                                initialRules={customValidationRules}
-                                onRulesChange={setCustomValidationRules}
-                            />
+                        <div className="builder-create-grid">
+                            <div className="builder-create-field">
+                                <label htmlFor="form-name-input">Form name</label>
+                                <input
+                                    id="form-name-input"
+                                    className="form-input"
+                                    placeholder="Untitled Form"
+                                    value={formName}
+                                    onChange={(e) => {
+                                        const nextValue = sanitizeFormName(e.target.value);
+                                        setFormName(nextValue);
+                                        setNameError(getFormNameError(nextValue));
+                                    }}
+                                    maxLength={255}
+                                    autoFocus
+                                    style={{
+                                        borderColor: nameError ? 'rgba(248, 113, 113, 0.85)' : undefined,
+                                        boxShadow: nameError ? '0 0 0 1px rgba(248, 113, 113, 0.45)' : undefined,
+                                    }}
+                                />
+                                <div className="builder-create-help" style={{ color: nameError ? '#FCA5A5' : 'var(--text-muted)' }}>
+                                    {nameError || 'Please follow these name rules:'}
+                                </div>
+                                <div className="builder-create-rules">
+                                    <div className="builder-create-rule">- Minimum 3 characters</div>
+                                    <div className="builder-create-rule">- Must start with a letter or underscore</div>
+                                    <div className="builder-create-rule">- Allowed: letters, numbers, spaces, underscore (`_`)</div>
+                                </div>
+                            </div>
+
+                            <div className="builder-create-field">
+                                <label htmlFor="form-code-input">Form code</label>
+                                <input
+                                    id="form-code-input"
+                                    className="form-input"
+                                    placeholder="employee_onboarding"
+                                    value={code}
+                                    onChange={(e) => {
+                                        const nextValue = normalizeCode(e.target.value);
+                                        setCode(nextValue);
+                                        setCodeError(getCodeError(nextValue));
+                                    }}
+                                    maxLength={100}
+                                    style={{
+                                        borderColor: codeError ? 'rgba(248, 113, 113, 0.85)' : undefined,
+                                        boxShadow: codeError ? '0 0 0 1px rgba(248, 113, 113, 0.45)' : undefined,
+                                    }}
+                                />
+                                <div className="builder-create-help" style={{ color: codeError ? '#FCA5A5' : 'var(--text-muted)' }}>
+                                    {codeError || 'Please follow these code rules:'}
+                                </div>
+                                <div className="builder-create-rules">
+                                    <div className="builder-create-rule">- Code is required</div>
+                                    <div className="builder-create-rule">- Lowercase letters and underscore (`_`) only</div>
+                                    <div className="builder-create-rule">- Numbers and special characters are not allowed</div>
+                                    <div className="builder-create-rule">- Code cannot be changed after first save</div>
+                                </div>
+                            </div>
+
+                            <div className="builder-create-field">
+                                <label htmlFor="form-description-input">Description</label>
+                                <textarea
+                                    id="form-description-input"
+                                    className="form-input"
+                                    placeholder="Optional description for the form"
+                                    value={formDescription}
+                                    onChange={(e) => setFormDescription(e.target.value)}
+                                    rows={4}
+                                    style={{ resize: 'vertical' }}
+                                />
+                            </div>
+
+                            <div className="builder-create-footer">
+                                <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+                                    Form is created only after you click Save in builder.
+                                </span>
+                                <button className="btn btn-primary" type="submit" disabled={saving} style={{ fontSize: 15, padding: '12px 20px' }}>
+                                    {saving ? 'Opening Builder…' : 'Continue to Builder'}
+                                </button>
+                            </div>
                         </div>
-                    )}
+                    </form>
                 </main>
-                <div 
-                    className={`panel-resizer right-resizer ${resizing === 'right' ? 'resizing' : ''}`}
-                    onMouseDown={() => setResizing('right')}
-                />
-                <aside className="builder-right-panel">
-                    {editField ? (
-                        <FieldConfigModal
-                            field={editField}
-                            onSave={updateField}
-                            onClose={() => setEditField(null)}
-                            siblingFields={fields.filter(f => f.id !== editField.id)}
-                        />
-                    ) : editStaticField ? (
-                        <StaticFieldModal
-                            field={editStaticField}
-                            onSave={updateStaticField}
-                            onClose={() => setEditStaticField(null)}
-                        />
-                    ) : editGroupConfig ? (
-                        <GroupConfigModal
-                            group={editGroupConfig}
-                            onSave={updateGroup}
-                            onClose={() => setEditGroupConfig(null)}
-                            siblingFields={fields}
-                        />
-                    ) : (
-                        <div className="right-panel-empty">
-                            <div className="right-panel-empty-icon">⚙️</div>
-                            <h3>Field Settings</h3>
-                            <p>Select a field or section on the canvas to configure its properties.</p>
-                        </div>
-                    )}
-                </aside>
             </div>
         </>
     );

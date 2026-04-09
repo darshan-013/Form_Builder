@@ -1,20 +1,26 @@
 -- =========================================================
--- Soft Delete Migration
--- Date: 2026-03-11
--- Adds is_soft_deleted and deleted_at columns to the forms table.
--- Dynamic submission tables are migrated automatically on first
--- access via SubmissionService.getSubmissions() (lazy migration).
+-- Form Archive Migration
+-- Date: 2026-04-09
+-- Converts legacy form soft-delete markers into explicit ARCHIVED status.
 -- =========================================================
 
--- Step 1: Add soft-delete columns to the forms table
+-- Ensure status column exists
 ALTER TABLE forms
-    ADD COLUMN IF NOT EXISTS is_soft_deleted BOOLEAN NOT NULL DEFAULT FALSE^
+    ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'DRAFT'^
 
-ALTER TABLE forms
-    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP^
+-- Migrate legacy soft-delete rows into ARCHIVED status (if legacy columns exist)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'forms' AND column_name = 'is_soft_deleted'
+    ) THEN
+        UPDATE forms
+        SET status = 'ARCHIVED'
+        WHERE is_soft_deleted = TRUE;
+    END IF;
+END $$^
 
--- Step 2: Ensure existing rows have the correct default
-UPDATE forms SET is_soft_deleted = FALSE WHERE is_soft_deleted IS NULL^
-
--- Verify (uncomment to check):
--- SELECT id, name, is_soft_deleted, deleted_at FROM forms LIMIT 10^
+-- Remove legacy soft-delete columns from forms table (forms are lifecycle-managed by status)
+ALTER TABLE forms DROP COLUMN IF EXISTS deleted_at^
+ALTER TABLE forms DROP COLUMN IF EXISTS is_soft_deleted^

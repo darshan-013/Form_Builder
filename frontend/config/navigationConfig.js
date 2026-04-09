@@ -7,6 +7,7 @@ export const navigationLinks = [
         section: 'General',
         items: [
             { label: 'Dashboard', href: '/dashboard', icon: '⌂' },
+            { label: 'Form Vault', href: '/forms/vault', icon: '🗄' },
         ]
     },
     {

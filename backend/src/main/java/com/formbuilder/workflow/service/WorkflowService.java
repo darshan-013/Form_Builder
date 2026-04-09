@@ -60,8 +60,8 @@ public class WorkflowService {
             }
         }
 
-        if (form.isSoftDeleted()) {
-            throw new IllegalStateException("Cannot start workflow for a deleted form");
+        if (form.getStatus() == FormEntity.FormStatus.ARCHIVED) {
+            throw new IllegalStateException("Cannot start workflow for an archived form");
         }
 
         if (form.getStatus() == FormEntity.FormStatus.PUBLISHED) {
@@ -161,8 +161,8 @@ public class WorkflowService {
             throw new IllegalStateException("Viewer cannot change Builder after first assignment. Contact Admin.");
         }
 
-        if (form.isSoftDeleted()) {
-            throw new IllegalStateException("Cannot assign Builder for a deleted form");
+        if (form.getStatus() == FormEntity.FormStatus.ARCHIVED) {
+            throw new IllegalStateException("Cannot assign Builder for an archived form");
         }
 
         if (form.getStatus() == FormEntity.FormStatus.PENDING_APPROVAL || form.getStatus() == FormEntity.FormStatus.PUBLISHED) {

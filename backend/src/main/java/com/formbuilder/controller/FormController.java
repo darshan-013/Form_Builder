@@ -4,6 +4,7 @@ import com.formbuilder.constants.AppConstants;
 import com.formbuilder.dto.FormDTO;
 import com.formbuilder.dto.FormFieldDTO;
 import com.formbuilder.entity.FormEntity;
+import com.formbuilder.entity.FormFieldEntity;
 import com.formbuilder.entity.FormGroupEntity;
 import com.formbuilder.entity.FormVersionEntity;
 import com.formbuilder.entity.StaticFormFieldEntity;
@@ -19,7 +20,9 @@ import com.formbuilder.workflow.service.WorkflowService;
 import com.formbuilder.workflow.entity.WorkflowStep;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -57,11 +60,13 @@ public class FormController {
 
         List<Map<String, Object>> responseList = forms.stream().map(f -> {
             Map<String, Object> map = new LinkedHashMap<>();
+            map.put("formId", f.getId());
             map.put("id", f.getId());
             map.put("name", f.getName());
-            map.put("formCode", f.getFormCode());
+            map.put("code", f.getCode());
             map.put("description", f.getDescription());
             map.put("status", f.getStatus().name());
+            map.put("activeVersion", f.getActiveVersion().map(FormVersionEntity::getVersionNumber).orElse(null));
             map.put("createdBy", f.getCreatedBy());
             map.put("createdAt", f.getCreatedAt());
             map.put("updatedAt", f.getUpdatedAt());
@@ -91,7 +96,7 @@ public class FormController {
 
         long totalForms = forms.size();
         long publishedCount = forms.stream().filter(f -> f.getStatus() == FormEntity.FormStatus.PUBLISHED).count();
-        long draftCount = totalForms - publishedCount;
+        long draftCount = forms.stream().filter(f -> f.getStatus() == FormEntity.FormStatus.DRAFT).count();
 
         long totalSubmissions = 0;
         for (FormEntity f : forms) {
@@ -166,7 +171,7 @@ public class FormController {
     public ResponseEntity<FormEntity> updateForm(
             @PathVariable UUID id,
             @RequestParam(required = false) UUID versionId,
-            @RequestBody FormDTO dto,
+            @Valid @RequestBody FormDTO dto,
             Authentication auth,
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -217,21 +222,18 @@ public class FormController {
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
+        response.put("formId", form.getId());
         response.put("id", form.getId());
+        response.put("code", form.getCode());
         response.put("activeVersionId", version.getId());
         response.put("versionNumber", version.getVersionNumber());
-        
-        String status = "DRAFT";
-        if (version.isActive()) {
-            status = "PUBLISHED";
-        } else if (version.getPublishedAt() != null) {
-            status = "DRAFT";
-        }
-        response.put("versionStatus", status);
+
+        String versionStatus = version.isActive() ? "PUBLISHED" : "DRAFT";
+        response.put("versionStatus", versionStatus);
+        response.put("isActive", version.isActive());
         // ... (rest of the fields)
         response.put("name", form.getName());
         response.put("description", form.getDescription());
-        response.put("tableName", form.getTableName());
         response.put("status", form.getStatus());
         response.put("allowedUsers", form.getAllowedUsers());
         response.put("createdBy", form.getCreatedBy());
@@ -282,19 +284,70 @@ public class FormController {
         FormEntity form = formService.getFormForAction(id, auth.getName(), isAdmin);
 
         List<Map<String, Object>> versionList = form.getVersions().stream()
-                .filter(v -> !v.isSoftDeleted())
                 .sorted((v1, v2) -> v2.getVersionNumber() - v1.getVersionNumber())
                 .map(v -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("id", v.getId());
                     m.put("versionNumber", v.getVersionNumber());
-                    m.put("status", v.getStatus().name());
+                    m.put("isActive", v.isActive());
+                    m.put("versionStatus", v.isActive() ? "PUBLISHED" : "DRAFT");
                     m.put("createdAt", v.getCreatedAt());
                     return m;
                 })
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(versionList);
+    }
+
+    @GetMapping(AppConstants.FORM_VERSION_BY_ID)
+    public ResponseEntity<Map<String, Object>> getVersionDefinition(
+            @PathVariable UUID id,
+            @PathVariable UUID versionId,
+            Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
+        FormEntity form = formService.getFormForAction(id, auth.getName(), isAdmin);
+
+        FormVersionEntity version = form.getVersions().stream()
+                .filter(v -> v.getId().equals(versionId))
+                .findFirst()
+                .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("formVersionId", version.getId());
+        response.put("versionNumber", version.getVersionNumber());
+        response.put("definitionJson", version.getDefinitionJson());
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping(AppConstants.FORM_FIELDS)
+    public ResponseEntity<List<Map<String, Object>>> listFields(
+            @PathVariable UUID formId,
+            @PathVariable UUID versionId,
+            Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
+        FormEntity form = formService.getFormForAction(formId, auth.getName(), isAdmin);
+
+        FormVersionEntity version = form.getVersions().stream()
+                .filter(v -> v.getId().equals(versionId))
+                .findFirst()
+                .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
+
+        List<Map<String, Object>> fields = version.getFields().stream()
+                .sorted(Comparator.comparingInt(FormFieldEntity::getFieldOrder))
+                .map(f -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("fieldId", f.getId());
+                    row.put("fieldKey", f.getFieldKey());
+                    row.put("label", f.getLabel());
+                    row.put("fieldType", f.getFieldType());
+                    row.put("isRequired", f.isRequired());
+                    row.put("isReadOnly", f.isReadOnly());
+                    row.put("displayOrder", f.getFieldOrder());
+                    return row;
+                }).collect(Collectors.toList());
+        return ResponseEntity.ok(fields);
     }
 
     /**
@@ -395,9 +448,9 @@ public class FormController {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
         
-        formService.updateField(formId, versionId, fieldKey, dto, auth.getName(), isAdmin);
-        
-        return ResponseEntity.ok(Map.of("fieldId", fieldKey)); // Using key as identification for now
+        FormFieldEntity updatedField = formService.updateField(formId, versionId, fieldKey, dto, auth.getName(), isAdmin);
+
+        return ResponseEntity.ok(Map.of("fieldId", updatedField.getId()));
     }
 
     /**
@@ -416,6 +469,98 @@ public class FormController {
         formService.updateValidation(formId, versionId, validationId, req, auth.getName(), isAdmin);
         
         return ResponseEntity.ok(Map.of("validationId", validationId));
+    }
+
+    @GetMapping(AppConstants.BY_ID_SUBMISSIONS)
+    public ResponseEntity<Map<String, Object>> listSubmissions(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String filter,
+            Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
+        formService.getFormForAction(id, auth.getName(), isAdmin);
+        return ResponseEntity.ok(submissionService.getSubmissionSummaries(id, page, size, sort, filter));
+    }
+
+    @PostMapping(AppConstants.BY_ID_SUBMISSIONS_BULK)
+    public ResponseEntity<Map<String, Object>> bulkSubmissionOperation(
+            @PathVariable UUID id,
+            @RequestBody Map<String, Object> req,
+            Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
+        formService.getFormForAction(id, auth.getName(), isAdmin);
+
+        String operation = req.get("operation") != null ? req.get("operation").toString() : "";
+        if (!"DELETE".equalsIgnoreCase(operation)) {
+            throw new IllegalArgumentException("Unsupported bulk operation: " + operation);
+        }
+
+        Object idsObj = req.get("submissionIds");
+        if (!(idsObj instanceof List<?> idsList)) {
+            throw new IllegalArgumentException("submissionIds must be an array of UUIDs");
+        }
+
+        int processed = 0;
+        for (Object rawId : idsList) {
+            if (rawId == null) continue;
+            try {
+                submissionService.deleteSubmission(id, UUID.fromString(rawId.toString()));
+                processed++;
+            } catch (Exception ignored) {
+                // Best-effort bulk behavior: continue processing remaining IDs.
+            }
+        }
+
+        return ResponseEntity.ok(Map.of("processed", processed));
+    }
+
+    @GetMapping(value = AppConstants.BY_ID_SUBMISSIONS_EXPORT, produces = "text/csv")
+    public ResponseEntity<String> exportSubmissionsCsv(@PathVariable UUID id, Authentication auth) {
+        Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
+        boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
+        formService.getFormForAction(id, auth.getName(), isAdmin);
+
+        Map<String, Object> firstPage = submissionService.getSubmissionSummaries(id, 0, 200, "submittedAt,desc", null);
+        long total = ((Number) firstPage.getOrDefault("total", 0)).longValue();
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> firstItems = (List<Map<String, Object>>) firstPage.getOrDefault("items", List.of());
+        rows.addAll(firstItems);
+
+        int page = 1;
+        while (rows.size() < total) {
+            Map<String, Object> nextPage = submissionService.getSubmissionSummaries(id, page++, 200, "submittedAt,desc", null);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> nextItems = (List<Map<String, Object>>) nextPage.getOrDefault("items", List.of());
+            if (nextItems.isEmpty()) break;
+            rows.addAll(nextItems);
+        }
+
+        StringBuilder csv = new StringBuilder();
+        csv.append("submissionId,status,submittedBy,submittedAt\n");
+        for (Map<String, Object> row : rows) {
+            csv.append(csvCell(row.get("submissionId"))).append(',')
+                    .append(csvCell(row.get("status"))).append(',')
+                    .append(csvCell(row.get("submittedBy"))).append(',')
+                    .append(csvCell(row.get("submittedAt")))
+                    .append('\n');
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"submissions-" + id + ".csv\"")
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .body(csv.toString());
+    }
+
+    private String csvCell(Object value) {
+        if (value == null) return "";
+        String raw = value.toString().replace("\"", "\"\"");
+        return "\"" + raw + "\"";
     }
 
     /**
@@ -464,7 +609,7 @@ public class FormController {
     }
 
 
-    /** Soft-delete only. Owner or Admin. */
+    /** Archive only. Owner or Admin. */
     @DeleteMapping(AppConstants.FORM_BY_ID)
     public ResponseEntity<Void> delete(@PathVariable UUID id, Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -480,7 +625,7 @@ public class FormController {
                 auth.getName(),
                 "FORM",
                 id.toString(),
-                "User '" + auth.getName() + "' deleted form '" + target.getName() + "'.",
+                "User '" + auth.getName() + "' archived form '" + target.getName() + "'.",
                 Map.of("formName", target.getName()),
                 null,
                 null,
@@ -545,7 +690,7 @@ public class FormController {
     }
 
     /** Publish a specific version — owner or Admin can activate a version. */
-    @PatchMapping(AppConstants.FORM_VERSION_PUBLISH)
+    @PatchMapping({AppConstants.FORM_VERSION_PUBLISH, AppConstants.FORM_VERSION_ACTIVATE})
     public ResponseEntity<Map<String, Object>> publishVersion(@PathVariable UUID id, @PathVariable UUID versionId, Authentication auth,
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -572,7 +717,7 @@ public class FormController {
                 "id", id.toString(),
                 "versionId", versionId.toString(),
                 "status", "PUBLISHED",
-                "message", "Form version activated successfully"));
+                "message", "Version activated"));
     }
 
 
@@ -614,12 +759,12 @@ public class FormController {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("id", f.getId());
             map.put("name", f.getName());
-            map.put("formCode", f.getFormCode());
+            map.put("code", f.getCode());
             map.put("description", f.getDescription());
             map.put("status", f.getStatus().name());
             map.put("createdBy", f.getCreatedBy());
             map.put("createdAt", f.getCreatedAt());
-            map.put("deletedAt", f.getDeletedAt());
+            map.put("archivedAt", f.getUpdatedAt());
             map.put("isOwner", f.getCreatedBy().equals(username));
             return map;
         }).collect(Collectors.toList());

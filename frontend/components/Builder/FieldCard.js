@@ -10,6 +10,8 @@ const TYPE_META = {
     text: { label: 'Text', cls: 'badge-text' },
     number: { label: 'Number', cls: 'badge-number' },
     date: { label: 'Date', cls: 'badge-date' },
+    time: { label: 'Time', cls: 'badge-date' },
+    date_time: { label: 'Date & Time', cls: 'badge-date' },
     boolean: { label: 'Boolean', cls: 'badge-boolean' },
     dropdown: { label: 'Dropdown', cls: 'badge-dropdown' },
     radio: { label: 'Radio', cls: 'badge-radio' },

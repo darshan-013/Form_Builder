@@ -42,8 +42,16 @@
     height: auto; padding: 10px 12px; gap: 8px;
     border-right: none; border-bottom: 1px solid rgba(255,255,255,0.07);
   }
-  .palette-section-title { display: none; }
-  .palette-field { margin-bottom: 0; flex-shrink: 0; white-space: nowrap; }
+  .palette-block { min-width: 280px; flex-shrink: 0; }
+  .palette-section-title { display: block; margin-bottom: 8px; }
+  .palette-grid { grid-template-columns: repeat(2, minmax(110px, 1fr)); gap: 8px; }
+  .palette-field {
+    margin-bottom: 0;
+    min-height: 82px;
+    padding: 10px 8px;
+    white-space: normal;
+  }
+  .palette-field-label { font-size: 12px; }
   .palette-hint  { display: none; }
 
   .builder-canvas-wrap { grid-column: 1; grid-row: 3; padding: 14px; }

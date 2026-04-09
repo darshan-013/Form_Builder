@@ -60,6 +60,7 @@ public class MenuService {
         // General Section
         MenuDto general = MenuDto.builder().section("General").items(new ArrayList<>()).build();
         general.getItems().add(MenuDto.MenuItemDto.builder().label("Dashboard").href("/dashboard").icon("🏠").build());
+        general.getItems().add(MenuDto.MenuItemDto.builder().label("Form Vault").href("/forms/vault").icon("🗄").build());
         menu.add(general);
 
         // Management Section

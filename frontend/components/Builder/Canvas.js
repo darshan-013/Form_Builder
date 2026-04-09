@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { motion } from 'framer-motion';
 import FieldCard from './FieldCard';
 import GroupContainer from './GroupContainer';
 
@@ -26,6 +27,36 @@ export default function Canvas({
     const [dropIndex, setDropIndex] = useState(null);
     const [dropPos, setDropPos] = useState(null);
     const canvasRef = useRef(null);
+
+    const clearDragUiState = () => {
+        setDraggingIndex(null);
+        setDropIndex(null);
+        setDropPos(null);
+        setIsOverCanvas(false);
+        if (typeof document !== 'undefined') {
+            document.body.classList.remove('builder-dragging');
+        }
+    };
+
+    useEffect(() => {
+        const onDragEnd = () => clearDragUiState();
+        document.addEventListener('dragend', onDragEnd);
+        return () => document.removeEventListener('dragend', onDragEnd);
+    }, []);
+
+    const setCustomDragPreview = (e, item, isGroup) => {
+        if (typeof document === 'undefined') return;
+        const ghost = document.createElement('div');
+        ghost.className = `drag-ghost-preview ${isGroup ? 'drag-ghost-group' : 'drag-ghost-field'}`;
+        ghost.textContent = isGroup
+            ? `Section: ${item.groupTitle || 'Untitled Section'}`
+            : `${(item.label || 'Untitled field')} • ${(item.fieldType || '').toUpperCase()}`;
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 18, 18);
+        requestAnimationFrame(() => {
+            if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
+        });
+    };
 
     // ── Group operations ──────────────────────────────────────────────────────
 
@@ -162,9 +193,39 @@ export default function Canvas({
         // Existing field being moved into group
         const draggingFieldId = e.dataTransfer.getData('field-id');
         if (draggingFieldId) {
-            setFields((prev) => prev.map((f) => 
-                f.id === draggingFieldId ? { ...f, groupId, parentGroupKey: null } : f
-            ));
+            setFields((prev) => {
+                const moved = prev.find((f) => f.id === draggingFieldId);
+                if (!moved) return prev;
+
+                const sourceGroupId = moved.groupId;
+                const targetList = prev
+                    .filter((f) => f.groupId === groupId && f.id !== draggingFieldId)
+                    .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
+                targetList.push({ ...moved, groupId, parentGroupKey: null });
+
+                const targetOrder = new Map(targetList.map((f, i) => [f.id, i]));
+
+                let sourceOrder = null;
+                if (sourceGroupId && sourceGroupId !== groupId) {
+                    const sourceList = prev
+                        .filter((f) => f.groupId === sourceGroupId && f.id !== draggingFieldId)
+                        .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
+                    sourceOrder = new Map(sourceList.map((f, i) => [f.id, i]));
+                }
+
+                return prev.map((f) => {
+                    if (f.id === draggingFieldId) {
+                        return { ...f, groupId, parentGroupKey: null, fieldOrder: targetOrder.get(f.id) ?? f.fieldOrder };
+                    }
+                    if (targetOrder.has(f.id)) {
+                        return { ...f, fieldOrder: targetOrder.get(f.id) };
+                    }
+                    if (sourceOrder && sourceOrder.has(f.id)) {
+                        return { ...f, fieldOrder: sourceOrder.get(f.id) };
+                    }
+                    return f;
+                });
+            });
         }
     };
 
@@ -217,11 +278,16 @@ export default function Canvas({
     // ── Card drag (REORDER) ───────────────────────────────────────────────────
 
     const handleCardDragStart = (e, item, isGroup = false) => {
+        if (typeof document !== 'undefined') {
+            document.body.classList.add('builder-dragging');
+        }
+
         if (isGroup) {
             e.dataTransfer.setData('source', 'canvas-group');
             e.dataTransfer.setData('application/x-group-id', item.id);
             e.dataTransfer.effectAllowed = 'move';
             setDraggingIndex('group-' + item.id);
+            setCustomDragPreview(e, item, true);
             return;
         }
 
@@ -231,6 +297,7 @@ export default function Canvas({
         // Use a stable identifier for draggingIndex state
         const fieldIndex = fields.findIndex(f => f.id === item.id);
         setDraggingIndex(fieldIndex);
+        setCustomDragPreview(e, item, false);
     };
 
     const handleCardDragOver = (e, index) => {
@@ -251,6 +318,54 @@ export default function Canvas({
         e.preventDefault();
         e.stopPropagation();
         const source = e.dataTransfer.getData('source');
+
+        // Reorder/move fields inside a section group.
+        if (source === 'canvas' && targetGroupId) {
+            const draggingFieldId = e.dataTransfer.getData('field-id');
+            if (draggingFieldId) {
+                setFields((prev) => {
+                    const moved = prev.find((f) => f.id === draggingFieldId);
+                    if (!moved) return prev;
+
+                    const sourceGroupId = moved.groupId;
+                    const base = prev
+                        .filter((f) => f.groupId === targetGroupId && f.id !== draggingFieldId)
+                        .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
+
+                    const insertAt = Math.max(0, Math.min(
+                        toVisualIndex + (dropPos === 'bottom' ? 1 : 0),
+                        base.length
+                    ));
+
+                    base.splice(insertAt, 0, { ...moved, groupId: targetGroupId, parentGroupKey: null });
+                    const targetOrder = new Map(base.map((f, i) => [f.id, i]));
+
+                    let sourceOrder = null;
+                    if (sourceGroupId && sourceGroupId !== targetGroupId) {
+                        const sourceList = prev
+                            .filter((f) => f.groupId === sourceGroupId && f.id !== draggingFieldId)
+                            .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
+                        sourceOrder = new Map(sourceList.map((f, i) => [f.id, i]));
+                    }
+
+                    return prev.map((f) => {
+                        if (f.id === draggingFieldId) {
+                            return { ...f, groupId: targetGroupId, parentGroupKey: null, fieldOrder: targetOrder.get(f.id) ?? f.fieldOrder };
+                        }
+                        if (targetOrder.has(f.id)) {
+                            return { ...f, fieldOrder: targetOrder.get(f.id) };
+                        }
+                        if (sourceOrder && sourceOrder.has(f.id)) {
+                            return { ...f, fieldOrder: sourceOrder.get(f.id) };
+                        }
+                        return f;
+                    });
+                });
+            }
+
+            clearDragUiState();
+            return;
+        }
 
         if (source === 'palette') {
             const fieldType = e.dataTransfer.getData('fieldType') || e.dataTransfer.getData('application/x-field-type');
@@ -306,17 +421,11 @@ export default function Canvas({
             }
         }
 
-        setDropIndex(null);
-        setDropPos(null);
-        setDraggingIndex(null);
-        setIsOverCanvas(false);
+        clearDragUiState();
     };
 
     const handleCardDragEnd = () => {
-        setDraggingIndex(null);
-        setDropIndex(null);
-        setDropPos(null);
-        setIsOverCanvas(false);
+        clearDragUiState();
     };
 
     // ── Build merged top-level items ──────────────────────────────────────────
@@ -359,6 +468,11 @@ export default function Canvas({
                                 .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
 
                             return (
+                                <motion.div
+                                    key={group.id}
+                                    layout="position"
+                                    transition={{ type: 'spring', stiffness: 520, damping: 38, mass: 0.45 }}
+                                >
                                 <GroupContainer
                                     key={group.id}
                                     group={group}
@@ -387,12 +501,18 @@ export default function Canvas({
                                     onGroupDrop={(e) => handleCardDrop(e, idx)}
                                     dropPosition={dropIndex === idx && draggingIndex !== 'group-' + group.id ? dropPos : null}
                                 />
+                                </motion.div>
                             );
                         }
 
                         // Regular field card
                         const field = item.data;
                         return (
+                            <motion.div
+                                key={field.id}
+                                layout="position"
+                                transition={{ type: 'spring', stiffness: 520, damping: 38, mass: 0.45 }}
+                            >
                             <FieldCard
                                 key={field.id}
                                 field={field}
@@ -406,6 +526,7 @@ export default function Canvas({
                                 isDragging={draggingIndex === idx}
                                 dropPosition={dropIndex === idx && draggingIndex !== idx ? dropPos : null}
                             />
+                            </motion.div>
                         );
                     })
                 )}

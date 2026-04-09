@@ -2,6 +2,106 @@
    Dashboard Styles — Dark Glassmorphism v3
    ══════════════════════════════════════════════════ */
 
+/* ── Dashboard Tabs Navigation ────────────────────── */
+.dashboard-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+  position: relative;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+  border-bottom-color: rgba(139, 92, 246, 0.3);
+}
+
+.tab-btn.tab-active {
+  color: var(--text-primary);
+  border-bottom-color: #8B5CF6;
+  background: rgba(139, 92, 246, 0.08);
+  border-radius: 8px 8px 0 0;
+}
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.15);
+  color: #C4B5FD;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tab-btn.tab-active .tab-count {
+  background: rgba(139, 92, 246, 0.25);
+  color: #E9D5FF;
+}
+
+.section-bar-archived {
+  background: linear-gradient(135deg, rgba(156, 163, 175, 0.07) 0%, rgba(107, 114, 128, 0.05) 100%);
+  border-color: rgba(156, 163, 175, 0.18);
+}
+
+[data-theme="light"] .dashboard-tabs {
+  border-bottom-color: #E5E7EB;
+}
+
+[data-theme="light"] .tab-btn {
+  color: #6B7280;
+}
+
+[data-theme="light"] .tab-btn:hover {
+  color: #111827;
+  border-bottom-color: rgba(139, 92, 246, 0.2);
+}
+
+[data-theme="light"] .tab-btn.tab-active {
+  color: #111827;
+  background: rgba(139, 92, 246, 0.06);
+  border-bottom-color: #7C3AED;
+}
+
+[data-theme="light"] .tab-count {
+  background: rgba(139, 92, 246, 0.1);
+  color: #7C3AED;
+}
+
+[data-theme="light"] .tab-btn.tab-active .tab-count {
+  background: rgba(139, 92, 246, 0.2);
+  color: #5B21B6;
+}
+
+[data-theme="light"] .section-bar-archived {
+  background: linear-gradient(135deg, rgba(156, 163, 175, 0.06) 0%, rgba(107, 114, 128, 0.04) 100%);
+  border-color: rgba(156, 163, 175, 0.2);
+}
+
 /* ── Form Grid ───────────────────────────────────── */
 .dashboard-grid {
   display: grid;
@@ -2721,3 +2821,4 @@
     min-height: 38px;
   }
 }
+

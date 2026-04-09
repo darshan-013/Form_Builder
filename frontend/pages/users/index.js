@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Navbar from '../../components/Navbar';
+import PaginationControls from '../../components/PaginationControls';
 import { getUsers, deleteUser } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -14,21 +15,30 @@ export default function UsersPage() {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [deleting, setDeleting] = useState(false);
     const [search, setSearch] = useState('');
+    const [page, setPage] = useState(0);
+    const [size, setSize] = useState(10);
+    const [totalElements, setTotalElements] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
 
     useEffect(() => {
         if (authLoading) return;
         if (!user) { router.replace('/login'); return; }
-        loadUsers();
+        loadUsers(0, size);
     }, [authLoading, user, router]);
 
-    async function loadUsers() {
+    async function loadUsers(nextPage = page, nextSize = size) {
         try {
-            const data = await getUsers();
-            const rawUsers = Array.isArray(data) ? data : [];
+            const data = await getUsers({ page: nextPage, size: nextSize });
+            const rawUsers = Array.isArray(data) ? data : (Array.isArray(data?.content) ? data.content : []);
             // Filter out users who have the 'admin' role
-            setUsers(rawUsers.filter(u => 
+            const filteredUsers = rawUsers.filter(u =>
                 !(u.roles || []).some(r => r.roleName.toLowerCase() === 'admin')
-            ));
+            );
+            setUsers(filteredUsers);
+            setPage(Array.isArray(data) ? nextPage : Number(data?.page ?? nextPage));
+            setSize(Array.isArray(data) ? nextSize : Number(data?.size ?? nextSize));
+            setTotalElements(Array.isArray(data) ? filteredUsers.length : Number(data?.totalElements ?? filteredUsers.length));
+            setTotalPages(Array.isArray(data) ? (filteredUsers.length > 0 ? 1 : 0) : Number(data?.totalPages ?? 0));
         } catch (err) {
             if (err.status === 403) {
                 toastError('You do not have permission to manage users.');
@@ -71,6 +81,11 @@ export default function UsersPage() {
 
             const base = `User "${deleteTarget.name || deleteTarget.username}" deleted.`;
             toastSuccess(impactBits.length ? `${base} Impact: ${impactBits.join(', ')}.` : base);
+            if (users.length === 1 && page > 0) {
+                await loadUsers(page - 1, size);
+            } else {
+                await loadUsers(page, size);
+            }
         } catch (err) {
             toastError(err.message || 'Failed to delete user.');
         } finally {
@@ -211,9 +226,15 @@ export default function UsersPage() {
                             </div>
                         )}
 
-                        <div style={{ marginTop: 16, fontSize: 12, color: 'var(--text-muted)' }}>
-                            Showing {filtered.length} of {users.length} users
-                        </div>
+                        <PaginationControls
+                            page={page}
+                            size={size}
+                            totalElements={totalElements}
+                            totalPages={totalPages}
+                            loading={loading}
+                            onPageChange={(nextPage) => loadUsers(nextPage, size)}
+                            onSizeChange={(nextSize) => loadUsers(0, nextSize)}
+                        />
                     </>
                 )}
             </div>

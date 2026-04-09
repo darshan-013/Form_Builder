@@ -38,6 +38,8 @@ const OPERATORS = {
     // NEW (v2)
     'changed',
   ],
+  time: ['equals', 'before', 'after', 'between', 'changed'],
+  date_time: ['equals', 'before', 'after', 'between', 'is past', 'is future', 'changed'],
   boolean: ['is true', 'is false'],
   dropdown: ['equals', 'not equals', 'in list', 'not in list',
     // NEW (v2)
@@ -172,6 +174,20 @@ function ValueInput({ fieldType, operator, options, value, onChange }) {
     );
   }
 
+  if (fieldType === 'time' && operator !== 'between') {
+    return (
+      <input type="time" className="form-input" style={style} value={value}
+        onChange={e => onChange(e.target.value)} />
+    );
+  }
+
+  if (fieldType === 'date_time' && operator !== 'between') {
+    return (
+      <input type="datetime-local" className="form-input" style={style} value={value}
+        onChange={e => onChange(e.target.value)} />
+    );
+  }
+
   if (fieldType === 'number' && operator !== 'between') {
     return (
       <input type="number" className="form-input" style={style} value={value}
@@ -181,7 +197,7 @@ function ValueInput({ fieldType, operator, options, value, onChange }) {
 
   const placeholder =
     operator === 'between'
-      ? (fieldType === 'date' ? 'YYYY-MM-DD, YYYY-MM-DD' : 'min, max  e.g. 10,50')
+      ? (fieldType === 'date' ? 'YYYY-MM-DD, YYYY-MM-DD' : fieldType === 'time' ? 'HH:mm, HH:mm' : fieldType === 'date_time' ? 'YYYY-MM-DDTHH:mm, YYYY-MM-DDTHH:mm' : 'min, max  e.g. 10,50')
       : (operator === 'in list' || operator === 'not in list')
         ? 'val1, val2, val3'
         : 'value';

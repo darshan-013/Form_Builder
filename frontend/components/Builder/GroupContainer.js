@@ -44,7 +44,7 @@ export default function GroupContainer({
             types.includes('application/x-field-index') ||
             types.includes('fieldType') ||
             types.includes('dragIndex')) {
-            e.dataTransfer.dropEffect = 'copy';
+            e.dataTransfer.dropEffect = types.includes('dragIndex') ? 'move' : 'copy';
             setDragOver(true);
         }
     };
@@ -63,16 +63,25 @@ export default function GroupContainer({
         onDropFieldIntoGroup(e, group.id);
     };
 
+    const handleGroupDragStart = (e) => {
+        // Only start section drag from header/handle interactions.
+        if (!e.target.closest('.group-container-header')) {
+            e.preventDefault();
+            return;
+        }
+        if (typeof onGroupDragStart === 'function') {
+            onGroupDragStart(e);
+        }
+    };
+
     return (
         <div
             className={`group-container ${dragOver ? 'group-container--drag-over' : ''} ${dropPosition === 'top' ? 'drag-over-top' : ''} ${dropPosition === 'bottom' ? 'drag-over-bottom' : ''}`}
-            draggable
-            onDragStart={onGroupDragStart}
             onDragOver={onGroupDragOver}
             onDrop={onGroupDrop}
         >
             {/* ── Header ──────────────────────────────────────────────────── */}
-            <div className="group-container-header">
+            <div className="group-container-header" draggable onDragStart={handleGroupDragStart}>
                 <span className="group-drag-handle" title="Drag to reorder">⠿</span>
 
                 {editingTitle ? (

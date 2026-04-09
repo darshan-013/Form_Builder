@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import FormRenderer from '../../components/FormRenderer';
-import { getFormRender, submitForm } from '../../services/api';
+import { getFormRender, submitForm, isSchemaDriftError, saveSchemaDriftReport } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 
 /**
@@ -108,6 +108,21 @@ export default function SubmitPage() {
         });
     }, [id, form]);
 
+    const redirectToDriftPage = (error) => {
+        saveSchemaDriftReport({
+            source: 'submit',
+            formId: id || null,
+            action: 'submit',
+            at: new Date().toISOString(),
+            message: error?.message || 'Schema drift detected',
+            errorCode: error?.errorCode,
+            errors: Array.isArray(error?.errors) ? error.errors : [],
+            details: error?.details || null,
+        });
+        toastError('Schema drift detected for this form. Submission is temporarily blocked.');
+        router.push('/schema-drift');
+    };
+
     const handleSubmit = async (values) => {
         try {
             // F1/F3 Compliance: Pass formVersionId to ensure authority checks
@@ -123,14 +138,24 @@ export default function SubmitPage() {
             toastSuccess('Form submitted successfully! 🎉');
             setSubmitted(true);
         } catch (err) {
+            if (isSchemaDriftError(err)) {
+                redirectToDriftPage(err);
+                return;
+            }
+
             // F1: Version Mismatch (409 Conflict returned by B2/B3 guards)
-            if (err?.status === 409 && err.message?.includes("VERSION_MISMATCH")) {
+            if (err?.status === 409 && err.message?.includes('VERSION_MISMATCH')) {
                 setVersionMismatch(true);
                 toastError('The form version has changed. Please refresh.');
                 return;
             }
 
-            if (err?.status === 409) {
+            // Single-submit conflict only (do not treat SCHEMA_DRIFT as already submitted)
+            if (
+                err?.status === 409 &&
+                err?.errorCode === 'CONFLICT' &&
+                String(err?.message || '').toLowerCase().includes('already submitted')
+            ) {
                 localStorage.setItem(`submitted_${id}`, '1');
                 setAlreadySubmitted(true);
                 toastError('You have already submitted this form.');

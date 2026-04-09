@@ -393,15 +393,29 @@ const ProfilePage = () => {
 
             <style jsx>{`
                 .profile-page-wrapper {
-                    min-height: 100vh;
+                    height: 100vh;
                     background: var(--bg-base);
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                    --sidebar-top-offset: 0px;
+                }
+                @media (min-width: 1024px) {
+                    .profile-page-wrapper {
+                        --sidebar-top-offset: 74px;
+                    }
                 }
                 .main-layout {
                     display: flex;
+                    flex: 1;
+                    min-height: 0;
+                    overflow: hidden;
                 }
                 .content-area {
                     flex: 1;
                     padding: 40px;
+                    min-height: 0;
+                    overflow-y: auto;
                 }
                 .profile-container {
                     max-width: 1000px;

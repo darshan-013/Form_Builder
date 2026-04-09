@@ -14,6 +14,7 @@ import java.util.UUID;
 @Builder
 public class CustomValidationRuleDTO {
     private UUID id;
+    private String validationType;
     private ValidationRuleScope scope;
     private String fieldKey;
     private String expression;

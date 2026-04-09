@@ -95,10 +95,15 @@ public class AuthController {
                     response.put("email", rbacUser.getEmail());
                     response.put("profilePic", rbacUser.getProfilePic());
 
-                    // Map roles to objects [{roleName: "..."}] to match AuthContext hasRole
-                    response.put("roles", rbacUser.getRoles().stream()
-                            .map(r -> Map.of("roleName", r.getRoleName()))
-                            .toList());
+                    List<Map<String, Object>> roleObjects = rbacUser.getRoles().stream()
+                            .map(r -> {
+                                Map<String, Object> role = new LinkedHashMap<>();
+                                role.put("roleName", r.getRoleName());
+                                return role;
+                            })
+                            .toList();
+                    response.put("roleObjects", roleObjects);
+                    response.put("roles", rbacUser.getRoles().stream().map(Role::getRoleName).toList());
 
                     // Collect and return all distinct permission keys
                     response.put("permissions", rbacUser.getAllPermissionKeys());

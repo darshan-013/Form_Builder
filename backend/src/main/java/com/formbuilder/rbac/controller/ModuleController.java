@@ -10,7 +10,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping(AppConstants.API_MODULES)
@@ -21,8 +23,18 @@ public class ModuleController {
     private final ModuleService moduleService;
 
     @GetMapping
-    public List<Module> getAllModules() {
-        return moduleService.getAllModules();
+    public ResponseEntity<?> getAllModules(
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        List<Module> allModules = moduleService.getAllModules();
+        int safePage = normalizePage(page);
+        int safeSize = normalizeSize(size);
+        long totalElements = allModules.size();
+        int from = Math.min(safePage * safeSize, allModules.size());
+        int to = Math.min(from + safeSize, allModules.size());
+        List<Module> content = allModules.subList(from, to);
+
+        return ResponseEntity.ok(toPagedResponse(content, safePage, safeSize, totalElements));
     }
 
     @PostMapping
@@ -44,5 +56,29 @@ public class ModuleController {
     @GetMapping(AppConstants.MODULE_BY_ROLE)
     public List<RoleModule> getByRole(@PathVariable Integer roleId) {
         return moduleService.getModulesByRole(roleId);
+    }
+
+    private int normalizePage(Integer page) {
+        return page == null || page < AppConstants.DEFAULT_PAGE ? AppConstants.DEFAULT_PAGE : page;
+    }
+
+    private int normalizeSize(Integer size) {
+        if (size == null || size <= 0) {
+            return AppConstants.DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(size, AppConstants.MAX_PAGE_SIZE);
+    }
+
+    private Map<String, Object> toPagedResponse(List<?> content, int page, int size, long totalElements) {
+        int totalPages = size <= 0 ? 0 : (int) Math.ceil((double) totalElements / size);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("content", content);
+        response.put("page", page);
+        response.put("size", size);
+        response.put("totalElements", totalElements);
+        response.put("totalPages", totalPages);
+        response.put("hasPrevious", page > 0);
+        response.put("hasNext", page + 1 < totalPages);
+        return response;
     }
 }

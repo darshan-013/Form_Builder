@@ -67,7 +67,7 @@ public class SubmissionController {
     /**
      * POST /api/v1/runtime/forms/{idOrCode}/submit — JSON body
      */
-    @PostMapping(value = AppConstants.RUNTIME_SUBMIT, consumes = { "application/json", "application/json;charset=UTF-8" })
+    @PostMapping(value = {AppConstants.RUNTIME_SUBMIT, AppConstants.RUNTIME_SUBMIT_V2}, consumes = { "application/json", "application/json;charset=UTF-8" })
     public ResponseEntity<?> submitJson(
             @PathVariable(name = "idOrCode") String idOrCode,
             @RequestBody(required = false) Map<String, Object> rawBody,
@@ -101,8 +101,7 @@ public class SubmissionController {
         data.remove("submissionId");
         data.remove("id");
         
-        // FormVersionId tracking if provided
-        UUID formVersionId = getUuid(data, "formVersionId");
+        // FormVersionId tracking if provided (currently ignored; server resolves active version)
         data.remove("formVersionId");
 
         if (submissionId == null) {
@@ -129,13 +128,15 @@ public class SubmissionController {
                 null
         );
 
-        return ResponseEntity.ok(Map.of("message", "Form submitted successfully"));
+        return ResponseEntity.ok(Map.of(
+                "submissionId", submissionId,
+                "status", "SUBMITTED"));
     }
 
     /**
      * GET /api/v1/runtime/forms/{idOrCode}/draft
      */
-    @GetMapping(AppConstants.RUNTIME_DRAFT)
+    @GetMapping({AppConstants.RUNTIME_DRAFT, AppConstants.RUNTIME_DRAFT_V2})
     public ResponseEntity<?> getDraft(@PathVariable(name = "idOrCode") String idOrCode, Authentication auth) {
         if (auth == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -148,7 +149,7 @@ public class SubmissionController {
     /**
      * POST /api/v1/runtime/forms/{id}/draft
      */
-    @PostMapping(AppConstants.RUNTIME_DRAFT)
+    @PostMapping({AppConstants.RUNTIME_DRAFT, AppConstants.RUNTIME_DRAFT_V2})
     public ResponseEntity<?> saveDraft(
             @PathVariable(name = "idOrCode") String idOrCode,
             @RequestBody Map<String, Object> rawBody,
@@ -175,13 +176,15 @@ public class SubmissionController {
 
         UUID id = resolveId(idOrCode);
         UUID savedId = submissionService.saveDraft(id, auth.getName(), data, submissionId);
-        return ResponseEntity.ok(Map.of("message", "Draft saved successfully", "submissionId", savedId, "timestamp", LocalDateTime.now()));
+        return ResponseEntity.ok(Map.of(
+                "submissionId", savedId,
+                "status", "DRAFT"));
     }
 
     /**
      * POST /api/v1/runtime/forms/{idOrCode}/submit — multipart/form-data (file uploads)
      */
-    @PostMapping(value = AppConstants.RUNTIME_SUBMIT, consumes = "multipart/form-data")
+    @PostMapping(value = {AppConstants.RUNTIME_SUBMIT, AppConstants.RUNTIME_SUBMIT_V2}, consumes = "multipart/form-data")
     public ResponseEntity<?> submitMultipart(
             @PathVariable(name = "idOrCode") String idOrCode,
             MultipartHttpServletRequest multipart,
@@ -262,7 +265,9 @@ public class SubmissionController {
                     null
             );
 
-            return ResponseEntity.ok(Map.of("message", "Form submitted successfully"));
+            return ResponseEntity.ok(Map.of(
+                    "submissionId", submissionId,
+                    "status", "SUBMITTED"));
 
         } catch (IOException e) {
             log.error("File save error for form {}", id, e);
@@ -392,8 +397,18 @@ public class SubmissionController {
         response.put("formVersionId", version.getId());
         response.put("definitionJson", version.getDefinitionJson());
         response.put("fields", version.getFields());
-        // Validations are bundled in definitionJson/fields in current architecture
-        
+        response.put("validations", version.getCustomValidationRules().stream().map(rule -> {
+            Map<String, Object> v = new LinkedHashMap<>();
+            v.put("validationId", rule.getId());
+            v.put("fieldKey", rule.getFieldKey());
+            v.put("scope", rule.getScope());
+            v.put("validationType", rule.getValidationType());
+            v.put("expression", rule.getExpression());
+            v.put("errorMessage", rule.getErrorMessage());
+            v.put("executionOrder", rule.getExecutionOrder());
+            return v;
+        }).toList());
+
         return ResponseEntity.ok(response);
     }
 

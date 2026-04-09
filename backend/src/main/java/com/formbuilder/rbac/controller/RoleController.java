@@ -49,14 +49,23 @@ public class RoleController {
          * System roles appear first, then alphabetical.
          */
         @GetMapping
-        public ResponseEntity<?> getAllRoles() {
+        public ResponseEntity<?> getAllRoles(
+                        @RequestParam(defaultValue = "0") Integer page,
+                        @RequestParam(defaultValue = "10") Integer size) {
                 List<Role> roles = roleService.getAllRoles();
 
-                List<Map<String, Object>> response = roles.stream()
+                List<Map<String, Object>> allRoles = roles.stream()
                                 .map(this::toRoleResponse)
                                 .toList();
 
-                return ResponseEntity.ok(response);
+                int safePage = normalizePage(page);
+                int safeSize = normalizeSize(size);
+                long totalElements = allRoles.size();
+                int from = Math.min(safePage * safeSize, allRoles.size());
+                int to = Math.min(from + safeSize, allRoles.size());
+                List<Map<String, Object>> content = allRoles.subList(from, to);
+
+                return ResponseEntity.ok(toPagedResponse(content, safePage, safeSize, totalElements));
         }
 
         // ── POST /api/roles ──────────────────────────────────────────────────
@@ -306,5 +315,29 @@ public class RoleController {
         /** POST /api/roles/{id}/permissions request body. */
         public static class PermissionsRequest {
                 public List<String> permissions;
+        }
+
+        private int normalizePage(Integer page) {
+                return page == null || page < AppConstants.DEFAULT_PAGE ? AppConstants.DEFAULT_PAGE : page;
+        }
+
+        private int normalizeSize(Integer size) {
+                if (size == null || size <= 0) {
+                        return AppConstants.DEFAULT_PAGE_SIZE;
+                }
+                return Math.min(size, AppConstants.MAX_PAGE_SIZE);
+        }
+
+        private Map<String, Object> toPagedResponse(List<Map<String, Object>> content, int page, int size, long totalElements) {
+                int totalPages = size <= 0 ? 0 : (int) Math.ceil((double) totalElements / size);
+                Map<String, Object> response = new LinkedHashMap<>();
+                response.put("content", content);
+                response.put("page", page);
+                response.put("size", size);
+                response.put("totalElements", totalElements);
+                response.put("totalPages", totalPages);
+                response.put("hasPrevious", page > 0);
+                response.put("hasNext", page + 1 < totalPages);
+                return response;
         }
 }

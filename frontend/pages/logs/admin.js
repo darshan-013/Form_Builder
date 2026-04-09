@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Navbar from '../../components/Navbar';
+import PaginationControls from '../../components/PaginationControls';
 import { getAdminLogs } from '../../services/api';
 import { toastError } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -17,6 +18,10 @@ export default function AdminLogsPage() {
 
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(0);
+    const [size, setSize] = useState(10);
+    const [totalElements, setTotalElements] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
     const [filters, setFilters] = useState({
         action: '',
         user: '',
@@ -34,15 +39,20 @@ export default function AdminLogsPage() {
             router.replace('/dashboard');
             return;
         }
-        loadLogs(filters);
+        loadLogs(filters, 0, size);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [authLoading, user]);
 
-    async function loadLogs(currentFilters) {
+    async function loadLogs(currentFilters, nextPage = page, nextSize = size) {
         setLoading(true);
         try {
-            const data = await getAdminLogs(currentFilters);
-            setRows(Array.isArray(data) ? data : []);
+            const data = await getAdminLogs({ ...currentFilters, page: nextPage, size: nextSize });
+            const content = Array.isArray(data) ? data : (Array.isArray(data?.content) ? data.content : []);
+            setRows(content);
+            setPage(Array.isArray(data) ? nextPage : Number(data?.page ?? nextPage));
+            setSize(Array.isArray(data) ? nextSize : Number(data?.size ?? nextSize));
+            setTotalElements(Array.isArray(data) ? content.length : Number(data?.totalElements ?? content.length));
+            setTotalPages(Array.isArray(data) ? (content.length > 0 ? 1 : 0) : Number(data?.totalPages ?? 0));
         } catch (err) {
             toastError(err.message || 'Failed to load admin logs.');
         } finally {
@@ -52,13 +62,15 @@ export default function AdminLogsPage() {
 
     function applyFilters(e) {
         e.preventDefault();
-        loadLogs(filters);
+        setPage(0);
+        loadLogs(filters, 0, size);
     }
 
     function clearFilters() {
         const next = { action: '', user: '', fromDate: '', toDate: '' };
         setFilters(next);
-        loadLogs(next);
+        setPage(0);
+        loadLogs(next, 0, size);
     }
 
     return (
@@ -147,6 +159,16 @@ export default function AdminLogsPage() {
                         </tbody>
                     </table>
                 </div>
+
+                <PaginationControls
+                    page={page}
+                    size={size}
+                    totalElements={totalElements}
+                    totalPages={totalPages}
+                    loading={loading}
+                    onPageChange={(nextPage) => loadLogs(filters, nextPage, size)}
+                    onSizeChange={(nextSize) => loadLogs(filters, 0, nextSize)}
+                />
             </div>
         </>
     );

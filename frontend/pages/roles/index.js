@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
+import PaginationControls from '../../components/PaginationControls';
 import { getRoles, deleteRole } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -15,19 +16,29 @@ export default function RolesPage() {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [deleting, setDeleting] = useState(false);
     const [search, setSearch] = useState('');
+    const [viewMode, setViewMode] = useState('all');
+    const [page, setPage] = useState(0);
+    const [size, setSize] = useState(10);
+    const [totalElements, setTotalElements] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
 
     useEffect(() => {
         if (authLoading) return;
         if (!user) { router.replace('/login'); return; }
-        loadRoles();
+        loadRoles(0, size);
     }, [authLoading, user, router]);
 
-    async function loadRoles() {
+    async function loadRoles(nextPage = page, nextSize = size) {
         try {
-            const data = await getRoles();
-            const allRoles = Array.isArray(data) ? data : [];
+            const data = await getRoles({ page: nextPage, size: nextSize });
+            const allRoles = Array.isArray(data) ? data : (Array.isArray(data?.content) ? data.content : []);
             // Filter out 'admin' role
-            setRoles(allRoles.filter(r => r.roleName.toLowerCase() !== 'admin'));
+            const visibleRoles = allRoles.filter(r => r.roleName.toLowerCase() !== 'admin');
+            setRoles(visibleRoles);
+            setPage(Array.isArray(data) ? nextPage : Number(data?.page ?? nextPage));
+            setSize(Array.isArray(data) ? nextSize : Number(data?.size ?? nextSize));
+            setTotalElements(Array.isArray(data) ? visibleRoles.length : Number(data?.totalElements ?? visibleRoles.length));
+            setTotalPages(Array.isArray(data) ? (visibleRoles.length > 0 ? 1 : 0) : Number(data?.totalPages ?? 0));
         } catch (err) {
             if (err.status === 403) {
                 toastError('You do not have permission to manage roles.');
@@ -45,8 +56,11 @@ export default function RolesPage() {
         (r.permissions || []).some(p => p.toLowerCase().includes(search.toLowerCase()))
     );
 
-    const systemRoles = filtered.filter(r => r.isSystemRole);
-    const customRoles = filtered.filter(r => !r.isSystemRole);
+    const visibleRoles = filtered.filter(r =>
+        viewMode === 'all' ? true : viewMode === 'system' ? r.isSystemRole : !r.isSystemRole
+    );
+    const systemRoles = visibleRoles.filter(r => r.isSystemRole);
+    const customRoles = visibleRoles.filter(r => !r.isSystemRole);
 
     async function handleDelete() {
         if (!deleteTarget) return;
@@ -55,6 +69,11 @@ export default function RolesPage() {
             await deleteRole(deleteTarget.id);
             setRoles(prev => prev.filter(r => r.id !== deleteTarget.id));
             toastSuccess(`Role "${deleteTarget.roleName}" deleted.`);
+            if (roles.length === 1 && page > 0) {
+                await loadRoles(page - 1, size);
+            } else {
+                await loadRoles(page, size);
+            }
         } catch (err) {
             toastError(err.message || 'Failed to delete role.');
         } finally {
@@ -163,7 +182,33 @@ export default function RolesPage() {
                         <h1>🛡️ Role Management</h1>
                         <p>Manage roles and their permission assignments</p>
                     </div>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <button
+                                type="button"
+                                className={`btn btn-sm ${viewMode === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => setViewMode('all')}
+                                aria-pressed={viewMode === 'all'}
+                            >
+                                All Roles
+                            </button>
+                            <button
+                                type="button"
+                                className={`btn btn-sm ${viewMode === 'system' ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => setViewMode('system')}
+                                aria-pressed={viewMode === 'system'}
+                            >
+                                System Roles
+                            </button>
+                            <button
+                                type="button"
+                                className={`btn btn-sm ${viewMode === 'custom' ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => setViewMode('custom')}
+                                aria-pressed={viewMode === 'custom'}
+                            >
+                                Custom Roles
+                            </button>
+                        </div>
                         <input
                             type="text"
                             className="form-input"
@@ -195,13 +240,32 @@ export default function RolesPage() {
                     </div>
                 ) : (
                     <>
-                        {renderTable(systemRoles, '🔒 System Roles')}
-                        {renderTable(customRoles, '⚙️ Custom Roles')}
-                        {filtered.length === 0 && search && (
+                        {viewMode === 'all' && renderTable(systemRoles, '🔒 System Roles')}
+                        {viewMode === 'all' && renderTable(customRoles, '⚙️ Custom Roles')}
+                        {viewMode === 'system' && renderTable(systemRoles, '🔒 System Roles')}
+                        {viewMode === 'custom' && renderTable(customRoles, '⚙️ Custom Roles')}
+                        {visibleRoles.length === 0 && (
                             <div className="roles-empty">
-                                <p>No roles match "{search}"</p>
+                                <p>
+                                    {search
+                                        ? `No roles match "${search}"${viewMode !== 'all' ? ` in ${viewMode} roles` : ''}`
+                                        : viewMode === 'system'
+                                            ? 'No system roles available.'
+                                            : viewMode === 'custom'
+                                                ? 'No custom roles available.'
+                                                : 'No roles available.'}
+                                </p>
                             </div>
                         )}
+                        <PaginationControls
+                            page={page}
+                            size={size}
+                            totalElements={totalElements}
+                            totalPages={totalPages}
+                            loading={loading}
+                            onPageChange={(nextPage) => loadRoles(nextPage, size)}
+                            onSizeChange={(nextSize) => loadRoles(0, nextSize)}
+                        />
                     </>
                 )}
             </div>

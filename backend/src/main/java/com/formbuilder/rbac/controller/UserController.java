@@ -53,7 +53,10 @@ public class UserController {
      * also excludes users who have the Admin role.
      */
     @GetMapping
-    public ResponseEntity<?> getAllUsers(Authentication auth) {
+    public ResponseEntity<?> getAllUsers(
+            Authentication auth,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
         List<User> users = userRoleService.getAllUsers();
 
         String currentUsername = auth != null ? auth.getName() : null;
@@ -62,7 +65,7 @@ public class UserController {
                 : Set.of();
         boolean iAmAdmin = myRoles.contains("Admin");
 
-        List<Map<String, Object>> response = users.stream()
+        List<Map<String, Object>> visibleUsers = users.stream()
                 .filter(u -> !u.getUsername().equals(currentUsername))
                 // Role Administrator cannot see Admin or other Role Administrator users
                 .filter(u -> {
@@ -75,7 +78,14 @@ public class UserController {
                 .map(this::toUserResponse)
                 .toList();
 
-        return ResponseEntity.ok(response);
+        int safePage = normalizePage(page);
+        int safeSize = normalizeSize(size);
+        long totalElements = visibleUsers.size();
+        int from = Math.min(safePage * safeSize, visibleUsers.size());
+        int to = Math.min(from + safeSize, visibleUsers.size());
+        List<Map<String, Object>> content = visibleUsers.subList(from, to);
+
+        return ResponseEntity.ok(toPagedResponse(content, safePage, safeSize, totalElements));
     }
 
     // ── POST /api/users ──────────────────────────────────────────────────
@@ -350,6 +360,30 @@ public class UserController {
     /** POST /api/users/{id}/roles request body. */
     public static class AssignRoleRequest {
         public Integer roleId;
+    }
+
+    private int normalizePage(Integer page) {
+        return page == null || page < AppConstants.DEFAULT_PAGE ? AppConstants.DEFAULT_PAGE : page;
+    }
+
+    private int normalizeSize(Integer size) {
+        if (size == null || size <= 0) {
+            return AppConstants.DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(size, AppConstants.MAX_PAGE_SIZE);
+    }
+
+    private Map<String, Object> toPagedResponse(List<Map<String, Object>> content, int page, int size, long totalElements) {
+        int totalPages = size <= 0 ? 0 : (int) Math.ceil((double) totalElements / size);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("content", content);
+        response.put("page", page);
+        response.put("size", size);
+        response.put("totalElements", totalElements);
+        response.put("totalPages", totalPages);
+        response.put("hasPrevious", page > 0);
+        response.put("hasNext", page + 1 < totalPages);
+        return response;
     }
 }
 

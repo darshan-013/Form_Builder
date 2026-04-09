@@ -1,6 +1,5 @@
 package com.formbuilder.exception;
 
-import com.formbuilder.dto.ValidationErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -8,10 +7,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.validation.FieldError;
 import org.springframework.dao.DataIntegrityViolationException;
 
 @Slf4j
@@ -21,7 +18,15 @@ public class GlobalExceptionHandler {
     /**
      * Standard error structure for all API responses.
      */
-    public record ErrorResponse(String errorCode, String message, List<com.formbuilder.dto.ValidationError> errors) {}
+    public record ErrorResponse(
+            String errorCode,
+            String message,
+            List<com.formbuilder.dto.ValidationError> details,
+            List<com.formbuilder.dto.ValidationError> errors) {
+        public ErrorResponse(String errorCode, String message, List<com.formbuilder.dto.ValidationError> details) {
+            this(errorCode, message, details, details);
+        }
+    }
 
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ErrorResponse> handleValidation(ValidationException ex) {
@@ -67,9 +72,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(SchemaDriftException.class)
     public ResponseEntity<ErrorResponse> handleSchemaDrift(SchemaDriftException ex) {
-        log.error("Schema drift detected: {}", ex.getMessage());
+        String detail = ex.getTableName() != null && ex.getVersionId() != null
+                ? String.format("[table=%s, version=%s]", ex.getTableName(), ex.getVersionId())
+                : "";
+        log.error("Schema drift detected {}: {}", detail, ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new ErrorResponse("SCHEMA_DRIFT", ex.getMessage(), List.of()));
+                .body(new ErrorResponse("SCHEMA_DRIFT", ex.getMessage(), ex.getDriftErrors()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -100,6 +108,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
         log.error("Data integrity violation: {}", ex.getMessage());
+        String message = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+        if (message != null) {
+            String lower = message.toLowerCase();
+            if (lower.contains("uk_forms_code") || lower.contains("forms_code_key") || lower.contains("duplicate key value") || lower.contains("forms(code)")) {
+                return ResponseEntity.badRequest().body(new ErrorResponse(
+                        "VALIDATION_ERROR",
+                        "Validation failed",
+                        List.of(new com.formbuilder.dto.ValidationError("code", "Code already exists."))));
+            }
+        }
         return ResponseEntity.badRequest().body(new ErrorResponse("DATABASE_ERROR", "A database constraint was violated.", List.of()));
     }
 

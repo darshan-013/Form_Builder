@@ -1,5 +1,6 @@
 package com.formbuilder.service;
 
+import com.formbuilder.dto.ValidationError;
 import com.formbuilder.entity.FormFieldEntity;
 import com.formbuilder.exception.SchemaDriftException;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,8 @@ public class DynamicTableService {
             Map.entry("decimal", "NUMERIC"),
             Map.entry("numeric", "NUMERIC"),
             Map.entry("date", "DATE"),
+            Map.entry("time", "TIME"),
+            Map.entry("date_time", "TIMESTAMP"),
             Map.entry("boolean", "BOOLEAN"),
             // Normalize all string fields to TEXT for easier comparison in drift detection
             Map.entry("dropdown", "TEXT"),
@@ -58,14 +61,18 @@ public class DynamicTableService {
             "ID", "CREATED_AT", "UPDATED_AT", "FORM_VERSION_ID", "IS_DRAFT", "IS_SOFT_DELETED", "DELETED_AT"
     );
 
+    private static final Set<String> DRIFT_IGNORED_COLUMNS = Set.of(
+            "id", "created_at", "updated_at", "form_version_id", "is_draft", "is_soft_deleted", "deleted_at", "user_id"
+    );
+
     // ── Table Name Generation ─────────────────────────────────────────────────
 
     /**
      * Converts a human-readable form name or code to a safe PostgreSQL table name.
-     * Format: form_data_<form_code>
+     * Format: form_data_<code>
      */
-    public String generateTableName(String formCode) {
-        String sanitized = formCode.toLowerCase()
+    public String generateTableName(String code) {
+        String sanitized = code.toLowerCase()
                 .replaceAll("[^a-z0-9]+", "_")
                 .replaceAll("^_+|_+$", "");
         if (sanitized.isEmpty()) {
@@ -243,49 +250,50 @@ public class DynamicTableService {
                     return null;
                 }, tableName.toLowerCase());
 
-        List<String> errors = new ArrayList<>();
+        List<ValidationError> errors = new ArrayList<>();
+        Set<String> expectedFieldKeys = new HashSet<>();
+
+        // 3. Metadata -> physical checks (strict)
         for (Map<String, Object> field : metadataFields) {
             String fieldKey = (String) field.get("field_key");
             String fieldType = (String) field.get("field_type");
-            
+            expectedFieldKeys.add(fieldKey);
+
             if (!actualColumns.containsKey(fieldKey)) {
-                errors.add(String.format("Column '%s' is missing", fieldKey));
+                errors.add(new ValidationError(fieldKey, "Column is missing in physical table"));
                 continue;
             }
 
             String expectedSqlType = sqlType(fieldType).toLowerCase();
             String actualSqlType = actualColumns.get(fieldKey);
-            
-            if (!isTypeCompatible(expectedSqlType, actualSqlType)) {
-                errors.add(String.format("Column '%s' type mismatch (Expected logic: %s, Database: %s)", 
-                        fieldKey, expectedSqlType, actualSqlType));
+
+            // Strict exact match: even minor type changes must be flagged as drift.
+            if (!expectedSqlType.equals(actualSqlType)) {
+                errors.add(new ValidationError(
+                        fieldKey,
+                        String.format("Type mismatch (expected: %s, actual: %s)", expectedSqlType, actualSqlType)
+                ));
+            }
+        }
+
+        // 4. Physical -> metadata checks: detect extra unexpected columns.
+        for (String actualCol : actualColumns.keySet()) {
+            if (DRIFT_IGNORED_COLUMNS.contains(actualCol)) {
+                continue;
+            }
+            if (!expectedFieldKeys.contains(actualCol)) {
+                errors.add(new ValidationError(actualCol, "Unexpected extra column exists in physical table"));
             }
         }
 
         if (!errors.isEmpty()) {
             throw new SchemaDriftException(String.format(
-                "Decision 4.3 Violation: Physical table '%s' has drifted from metadata in version %s. Errors: [%s]",
-                tableName, versionId, String.join("; ", errors)));
+                    "Decision 4.3 Violation: Physical table '%s' has drifted from metadata in version %s.",
+                    tableName, versionId),
+                    tableName,
+                    versionId,
+                    errors);
         }
-    }
-
-    private boolean isTypeCompatible(String expected, String actual) {
-        if (expected.equals("text")) {
-            return actual.equals("text") || actual.equals("character varying") || actual.equals("varchar");
-        }
-        if (expected.equals("integer")) {
-            return actual.equals("integer") || actual.equals("int4");
-        }
-        if (expected.equals("numeric")) {
-            return actual.equals("numeric") || actual.equals("decimal");
-        }
-        if (expected.equals("boolean")) {
-            return actual.equals("boolean") || actual.equals("bool");
-        }
-        if (expected.equals("date")) {
-            return actual.equals("date");
-        }
-        return actual.equals(expected);
     }
 
     /**

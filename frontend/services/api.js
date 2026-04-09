@@ -1,24 +1,46 @@
 /**
  * API service layer.
- * All requests go through Next.js rewrite proxy → Spring Boot :8080
+ * All requests go through Next.js rewrite proxy -> Spring Boot :8080
  * Session cookie (JSESSIONID) is carried automatically via credentials:'include'.
  */
 
 const BASE = '/api/v1';
+const SCHEMA_DRIFT_STORAGE_KEY = 'schema_drift_report_v1';
 
-// ── Core fetch helper ─────────────────────────────────────────
+function hasPagingParams(params) {
+    return params && (params.page !== undefined || params.size !== undefined);
+}
+
+function toQueryString(params = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+            query.set(key, String(value));
+        }
+    });
+    const raw = query.toString();
+    return raw ? `?${raw}` : '';
+}
+
+function extractContent(data) {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.content)) return data.content;
+    return [];
+}
+
+// -- Core fetch helper ----------------------------------------------------------
 
 async function request(method, path, body) {
     const opts = {
         method,
-        credentials: 'include',   // send/receive JSESSIONID cookie
+        credentials: 'include',
         headers: {},
     };
 
     if (body !== undefined) {
         if (body instanceof FormData) {
             opts.body = body;
-            // Don't set Content-Type, browser will set it with boundary for FormData
+            // Browser sets multipart boundary for FormData.
         } else {
             opts.headers['Content-Type'] = 'application/json';
             opts.body = JSON.stringify(body);
@@ -27,7 +49,6 @@ async function request(method, path, body) {
 
     const res = await fetch(`${BASE}${path}`, opts);
 
-    // No-content responses
     if (res.status === 204) return null;
 
     const data = await res.json().catch(() => ({ error: res.statusText }));
@@ -35,26 +56,51 @@ async function request(method, path, body) {
     if (!res.ok) {
         const err = new Error(data?.error || data?.message || 'Request failed');
         err.status = res.status;
-        err.errors = data?.errors;    // field-level validation errors array
+        err.errorCode = data?.errorCode;
+        err.errors = data?.errors;
+        err.details = data;
         throw err;
     }
 
     return data;
 }
 
-// ── Auth ──────────────────────────────────────────────────────
+// -- Global session expiry handler (client-side routing) ----------------------
 
-/**
- * Login via Spring Security formLogin().
- * Must send application/x-www-form-urlencoded (not JSON).
- */
+// Detect session expiry from 401 responses and redirect to login
+if (typeof window !== 'undefined') {
+    // Store original request function
+    const originalRequest = request;
+    
+    // Wrap request to handle 401 with session expiry detection
+    const wrappedRequest = async (method, path, body) => {
+        try {
+            return await originalRequest(method, path, body);
+        } catch (err) {
+            if (err.status === 401) {
+                // Check if this looks like a session expiry (not just missing auth)
+                const isSessionExpiry = (err.message === 'Authentication required' || 
+                                        err.details?.error === 'Authentication required');
+                if (isSessionExpiry && typeof window !== 'undefined') {
+                    // Only redirect if not already on login page
+                    if (!window.location.pathname.startsWith('/login')) {
+                        window.location.href = '/login?expired=true';
+                    }
+                }
+            }
+            throw err;
+        }
+    };
+}
+
+// -- Auth ----------------------------------------------------------------------
+
 export async function login(username, password) {
     const body = new URLSearchParams({ username, password });
     const res = await fetch(`${BASE}/auth/login`, {
         method: 'POST',
         credentials: 'include',
         body,
-        // No Content-Type header — let browser set it to application/x-www-form-urlencoded
     });
     if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -74,7 +120,7 @@ export const logout = () =>
 export const getMe = () =>
     request('GET', '/auth/me');
 
-// ── Forms ─────────────────────────────────────────────────────
+// -- Forms ---------------------------------------------------------------------
 
 export const getForms = () =>
     request('GET', '/forms');
@@ -88,17 +134,14 @@ export const getForm = (id, versionId = null) =>
 export const getFormVersions = (id) =>
     request('GET', `/forms/${id}/versions`);
 
-/** Fetch form with resolved options — public (blocks DRAFT, returns 403) */
 export const getRenderForm = (id) =>
     request('GET', `/forms/${id}/render`);
 
-/** Public form render (alias). If versionId is provided, uses the admin endpoint so drafts work. */
 export const getFormRender = (id, versionId = null) =>
     versionId
         ? request('GET', `/forms/${id}/render/admin?versionId=${versionId}`)
         : request('GET', `/forms/${id}/render`);
 
-/** Admin render — always works regardless of status (for preview page) */
 export const getFormRenderAdmin = (id, versionId = null) =>
     request('GET', `/forms/${id}/render/admin${versionId ? `?versionId=${versionId}` : ''}`);
 
@@ -114,15 +157,12 @@ export const updateForm = (id, versionId, dto) =>
 export const deleteForm = (id) =>
     request('DELETE', `/forms/${id}`);
 
-/** Publish a form — sets status = PUBLISHED */
 export const publishForm = (id) =>
     request('PATCH', `/forms/${id}/publish`);
 
-/** Publish a specific version — activates the target version */
 export const publishVersion = (formId, versionId) =>
     request('PATCH', `/forms/${formId}/versions/${versionId}/publish`);
 
-/** Unpublish a form — sets status back to DRAFT */
 export const unpublishForm = (id) =>
     request('PATCH', `/forms/${id}/unpublish`);
 
@@ -138,7 +178,7 @@ export const restoreForm = (id) =>
 export const permanentlyDeleteForm = (id) =>
     request('DELETE', `/forms/${id}/permanent`);
 
-// ── Custom Validation Rules ────────────────────────────────────
+// -- Custom Validation Rules ----------------------------------------------------
 
 export const getCustomValidations = (formId, versionId) =>
     request('GET', `/forms/${formId}/versions/${versionId}/custom-validations`);
@@ -152,8 +192,7 @@ export const deleteCustomValidation = (formId, versionId, ruleId) =>
 export const updateCustomValidation = (formId, versionId, ruleId, dto) =>
     request('PUT', `/forms/${formId}/versions/${versionId}/custom-validations/${ruleId}`, dto);
 
-
-// ── Submissions ───────────────────────────────────────────────
+// -- Submissions ----------------------------------------------------------------
 
 export async function submitForm(formId, data, submissionId = null, formVersionId = null) {
     const opts = {
@@ -162,18 +201,13 @@ export async function submitForm(formId, data, submissionId = null, formVersionI
     };
 
     const payload = { data, formVersionId };
-    if (submissionId) {
-        payload.submissionId = submissionId;
-    }
+    if (submissionId) payload.submissionId = submissionId;
 
-    // Check if data is FormData (for file uploads)
     if (data instanceof FormData) {
-        // If we have a submissionId with FormData, we append it
         if (submissionId) data.append('submissionId', submissionId);
         if (formVersionId) data.append('formVersionId', formVersionId);
         opts.body = data;
     } else {
-        // Regular JSON submission
         opts.headers = { 'Content-Type': 'application/json' };
         opts.body = JSON.stringify(payload);
     }
@@ -184,18 +218,18 @@ export async function submitForm(formId, data, submissionId = null, formVersionI
         const responseData = await res.json().catch(() => ({ error: res.statusText }));
         const err = new Error(responseData?.error || responseData?.message || 'Submission failed');
         err.status = res.status;
+        err.errorCode = responseData?.errorCode;
         err.errors = responseData?.errors;
+        err.details = responseData;
         throw err;
     }
 
     return res.json();
 }
 
-/** Get existing draft for the user */
 export const getDraft = (formId) =>
     request('GET', `/runtime/forms/${formId}/draft`);
 
-/** Save response as draft */
 export const saveDraft = (formId, data, submissionId = null) =>
     request('POST', `/runtime/forms/${formId}/draft`, { data, submissionId });
 
@@ -217,27 +251,19 @@ export const getDeletedSubmissions = (formId) =>
 export const restoreSubmission = (formId, submissionId) =>
     request('POST', `/runtime/${formId}/submissions/${submissionId}/restore`);
 
-// ── Shared Options ────────────────────────────────────────────
-// Manages the shared_options table — canonical option lists shared across form fields.
+// -- Shared Options -------------------------------------------------------------
 
-/** Create a new shared_options row. Returns {id, optionsJson, createdAt, updatedAt}. */
 export const createSharedOptions = (optionsJson) =>
     request('POST', '/shared-options', { optionsJson });
 
-/** Get a single shared_options row by id. */
 export const getSharedOptions = (id) =>
     request('GET', `/shared-options/${id}`);
 
-/** Update the options_json of a shared_options row. All linked fields reflect this instantly. */
 export const updateSharedOptions = (id, optionsJson) =>
     request('PUT', `/shared-options/${id}`, { optionsJson });
 
-// ── File Operations ───────────────────────────────────────────
+// -- File Operations ------------------------------------------------------------
 
-/**
- * Download a file by filename.
- * Opens download prompt in browser.
- */
 export async function downloadFile(filename) {
     const url = `${BASE}/files/download/${encodeURIComponent(filename)}`;
 
@@ -251,7 +277,6 @@ export async function downloadFile(filename) {
             throw new Error('File download failed');
         }
 
-        // Get filename from Content-Disposition header or use provided filename
         const contentDisposition = res.headers.get('Content-Disposition');
         let downloadFilename = filename;
 
@@ -262,7 +287,6 @@ export async function downloadFile(filename) {
             }
         }
 
-        // Create blob and trigger download
         const blob = await res.blob();
         const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -280,26 +304,20 @@ export async function downloadFile(filename) {
     }
 }
 
-/**
- * Get file URL for viewing/linking.
- * Returns the URL to view file inline (for images, PDFs, etc.)
- */
 export function getFileViewUrl(filename) {
     return `${BASE}/files/view/${encodeURIComponent(filename)}`;
 }
 
-/**
- * Get file download URL.
- * Returns the URL for direct download link.
- */
 export function getFileDownloadUrl(filename) {
     return `${BASE}/files/download/${encodeURIComponent(filename)}`;
 }
 
-// ── RBAC: Roles ───────────────────────────────────────────────
+// -- RBAC: Roles ----------------------------------------------------------------
 
-export const getRoles = () =>
-    request('GET', '/roles');
+export const getRoles = async (params = null) => {
+    const data = await request('GET', `/roles${toQueryString(params || {})}`);
+    return hasPagingParams(params) ? data : extractContent(data);
+};
 
 export const getRole = (id) =>
     request('GET', '/roles').then(roles => {
@@ -320,10 +338,12 @@ export const deleteRole = (id) =>
 export const assignPermissionsToRole = (id, permissions) =>
     request('POST', `/roles/${id}/permissions`, { permissions });
 
-// ── RBAC: Users ───────────────────────────────────────────────
+// -- RBAC: Users ----------------------------------------------------------------
 
-export const getUsers = () =>
-    request('GET', '/users');
+export const getUsers = async (params = null) => {
+    const data = await request('GET', `/users${toQueryString(params || {})}`);
+    return hasPagingParams(params) ? data : extractContent(data);
+};
 
 export const getUser = (id) =>
     request('GET', '/users').then(users => {
@@ -347,7 +367,7 @@ export const assignRoleToUser = (userId, roleId) =>
 export const removeRoleFromUser = (userId, roleId) =>
     request('DELETE', `/users/${userId}/roles/${roleId}`);
 
-// ── Profile ──────────────────────────────────────────────────
+// -- Profile --------------------------------------------------------------------
 
 export const getProfile = () =>
     request('GET', '/profile');
@@ -367,29 +387,17 @@ export const uploadProfilePhoto = (file) => {
 export const getUserPermissions = (userId) =>
     request('GET', `/users/${userId}/permissions`);
 
-// ── Audit Logs ───────────────────────────────────────────────
+// -- Audit Logs -----------------------------------------------------------------
 
 export const getAdminLogs = (filters = {}) => {
-    const params = new URLSearchParams();
-    if (filters.action) params.set('action', filters.action);
-    if (filters.user) params.set('user', filters.user);
-    if (filters.fromDate) params.set('fromDate', filters.fromDate);
-    if (filters.toDate) params.set('toDate', filters.toDate);
-    const qs = params.toString();
-    return request('GET', `/logs/admin${qs ? `?${qs}` : ''}`);
+    return request('GET', `/logs/admin${toQueryString(filters)}`);
 };
 
 export const getRoleAssignmentLogs = (filters = {}) => {
-    const params = new URLSearchParams();
-    if (filters.roleId) params.set('roleId', String(filters.roleId));
-    if (filters.user) params.set('user', filters.user);
-    if (filters.fromDate) params.set('fromDate', filters.fromDate);
-    if (filters.toDate) params.set('toDate', filters.toDate);
-    const qs = params.toString();
-    return request('GET', `/logs/role-assignments${qs ? `?${qs}` : ''}`);
+    return request('GET', `/logs/role-assignments${toQueryString(filters)}`);
 };
 
-// ── Workflow Engine ───────────────────────────────────────────
+// -- Workflow Engine -------------------------------------------------------------
 
 export const getVisibilityCandidates = () =>
     request('GET', '/forms/visibility-candidates');
@@ -438,13 +446,15 @@ export const getAdminWorkflowStatus = (filters = {}) => {
 export const getAllWorkflowStatus = () =>
     request('GET', '/workflows/all-status');
 
-// ── RBAC: Modules & Menu ──────────────────────────────────────
+// -- RBAC: Modules & Menu -------------------------------------------------------
 
 export const getMenu = () =>
     request('GET', '/menus');
 
-export const getAllModules = () =>
-    request('GET', '/modules');
+export const getAllModules = async (params = null) => {
+    const data = await request('GET', `/modules${toQueryString(params || {})}`);
+    return hasPagingParams(params) ? data : extractContent(data);
+};
 
 export const createModule = (data) =>
     request('POST', '/modules', data);
@@ -457,3 +467,33 @@ export const assignModulesToRole = (roleId, moduleIds) =>
 
 export const getModulesByRole = (roleId) =>
     request('GET', `/modules/role/${roleId}`);
+
+// -- Drift helpers ---------------------------------------------------------------
+
+export function isSchemaDriftError(err) {
+    return err?.errorCode === 'SCHEMA_DRIFT';
+}
+
+export function saveSchemaDriftReport(report) {
+    if (typeof window === 'undefined') return;
+    try {
+        window.sessionStorage.setItem(SCHEMA_DRIFT_STORAGE_KEY, JSON.stringify(report || {}));
+    } catch {
+        // best-effort cache for redirect-based UX
+    }
+}
+
+export function readSchemaDriftReport() {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = window.sessionStorage.getItem(SCHEMA_DRIFT_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+export function clearSchemaDriftReport() {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.removeItem(SCHEMA_DRIFT_STORAGE_KEY);
+}

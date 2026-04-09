@@ -27,6 +27,44 @@ const AuthContext = createContext({
     clearAuth: () => {},
 });
 
+function normalizeRoleKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+}
+
+function extractRoleNames(rawRoles) {
+    if (!Array.isArray(rawRoles)) return [];
+    return rawRoles
+        .map((r) => {
+            if (typeof r === 'string') return r;
+            if (r && typeof r === 'object') return r.roleName || r.name || r.code || '';
+            return '';
+        })
+        .map((r) => String(r || '').trim())
+        .filter(Boolean);
+}
+
+function expandRoleAliases(roleName) {
+    const key = normalizeRoleKey(roleName);
+    const aliases = new Set([key]);
+
+    if (key === 'admin' || key === 'administrator') {
+        aliases.add('formadmin');
+        aliases.add('superadmin');
+    }
+    if (key === 'roleadministrator' || key === 'roleadmin') {
+        aliases.add('rbacadmin');
+    }
+    if (key === 'viewer') {
+        aliases.add('formuser');
+        aliases.add('user');
+    }
+
+    return aliases;
+}
+
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [permissions, setPermissions] = useState([]);
@@ -41,6 +79,7 @@ export function AuthProvider({ children }) {
     const refreshAuth = useCallback(async () => {
         try {
             const data = await getMe();
+            const roleNames = extractRoleNames(data.roleObjects || data.roles);
             setUser({
                 username: data.username,
                 userId: data.userId,
@@ -48,9 +87,10 @@ export function AuthProvider({ children }) {
                 email: data.email,
                 profilePic: data.profilePic,
                 authorities: data.authorities || [],
-                role: (data.roles && data.roles.length > 0) ? data.roles[0].roleName : 'Viewer'
+                role: roleNames[0] || 'Viewer'
             });
-            setRoles(data.roles || []);
+            // Store roles in object shape for backward compatibility with existing consumers.
+            setRoles(roleNames.map((name) => ({ roleName: name })));
             setPermissions(data.permissions || []);
             return data;
         } catch {
@@ -89,7 +129,11 @@ export function AuthProvider({ children }) {
      * @returns {boolean}
      */
     const hasRole = useCallback((roleName) => {
-        return roles.some(r => r.roleName === roleName);
+        const requested = expandRoleAliases(roleName);
+        return roles.some((r) => {
+            const current = normalizeRoleKey(r?.roleName);
+            return requested.has(current);
+        });
     }, [roles]);
 
     // Auto-fetch on mount (checks if session exists)

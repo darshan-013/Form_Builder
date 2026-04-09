@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { logout } from '../services/api';
-import { toastSuccess, toastError } from '../services/toast';
-import { useTheme } from '../context/ThemeContext';
+import { toastSuccess, toastError } from '../services/toast';import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from './Sidebar';
 
@@ -118,6 +117,9 @@ export default function Navbar() {
         .navbar-role { opacity: 0.6; font-size: 0.85rem; }
         @media (max-width: 768px) {
           .navbar-user-chip { display: none; }
+        } 
+        @media (min-width: 1024px) {
+          .menu-toggle-btn { display: none; }
         }
       `}</style>
     </>

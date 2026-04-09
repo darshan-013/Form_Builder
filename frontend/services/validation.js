@@ -386,6 +386,88 @@ function validateDate(value, rules, label) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TIME
+// ═══════════════════════════════════════════════════════════════════════════════
+function parseLocalTime(raw) {
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(raw)) return null;
+  const parts = raw.split(':').map(Number);
+  const hh = parts[0], mm = parts[1], ss = parts[2] ?? 0;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59 || ss < 0 || ss > 59) return null;
+  return { hh, mm, ss, minutes: hh * 60 + mm + ss / 60 };
+}
+
+function validateTime(value, rules, label) {
+  const errors = [];
+  const raw = trimmed(value);
+
+  if (!raw) {
+    if (rules.required) errors.push(EMPTY_MSG());
+    return errors;
+  }
+
+  const t = parseLocalTime(raw);
+  if (!t) {
+    errors.push(`${label} must be a valid time`);
+    return errors;
+  }
+
+  if (rules.minTime) {
+    const min = parseLocalTime(String(rules.minTime).trim());
+    if (min && t.minutes < min.minutes) {
+      errors.push(`${label} must be at or after ${String(rules.minTime).trim()}`);
+    }
+  }
+  if (rules.maxTime) {
+    const max = parseLocalTime(String(rules.maxTime).trim());
+    if (max && t.minutes > max.minutes) {
+      errors.push(`${label} must be at or before ${String(rules.maxTime).trim()}`);
+    }
+  }
+
+  return errors;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DATE_TIME
+// ═══════════════════════════════════════════════════════════════════════════════
+function parseLocalDateTime(raw) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(raw)) return null;
+  const dt = new Date(raw);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function validateDateTime(value, rules, label) {
+  const errors = [];
+  const raw = trimmed(value);
+
+  if (!raw) {
+    if (rules.required) errors.push(EMPTY_MSG());
+    return errors;
+  }
+
+  const dt = parseLocalDateTime(raw);
+  if (!dt) {
+    errors.push(`${label} must be a valid date-time`);
+    return errors;
+  }
+
+  if (rules.minDateTime) {
+    const min = parseLocalDateTime(String(rules.minDateTime).trim());
+    if (min && dt < min) {
+      errors.push(`${label} must be on or after ${String(rules.minDateTime).trim()}`);
+    }
+  }
+  if (rules.maxDateTime) {
+    const max = parseLocalDateTime(String(rules.maxDateTime).trim());
+    if (max && dt > max) {
+      errors.push(`${label} must be on or before ${String(rules.maxDateTime).trim()}`);
+    }
+  }
+
+  return errors;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // BOOLEAN
 // ═══════════════════════════════════════════════════════════════════════════════
 function validateBoolean(value, rules, label) {
@@ -910,6 +992,8 @@ async function validateField(field, value, formData = {}, files = {}) {
     case 'text': errors = validateText(value, rules, label); break;
     case 'number': errors = validateNumber(value, rules, label); break;
     case 'date': errors = validateDate(value, rules, label); break;
+    case 'time': errors = validateTime(value, rules, label); break;
+    case 'date_time': errors = validateDateTime(value, rules, label); break;
     case 'boolean': errors = validateBoolean(value, rules, label); break;
     case 'dropdown': errors = validateDropdown(value, rules, label, opts); break;
     case 'radio': errors = validateRadio(value, rules, label, opts); break;
@@ -950,6 +1034,8 @@ function validateFieldSync(field, value, formData = {}, files = {}) {
     case 'text': errors = validateText(value, rules, label); break;
     case 'number': errors = validateNumber(value, rules, label); break;
     case 'date': errors = validateDate(value, rules, label); break;
+    case 'time': errors = validateTime(value, rules, label); break;
+    case 'date_time': errors = validateDateTime(value, rules, label); break;
     case 'boolean': errors = validateBoolean(value, rules, label); break;
     case 'dropdown': errors = validateDropdown(value, rules, label, opts); break;
     case 'radio': errors = validateRadio(value, rules, label, opts); break;

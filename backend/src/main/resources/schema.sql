@@ -35,47 +35,53 @@ COMMENT ON COLUMN shared_options.options_json IS 'JSON array: [{"label":"A","val
 -- ─────────────────────────────────────────────
 --  TABLE: forms
 --  Stores form metadata. One row per form.
---  table_name is the name of the dynamically
---  created submission table (e.g. form_a3b8d1b6).
+--  submission table is derived from code as form_data_<code>.
 -- ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS forms (
     id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    form_code     VARCHAR(50)   NOT NULL UNIQUE,  -- unique identifier e.g. "onboarding"
-    name          VARCHAR(150)  NOT NULL,
+    code          VARCHAR(100)  NOT NULL UNIQUE,  -- unique identifier e.g. "employee_onboarding"
+    name          VARCHAR(255)  NOT NULL,
     description   TEXT,
-    table_name    VARCHAR(150)  NOT NULL UNIQUE,   -- e.g. "form_data_onboarding"
+    status        VARCHAR(20)   NOT NULL DEFAULT 'DRAFT', -- DRAFT | PUBLISHED | ARCHIVED
+    created_by    VARCHAR(100)  NOT NULL,
     created_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMP     NOT NULL DEFAULT NOW()
 )^
 
 -- Ensure columns exist before commenting (for systems with older schemas)
-ALTER TABLE forms ADD COLUMN IF NOT EXISTS form_code VARCHAR(50)^
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS code VARCHAR(100)^
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'DRAFT'^
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS created_by VARCHAR(100)^
 
 COMMENT ON TABLE  forms              IS 'Master registry of every form created by admins.'^
-COMMENT ON COLUMN forms.form_code    IS 'Unique string identifier for the form, used in URL logic and table naming.'^
-COMMENT ON COLUMN forms.table_name  IS 'Name of the dedicated PostgreSQL table that stores submissions for this form.'^
+COMMENT ON COLUMN forms.code         IS 'Unique string identifier for the form, used in URL logic and table naming.'^
 
 -- ─────────────────────────────────────────────
 --  TABLE: form_versions
---  Stores snapshots of a form''s definition.
---  Only one version is ACTIVE (for rendering).
+--  Stores immutable snapshots of a form''s definition.
 -- ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS form_versions (
     id              UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
     form_id         UUID            NOT NULL REFERENCES forms(id) ON DELETE CASCADE,
-    version_number  INT             NOT NULL DEFAULT 1,
-    status          VARCHAR(20)     NOT NULL DEFAULT 'DRAFT', -- DRAFT | PUBLISHED | ARCHIVED
-    definition_json TEXT,
+    version_number  INTEGER         NOT NULL,
+    is_active       BOOLEAN         NOT NULL DEFAULT FALSE,
+    definition_json JSONB           NOT NULL DEFAULT '{}'::jsonb,
+    created_by      VARCHAR(100)    NOT NULL,
     created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
-    published_at    TIMESTAMP,
-    created_by      VARCHAR(100),
     UNIQUE(form_id, version_number)
 )^
 
 -- Ensure columns exist before indexing or usage (for systems with older schemas)
-ALTER TABLE form_versions ADD COLUMN IF NOT EXISTS published_at TIMESTAMP^
-ALTER TABLE form_versions ADD COLUMN IF NOT EXISTS created_by VARCHAR(100)^
+ALTER TABLE form_versions ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT FALSE^
+ALTER TABLE form_versions ADD COLUMN IF NOT EXISTS definition_json JSONB NOT NULL DEFAULT '{}'::jsonb^
+ALTER TABLE form_versions ADD COLUMN IF NOT EXISTS created_by VARCHAR(100) NOT NULL DEFAULT 'system'^
+ALTER TABLE form_versions DROP COLUMN IF EXISTS status^
+ALTER TABLE form_versions DROP COLUMN IF EXISTS published_at^
+ALTER TABLE form_versions DROP COLUMN IF EXISTS updated_at^
+ALTER TABLE form_versions DROP COLUMN IF EXISTS is_soft_deleted^
+ALTER TABLE form_versions DROP COLUMN IF EXISTS deleted_at^
+ALTER TABLE form_versions DROP CONSTRAINT IF EXISTS uk_form_versions_form_id_version_number^
+ALTER TABLE form_versions ADD CONSTRAINT uk_form_versions_form_id_version_number UNIQUE (form_id, version_number)^
 
 
 -- ─────────────────────────────────────────────
@@ -127,6 +133,36 @@ COMMENT ON COLUMN form_fields.field_key     IS 'Snake_case identifier used as co
 COMMENT ON COLUMN form_fields.field_type    IS 'Logical type: text→TEXT, number→INTEGER, date→DATE, boolean→BOOLEAN, dropdown→VARCHAR(255), radio→VARCHAR(255), multiple_choice→VARCHAR(255), file→TEXT.'^
 COMMENT ON COLUMN form_fields.shared_options_id IS 'FK → shared_options: all dropdown/radio options are stored there, never inline.'^
 COMMENT ON COLUMN form_fields.field_order   IS 'Zero-based render order. Builder preserves this order via drag-and-drop.'^
+
+
+-- ─────────────────────────────────────────────
+--  TABLE: field_validation
+--  Normalized validation rules per form version.
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS field_validation (
+    id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_version_id   UUID         NOT NULL REFERENCES form_versions(id) ON DELETE CASCADE,
+    field_key         VARCHAR(100),
+    validation_type   VARCHAR(50)  NOT NULL,
+    expression        TEXT         NOT NULL,
+    error_message     VARCHAR(255) NOT NULL,
+    execution_order   INTEGER      NOT NULL DEFAULT 0,
+    scope             VARCHAR(20)  NOT NULL,
+    created_at        TIMESTAMP    NOT NULL DEFAULT NOW(),
+    CONSTRAINT ck_field_validation_scope CHECK (scope IN ('FIELD', 'FORM'))
+)^
+
+CREATE INDEX IF NOT EXISTS idx_field_validation_version
+    ON field_validation (form_version_id)^
+
+CREATE INDEX IF NOT EXISTS idx_field_validation_scope
+    ON field_validation (scope)^
+
+CREATE INDEX IF NOT EXISTS idx_field_validation_order
+    ON field_validation (form_version_id, execution_order)^
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_field_validation_rule
+    ON field_validation (form_version_id, COALESCE(field_key, '__FORM__'), validation_type, execution_order, scope)^
 
 
 -- ─────────────────────────────────────────────

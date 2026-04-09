@@ -11,7 +11,6 @@ import com.formbuilder.workflow.repository.WorkflowInstanceRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.persistence.EntityManager;
@@ -190,8 +189,40 @@ public class FormService {
 
     /** Returns an active form by its unique form code. */
     public FormEntity getFormByCode(String code) {
-        return formRepo.findByFormCodeAndSoftDeletedFalse(code)
+        return formRepo.findByCodeAndStatusNot(code, FormEntity.FormStatus.ARCHIVED)
                 .orElseThrow(() -> new NoSuchElementException("Form not found with code: " + code));
+    }
+
+    private String getSubmissionTableName(FormEntity form) {
+        return dynamicTable.generateTableName(form.getCode());
+    }
+
+    private String normalizeCode(String rawCode) {
+        if (rawCode == null) return null;
+        String normalized = rawCode.trim().toLowerCase();
+        return normalized.isBlank() ? null : normalized;
+    }
+
+    private void validateCodeFormat(String code) {
+        if (code == null || code.isBlank()) {
+            throw new com.formbuilder.exception.ValidationException(Map.of(
+                    "code", List.of("Code is required.")
+            ));
+        }
+        if (!code.matches("^[a-z_]+$")) {
+            throw new com.formbuilder.exception.ValidationException(Map.of(
+                    "code", List.of("Code must contain only lowercase letters and underscores. Numbers and special characters are not allowed.")
+            ));
+        }
+    }
+
+    private void validateCreateCode(String code) {
+        validateCodeFormat(code);
+        if (formRepo.existsByCode(code)) {
+            throw new com.formbuilder.exception.ValidationException(Map.of(
+                    "code", List.of("Code already exists.")
+            ));
+        }
     }
 
     /**
@@ -251,20 +282,15 @@ public class FormService {
         validateUniqueFieldKeys(dto.getFields());
         validateTotalRules(dto.getFields());
         validateMaxGroups(dto.getGroups());
-        String formCode = dto.getFormCode();
-        if (formCode == null || formCode.isBlank()) {
-            formCode = dto.getName().toLowerCase()
-                    .replaceAll("[^a-z0-9]+", "") // SRS Decision 4.1: Non-alphanumeric characters stripped
-                    .substring(0, Math.min(dto.getName().length(), 100));
-        }
-        String tableName = dynamicTable.generateTableName(formCode);
+        String code = normalizeCode(dto.getCode());
+        validateCreateCode(code);
+        String tableName = dynamicTable.generateTableName(code);
 
         // 1. Save Form metadata
         FormEntity form = FormEntity.builder()
                 .name(dto.getName())
-                .formCode(formCode)
+                .code(code)
                 .description(dto.getDescription())
-                .tableName(tableName)
                 .createdBy(owner)
                 .allowedUsers(serializeUserList(dto.getAllowedUsers()))
                 .allowMultipleSubmissions(
@@ -281,6 +307,7 @@ public class FormService {
                 .form(savedForm)
                 .versionNumber(1)
                 .isActive(false) // Initial version is not active until published
+                .definitionJson("{}")
                 .createdBy(owner)
                 .createdAt(java.time.LocalDateTime.now())
                 .fields(new ArrayList<>())
@@ -308,8 +335,9 @@ public class FormService {
             for (CustomValidationRuleDTO ruleDto : dto.getCustomValidationRules()) {
                 CustomValidationRuleEntity rule = CustomValidationRuleEntity.builder()
                         .formVersion(savedVersion)
+                        .validationType(normalizeValidationType(ruleDto.getValidationType()))
                         .scope(ruleDto.getScope())
-                        .fieldKey(ruleDto.getFieldKey())
+                        .fieldKey(ruleDto.getScope() == CustomValidationRuleEntity.ValidationRuleScope.FORM ? null : ruleDto.getFieldKey())
                         .expression(ruleDto.getExpression())
                         .errorMessage(ruleDto.getErrorMessage())
                         .executionOrder(ruleDto.getExecutionOrder())
@@ -337,6 +365,16 @@ public class FormService {
         validateMaxGroups(dto.getGroups());
 
         FormEntity existingForm = getFormForAction(id, owner, isAdmin);
+
+        if (dto.getCode() != null && !dto.getCode().isBlank()) {
+            String incomingCode = normalizeCode(dto.getCode());
+            validateCodeFormat(incomingCode);
+            if (!Objects.equals(incomingCode, existingForm.getCode())) {
+                throw new com.formbuilder.exception.ValidationException(Map.of(
+                        "code", List.of("Code is immutable after the form is saved.")
+                ));
+            }
+        }
 
         // 0. Requirement 3.3: Field Type Stability
         // A field's type cannot be changed between versions.
@@ -379,7 +417,6 @@ public class FormService {
             log.info("Editing a PUBLISHED version of form '{}'. Automatically creating a new DRAFT.", id);
             targetVersion = copyVersionAsDraft(targetVersion);
             existingForm.getVersions().add(targetVersion);
-            isNewDraft = true;
         }
 
         FormVersionEntity activeVersion = targetVersion;
@@ -389,10 +426,7 @@ public class FormService {
         // to prevent data loss from older published versions' submissions.
         if (dto.getFields() != null) {
             for (FormFieldDTO f : dto.getFields()) {
-                // We check existing columns in the table via dynamicTable service
-                // (This logic might need to be more robust, checking the DB schema directly if possible)
-                // For now, we'll follow the existing logical check but remove dropColumn.
-                dynamicTable.addColumnIfMissing(existingForm.getTableName(), f.getFieldKey(), f.getFieldType());
+                dynamicTable.addColumnIfMissing(getSubmissionTableName(existingForm), f.getFieldKey(), f.getFieldType());
             }
         }
 
@@ -425,16 +459,18 @@ public class FormService {
         return formRepo.save(existingForm);
     }
 
-    // ── Delete / Soft Delete ────────────────────────────────────────────────
+    // ── Archive / Restore ────────────────────────────────────────────────────
 
-    /** Soft-delete only: mark form as deleted without dropping schema/data. */
+    /** Archive only: mark form as archived without dropping schema/data. */
     @Transactional
     public void deleteForm(UUID id, String owner, boolean isAdmin) {
         FormEntity form = getFormForAction(id, owner, isAdmin);
-        form.setSoftDeleted(true);
-        form.setDeletedAt(java.time.LocalDateTime.now());
+        if (submissionService.hasLiveSubmissions(id)) {
+            throw new IllegalStateException("Cannot archive a form that has live submissions.");
+        }
+        form.setStatus(FormEntity.FormStatus.ARCHIVED);
         formRepo.save(form);
-        log.info("Form '{}' soft-deleted by '{}'", form.getName(), owner);
+        log.info("Form '{}' archived by '{}'", form.getName(), owner);
     }
 
     /** Soft-delete a specific version of a form. */
@@ -452,18 +488,16 @@ public class FormService {
         if (target.isActive()) {
             throw new IllegalStateException("Cannot delete the active/published version. Unpublish it first.");
         }
-        
-        target.setSoftDeleted(true);
-        target.setDeletedAt(java.time.LocalDateTime.now());
-        versionRepo.save(target);
-        
-        log.info("Form version '{}' (v{}) soft-deleted by '{}'", form.getName(), target.getVersionNumber(), owner);
+
+        versionRepo.delete(target);
+
+        log.info("Form version '{}' (v{}) deleted by '{}'", form.getName(), target.getVersionNumber(), owner);
     }
 
-    /** Returns only soft-deleted forms. RBAC: Admin sees all, Builder sees own only. */
+    /** Returns only archived forms. RBAC: Admin sees all, Builder sees own only. */
     public List<FormEntity> getDeletedForms(String username, Set<String> roleNames) {
         boolean isAdmin = roleNames.contains("Admin") || roleNames.contains("Role Administrator");
-        List<FormEntity> allDeleted = formRepo.findAllBySoftDeletedTrueOrderByDeletedAtDesc();
+        List<FormEntity> allDeleted = formRepo.findAllArchivedOrderByUpdatedAtDesc();
 
         if (isAdmin) {
             return allDeleted;
@@ -475,34 +509,33 @@ public class FormService {
                 .collect(Collectors.toList());
     }
 
-    /** Restores a soft-deleted form. */
+    /** Restores an archived form back to DRAFT. */
     @Transactional
     public void restoreForm(UUID id, String username, boolean isAdmin) {
-        FormEntity form = formRepo.findByIdAndSoftDeletedTrue(id)
-                .orElseThrow(() -> new NoSuchElementException("Deleted form not found: " + id));
+        FormEntity form = formRepo.findByIdAndArchived(id)
+                .orElseThrow(() -> new NoSuchElementException("Archived form not found: " + id));
 
         if (!isAdmin && !username.equalsIgnoreCase(form.getCreatedBy())) {
             throw new NoSuchElementException("Access denied to restore form: " + id);
         }
 
-        form.setSoftDeleted(false);
-        form.setDeletedAt(null);
+        form.setStatus(FormEntity.FormStatus.DRAFT);
         formRepo.save(form);
-        log.info("Form '{}' restored by '{}'", form.getName(), username);
+        log.info("Form '{}' restored from ARCHIVED to DRAFT by '{}'", form.getName(), username);
     }
 
     /** Permanently deletes a form (drops table and removes record). */
     @Transactional
     public void permanentlyDeleteForm(UUID id, String username, boolean isAdmin) {
-        FormEntity form = formRepo.findByIdAndSoftDeletedTrue(id)
-                .orElseThrow(() -> new NoSuchElementException("Deleted form not found: " + id));
+        FormEntity form = formRepo.findByIdAndArchived(id)
+                .orElseThrow(() -> new NoSuchElementException("Archived form not found: " + id));
 
         if (!isAdmin && !username.equalsIgnoreCase(form.getCreatedBy())) {
             throw new NoSuchElementException("Access denied to permanently delete form: " + id);
         }
 
         // 1. Drop the dynamic table
-        dynamicTable.dropTable(form.getTableName());
+        dynamicTable.dropTable(getSubmissionTableName(form));
 
         // 2. Remove all related metadata (submissions, versions, fields, groups are handled by JPA cascades/orphanRemoval if configured, but let's be explicit if needed)
         // Actually, FormEntity has @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true) for versions.
@@ -531,7 +564,7 @@ public class FormService {
         FormVersionEntity draftVersion = draftOpt.get();
 
         // SRS Decision 4.3: Block publish if drift is detected.
-        dynamicTable.validateSchema(form.getTableName(), draftVersion.getId());
+        dynamicTable.validateSchema(getSubmissionTableName(form), draftVersion.getId());
 
         // Permission checks
         boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
@@ -556,14 +589,11 @@ public class FormService {
                 .filter(FormVersionEntity::isActive)
                 .forEach(v -> {
                     v.setActive(false);
-                    v.setStatus(FormVersionEntity.FormVersionStatus.DRAFT);
                     versionRepo.save(v);
                 });
 
         // 2. Promote DRAFT to PUBLISHED
         draftVersion.setActive(true);
-        draftVersion.setStatus(FormVersionEntity.FormVersionStatus.PUBLISHED);
-        draftVersion.setPublishedAt(java.time.LocalDateTime.now());
         versionRepo.save(draftVersion);
         updateDefinitionJson(draftVersion);
 
@@ -590,7 +620,7 @@ public class FormService {
         }
 
         // SRS Decision 4.3: Block publish if drift is detected.
-        dynamicTable.validateSchema(form.getTableName(), targetVersion.getId());
+        dynamicTable.validateSchema(getSubmissionTableName(form), targetVersion.getId());
 
         // Permission checks
         boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
@@ -615,14 +645,11 @@ public class FormService {
                 .filter(FormVersionEntity::isActive)
                 .forEach(v -> {
                     v.setActive(false);
-                    v.setStatus(FormVersionEntity.FormVersionStatus.DRAFT);
                     versionRepo.save(v);
                 });
 
         // 2. Promote target to PUBLISHED
         targetVersion.setActive(true);
-        targetVersion.setStatus(FormVersionEntity.FormVersionStatus.PUBLISHED);
-        targetVersion.setPublishedAt(java.time.LocalDateTime.now());
         versionRepo.save(targetVersion);
         updateDefinitionJson(targetVersion);
 
@@ -639,9 +666,8 @@ public class FormService {
         
         form.getPublishedVersion().ifPresent(v -> {
             v.setActive(false);
-            v.setStatus(FormVersionEntity.FormVersionStatus.DRAFT);
             versionRepo.save(v);
-            log.info("Form '{}' version {} unpublished (isActive set to false, status set to DRAFT) by '{}'", form.getName(), v.getVersionNumber(), owner);
+            log.info("Form '{}' version {} unpublished (isActive set to false) by '{}'", form.getName(), v.getVersionNumber(), owner);
         });
 
         form.setStatus(FormEntity.FormStatus.DRAFT);
@@ -698,8 +724,9 @@ public class FormService {
         
         com.formbuilder.entity.CustomValidationRuleEntity rule = com.formbuilder.entity.CustomValidationRuleEntity.builder()
                 .formVersion(version)
+                .validationType(normalizeValidationType(dto.getValidationType()))
                 .scope(dto.getScope())
-                .fieldKey(dto.getFieldKey())
+                .fieldKey(dto.getScope() == com.formbuilder.entity.CustomValidationRuleEntity.ValidationRuleScope.FORM ? null : dto.getFieldKey())
                 .expression(dto.getExpression())
                 .errorMessage(dto.getErrorMessage())
                 .executionOrder(dto.getExecutionOrder())
@@ -713,11 +740,12 @@ public class FormService {
         com.formbuilder.entity.CustomValidationRuleEntity rule = customValidationRepo.findById(ruleId)
                 .orElseThrow(() -> new NoSuchElementException("Validation rule not found: " + ruleId));
         
+        rule.setValidationType(normalizeValidationType(dto.getValidationType()));
         rule.setScope(dto.getScope());
         
-        // Normalize fieldKey for Global rules
+        // Normalized schema keeps FORM-scope rules with a NULL field_key.
         if (dto.getScope() == com.formbuilder.entity.CustomValidationRuleEntity.ValidationRuleScope.FORM) {
-            rule.setFieldKey("__general__");
+            rule.setFieldKey(null);
         } else {
             rule.setFieldKey(dto.getFieldKey());
         }
@@ -836,8 +864,8 @@ public class FormService {
         FormVersionEntity newDraft = FormVersionEntity.builder()
                 .form(form)
                 .versionNumber(maxVersion + 1)
-                .status(FormVersionEntity.FormVersionStatus.DRAFT)
                 .isActive(false)
+                .definitionJson("{}")
                 .createdBy(source.getCreatedBy())
                 .build();
 
@@ -891,6 +919,13 @@ public class FormService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private String normalizeValidationType(String validationType) {
+        if (validationType == null || validationType.isBlank()) {
+            return "CUSTOM";
+        }
+        return validationType.trim().toUpperCase();
     }
 
     private void validateUniqueFieldKeys(List<FormFieldDTO> fields) {

@@ -11,6 +11,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.UUID;
@@ -41,14 +43,18 @@ public class SubmissionService {
 
     /**
      * Requirement 3.4: A form has live submissions if there is at least one
-     * record that is NOT a draft and NOT soft-deleted.
+     * active SUBMITTED row in the form submission table.
      */
     public boolean hasLiveSubmissions(UUID formId) {
         try {
             String tableName = getTableName(formId);
-            String sql = "SELECT COUNT(*) FROM " + tableName + " WHERE is_draft = false AND is_soft_deleted = false";
-            Integer count = jdbc.queryForObject(sql, Integer.class);
-            return count != null && count > 0;
+            String sql = "SELECT 1 " +
+                    "FROM \"" + tableName + "\" d " +
+                    "JOIN form_submission_meta m ON m.submission_row_id = d.id " +
+                    "WHERE m.form_id = ? AND m.status = 'SUBMITTED' AND d.is_draft = FALSE AND d.is_soft_deleted = FALSE " +
+                    "LIMIT 1";
+            List<Map<String, Object>> rows = jdbc.queryForList(sql, formId);
+            return !rows.isEmpty();
         } catch (Exception e) {
             log.warn("Could not check live submissions for form {}: {}", formId, e.getMessage());
             return false;
@@ -74,13 +80,16 @@ public class SubmissionService {
     }
 
     /**
-     * Get total submission count for a form (excluding drafts and soft-deleted).
+     * Get total live submission count for a form (only active SUBMITTED rows,
+     * excluding drafts and soft-deleted rows).
      */
     public long getSubmissionCount(UUID formId) {
         try {
             String tableName = getTableName(formId);
-            String sql = "SELECT COUNT(*) FROM " + tableName + " WHERE is_draft = false AND is_soft_deleted = false";
-            Long count = jdbc.queryForObject(sql, Long.class);
+            String sql = "SELECT COUNT(*) FROM \"" + tableName + "\" d " +
+                    "JOIN form_submission_meta m ON m.submission_row_id = d.id " +
+                    "WHERE m.form_id = ? AND m.status = 'SUBMITTED' AND d.is_draft = FALSE AND d.is_soft_deleted = FALSE";
+            Long count = jdbc.queryForObject(sql, Long.class, formId);
             return count != null ? count : 0L;
         } catch (Exception e) {
             // If table doesn't exist yet, count is 0
@@ -191,10 +200,15 @@ public class SubmissionService {
 
                 // Phase 1: Field-Scope Custom Validations
                 for (com.formbuilder.entity.CustomValidationRuleEntity rule : customRules) {
+                    if (!isExpressionRule(rule.getValidationType())) {
+                        continue;
+                    }
                     if (rule.getScope() == com.formbuilder.entity.CustomValidationRuleEntity.ValidationRuleScope.FIELD) {
                         if (!expressionEvaluator.evaluate(rule.getExpression(), data)) {
                             // Field scope requires a valid fieldKey; fallback to __general__ if missing
-                            String key = rule.getFieldKey() != null ? rule.getFieldKey() : "__general__";
+                            String key = (rule.getFieldKey() != null && !rule.getFieldKey().isBlank())
+                                    ? rule.getFieldKey()
+                                    : "__general__";
                             fieldErrors.computeIfAbsent(key, k -> new ArrayList<>()).add(rule.getErrorMessage());
                         }
                     }
@@ -203,6 +217,9 @@ public class SubmissionService {
                 // Phase 2: Form-Scope Custom Validations (always appear at the top)
                 if (fieldErrors.isEmpty()) {
                     for (com.formbuilder.entity.CustomValidationRuleEntity rule : customRules) {
+                        if (!isExpressionRule(rule.getValidationType())) {
+                            continue;
+                        }
                         if (rule.getScope() == com.formbuilder.entity.CustomValidationRuleEntity.ValidationRuleScope.FORM) {
                             if (!expressionEvaluator.evaluate(rule.getExpression(), data)) {
                                 // Form scope always goes to general pool
@@ -272,10 +289,10 @@ public class SubmissionService {
 
             submissionId = UUID.randomUUID();
             // R6: Meta-index record must exist BEFORE data table insert
-            jdbc.update("INSERT INTO form_submission_meta (id, form_id, form_version_id, user_id, status, submission_table, submission_row_id) VALUES (?, ?, ?, ?, 'DRAFT', ?, ?)",
+            jdbc.update("INSERT INTO form_submission_meta (id, form_id, form_version_id, submitted_by, status, submission_table, submission_row_id) VALUES (?, ?, ?, ?, 'DRAFT', ?, ?)",
                     submissionId, formId, versionId, userId, tableName, submissionId);
 
-            insertDynamicRow(tableName, submissionId, versionId, userId, "DRAFTED", data);
+            insertDynamicRow(tableName, submissionId, versionId, userId, data);
         } else {
             // PATH B — Draft resumption: resolve version from meta-index
             versionId = resolveVersionForDraftResumption(submissionId);
@@ -285,8 +302,9 @@ public class SubmissionService {
     }
 
     private UUID resolveVersionForNewSubmission(UUID formId) {
-        com.formbuilder.entity.FormEntity form = formRepo.findById(formId)
-                .orElseThrow(() -> new com.formbuilder.exception.SubmissionNotFoundException("Form not found."));
+        if (!formRepo.existsById(formId)) {
+            throw new com.formbuilder.exception.SubmissionNotFoundException("Form not found.");
+        }
 
 
         return versionRepo.findByFormIdAndIsActiveTrue(formId)
@@ -322,7 +340,7 @@ public class SubmissionService {
         }
     }
 
-    private void insertDynamicRow(String tableName, UUID id, UUID versionId, String userId, String status,
+    private void insertDynamicRow(String tableName, UUID id, UUID versionId, String userId,
             Map<String, Object> data) {
         // Fetch field metadata for recalculation
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
@@ -335,11 +353,7 @@ public class SubmissionService {
         try {
             workingValues = calculationEngine.recalculate(fieldRows, workingValues);
         } catch (com.formbuilder.exception.ExpressionEvaluationException e) {
-            if ("SUBMITTED".equals(status)) {
-                throw e;
-            } else {
-                log.warn("Calculation failed for draft [form={}]: {}", tableName, e.getMessage());
-            }
+            log.warn("Calculation failed for draft [form={}]: {}", tableName, e.getMessage());
         }
 
         List<String> cols = new ArrayList<>();
@@ -350,7 +364,7 @@ public class SubmissionService {
         cols.add("form_version_id");
         vals.add(versionId);
         cols.add("is_draft");
-        vals.add(status == null || !"SUBMITTED".equals(status));
+        vals.add(true);
         if (userId != null) {
             cols.add("user_id");
             vals.add(userId);
@@ -416,21 +430,18 @@ public class SubmissionService {
     // ─────────────────────────────────────────────────────────────────────────
 
     public void insert(UUID formId, Map<String, Object> data) {
-        insertInternal(formId, data, null, "SUBMITTED");
+        insertInternal(formId, data);
     }
 
-    private void insertInternal(UUID formId, Map<String, Object> data, String userId, String status) {
+    private void insertInternal(UUID formId, Map<String, Object> data) {
         String tableName = getTableName(formId);
         dynamicTableService.ensureTableExists(tableName, formId);
         dynamicTableService.addDraftColumnsIfMissing(tableName);
 
         UUID versionId = resolveVersionForNewSubmission(formId);
-        
+
         // SRS Decision 4.3: Startup/Submission-time drift detection
         dynamicTableService.validateSchema(tableName, versionId);
-
-        com.formbuilder.entity.FormVersionEntity version = versionRepo.findById(versionId)
-                .orElseThrow(() -> new NoSuchElementException("Version not found: " + versionId));
 
         // Fetch all field metadata including calculated-field columns
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
@@ -453,11 +464,7 @@ public class SubmissionService {
         try {
             workingValues = calculationEngine.recalculate(fieldRows, workingValues);
         } catch (com.formbuilder.exception.ExpressionEvaluationException e) {
-            if ("SUBMITTED".equals(status)) {
-                throw e; // Fail-Fast for final submission to ensure data integrity
-            } else {
-                log.warn("Calculation failed for draft submission [form={}], allowing save: {}", formId, e.getMessage());
-            }
+            throw e; // Fail-Fast for final submission to ensure data integrity
         }
         final Map<String, Object> finalValues = workingValues;
 
@@ -477,14 +484,9 @@ public class SubmissionService {
         }
 
         cols.add("is_draft");
-        vals.add(!"SUBMITTED".equals(status));
+        vals.add(false);
         cols.add("form_version_id");
         vals.add(versionId);
-
-        if (userId != null) {
-            cols.add("user_id");
-            vals.add(userId);
-        }
 
         String table = '"' + tableName + '"';
         String sql = "INSERT INTO " + table
@@ -519,8 +521,8 @@ public class SubmissionService {
                 submissionId);
 
         // Update Meta Status
-        jdbc.update("UPDATE form_submission_meta SET status = 'SUBMITTED', updated_at = NOW() WHERE id = ?",
-                submissionId);
+        jdbc.update("UPDATE form_submission_meta SET status = 'SUBMITTED', submitted_by = ?, submitted_at = NOW() WHERE id = ?",
+                userId, submissionId);
 
         log.info("B3: Submission {} finalized under version {}.", submissionId, versionId);
     }
@@ -536,7 +538,7 @@ public class SubmissionService {
 
         // Fetch from meta-index first (the authority)
         List<Map<String, Object>> metaRows = jdbc.queryForList(
-                "SELECT id, form_version_id FROM form_submission_meta WHERE form_id = ? AND user_id = ? AND status = 'DRAFT' ORDER BY updated_at DESC LIMIT 1",
+                "SELECT id, form_version_id FROM form_submission_meta WHERE form_id = ? AND submitted_by = ? AND status = 'DRAFT' ORDER BY created_at DESC LIMIT 1",
                 formId, userId);
 
         if (metaRows.isEmpty())
@@ -589,6 +591,59 @@ public class SubmissionService {
                         tableName));
     }
 
+    public Map<String, Object> getSubmissionSummaries(UUID formId, int page, int size, String sort, String filter) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        int offset = safePage * safeSize;
+
+        String orderBy = "m.submitted_at DESC NULLS LAST, m.created_at DESC";
+        if ("submittedAt,asc".equalsIgnoreCase(sort)) {
+            orderBy = "m.submitted_at ASC NULLS LAST, m.created_at ASC";
+        } else if ("submittedAt,desc".equalsIgnoreCase(sort)) {
+            orderBy = "m.submitted_at DESC NULLS LAST, m.created_at DESC";
+        }
+
+        String where = " WHERE m.form_id = ? ";
+        List<Object> params = new ArrayList<>();
+        params.add(formId);
+
+        if (filter != null && !filter.isBlank()) {
+            where += " AND (CAST(m.status AS TEXT) ILIKE ? OR COALESCE(m.submitted_by, '') ILIKE ?) ";
+            String like = "%" + filter.trim() + "%";
+            params.add(like);
+            params.add(like);
+        }
+
+        Long total = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM form_submission_meta m" + where,
+                Long.class,
+                params.toArray());
+
+        List<Object> itemsParams = new ArrayList<>(params);
+        itemsParams.add(safeSize);
+        itemsParams.add(offset);
+
+        List<Map<String, Object>> raw = jdbc.queryForList(
+                "SELECT m.id AS submission_id, m.status, m.submitted_by, m.submitted_at " +
+                        "FROM form_submission_meta m" + where +
+                        "ORDER BY " + orderBy + " LIMIT ? OFFSET ?",
+                itemsParams.toArray());
+
+        List<Map<String, Object>> items = raw.stream().map(r -> {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("submissionId", r.get("submission_id"));
+            out.put("status", r.get("status"));
+            out.put("submittedBy", r.get("submitted_by"));
+            out.put("submittedAt", r.get("submitted_at"));
+            return out;
+        }).toList();
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("total", total != null ? total : 0L);
+        response.put("items", items);
+        return response;
+    }
+
     public Map<String, Object> getSubmission(UUID formId, UUID submissionId) {
         String tableName = getTableName(formId);
         dynamicTableService.ensureTableExists(tableName, formId);
@@ -630,7 +685,7 @@ public class SubmissionService {
     public void restoreSubmission(UUID formId, UUID submissionId) {
         String tableName = getTableName(formId);
         int affected = jdbc.update(
-                String.format("UPDATE \"%s\" SET is_soft_deleted = FALSE, deleted_at = NULL WHERE id = ?",
+                String.format("UPDATE \"%s\" SET is_soft_deleted = FALSE, deleted_at = NULL, updated_at = NOW() WHERE id = ? AND is_soft_deleted = TRUE",
                         tableName),
                 submissionId);
         if (affected == 0)
@@ -704,11 +759,12 @@ public class SubmissionService {
 
     private String getTableName(UUID formId) {
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT table_name FROM forms WHERE id = ?", formId);
+                "SELECT code FROM forms WHERE id = ?", formId);
         if (rows.isEmpty())
             throw new NoSuchElementException("Form not found: " + formId);
 
-        String tableName = (String) rows.get(0).get("table_name");
+        String code = (String) rows.get(0).get("code");
+        String tableName = dynamicTableService.generateTableName(code);
 
         // E4 compliance: Validate table name pattern
         if (tableName == null || !tableName.matches("^form_data_[a-z0-9_]+$")) {
@@ -743,6 +799,14 @@ public class SubmissionService {
             }
         }
         return f;
+    }
+
+    private boolean isExpressionRule(String validationType) {
+        if (validationType == null || validationType.isBlank()) {
+            return true;
+        }
+        String type = validationType.trim().toUpperCase();
+        return "CUSTOM".equals(type) || "CONDITIONAL".equals(type);
     }
 
 
@@ -787,6 +851,8 @@ public class SubmissionService {
                 case "multiple_choice_grid" -> s; // stored as JSON TEXT {"Row":"Col"}
                 case "checkbox_grid" -> s; // stored as JSON TEXT {"Row":["ColA","ColB"]}
                 case "date" -> java.sql.Date.valueOf(s);
+                case "time" -> java.sql.Time.valueOf(LocalTime.parse(s));
+                case "date_time" -> java.sql.Timestamp.valueOf(LocalDateTime.parse(s.replace(" ", "T")));
                 case "boolean" -> switch (s.toLowerCase()) {
                     case "true", "1", "yes", "on" -> true;
                     case "false", "0", "no", "off" -> false;
