@@ -4,6 +4,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
 import UserProfileChip from '../../components/UserProfileChip';
+import { 
+    FileText, Calendar, Edit3, BarChart3, Copy, 
+    ExternalLink, Eye, Trash2, 
+    CheckCircle2 
+} from 'lucide-react';
 import { getForms, deleteForm, publishForm, isSchemaDriftError, saveSchemaDriftReport } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -156,6 +161,13 @@ export default function FormVaultPage() {
         }
     };
 
+    const handleCopyLink = (formId) => {
+        const url = `${window.location.origin}/submit/${formId}`;
+        navigator.clipboard.writeText(url)
+            .then(() => toastSuccess('Submission link copied to clipboard!'))
+            .catch(() => toastError('Failed to copy link.'));
+    };
+
     const formatDate = (dt) =>
         dt ? new Date(dt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
 
@@ -169,78 +181,92 @@ export default function FormVaultPage() {
         const isOwner = form.isOwner;
 
         return (
-            <div key={form.id} className={`form-card animate-in${isPublished ? ' form-card-published' : ''}${isSelected ? ' form-card-selected' : ''}`}>
-                <div className="form-card-header">
-                    <div className="form-card-icon">{isPublished ? '🌐' : '📋'}</div>
-                    <div className="form-card-menu">
-                        {form.canEdit && !hasRole('Viewer') && (
-                            <Link href={`/builder/${form.id}`} className="btn btn-secondary btn-sm" title="Edit">✎</Link>
-                        )}
-                        <Link href={`/preview/${form.id}`} className="btn btn-secondary btn-sm" title="Preview">👁</Link>
-                        {form.canDelete && (
-                            <button className="btn btn-danger btn-sm" onClick={() => setDeleteTarget(form)}>✕</button>
-                        )}
+            <div key={form.id} className={`form-card-v2 animate-in ${isPublished ? 'card-published' : 'card-draft'}${isSelected ? ' card-selected' : ''}`}>
+                <div className="card-top-indicator"></div>
+                
+                <div className="card-header-v2">
+                    <div className="card-thumb">
+                        <FileText size={20} color="#3B82F6" strokeWidth={2.5} />
+                    </div>
+                    <div className={`status-pill-v2 ${isPublished ? 'pill-published' : 'pill-draft'}`} style={
+                         isPending ? { background: 'rgba(245,158,11,0.08)', color: '#F59E0B', borderColor: 'rgba(245,158,11,0.2)' } :
+                         isRejected ? { background: 'rgba(239,68,68,0.08)', color: '#EF4444', borderColor: 'rgba(239,68,68,0.2)' } :
+                         undefined
+                    }>
+                        <span className="pill-dot"></span>
+                        {isPublished ? 'PUBLISHED' : isPending ? 'PENDING' : isRejected ? 'REJECTED' : 'DRAFT'}
                     </div>
                 </div>
 
-                <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                    <span className={`status-badge status-badge-${isPublished ? 'published' : 'draft'}`} style={
-                        isPending ? { background: 'rgba(245,158,11,0.18)', color: '#FCD34D', borderColor: 'rgba(245,158,11,0.35)' } :
-                            isRejected ? { background: 'rgba(239,68,68,0.18)', color: '#FCA5A5', borderColor: 'rgba(239,68,68,0.35)' } :
-                                undefined
-                    }>
-                        {isPublished ? '🌐 Published' : isPending ? '⏳ Pending Approval' : isRejected ? '⛔ Rejected' : isAssigned ? '🧭 Assigned' : '📝 Draft'}
-                    </span>
-                    {!isOwner && (
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4 }}>
-                            by {form.createdBy}
-                        </span>
+                <div className="card-body-v2">
+                    <h3 className="card-title-v2">{form.name}</h3>
+                    <div className="card-date-v2">
+                        <Calendar size={13} />
+                        {formatDate(form.createdAt)}
+                    </div>
+                </div>
+
+                <div className="card-primary-actions">
+                    <button 
+                        className="btn-edit-main"
+                        onClick={() => router.push(`/builder/${form.id}`)}
+                    >
+                        <Edit3 size={16} />
+                        EDIT
+                    </button>
+                    {isPublished ? (
+                        <button 
+                            className="btn-data-main"
+                            onClick={() => router.push(`/submissions/${form.id}`)}
+                        >
+                            <BarChart3 size={16} />
+                            DATA
+                        </button>
+                    ) : (
+                        <button 
+                            className="btn-data-main publish-btn"
+                            disabled={busy}
+                            onClick={() => handlePublish(form.id, form.name)}
+                        >
+                            {busy ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : <><BarChart3 size={16} /> PUBLISH</>}
+                        </button>
                     )}
                 </div>
 
-                <div className="form-card-name">{form.name}</div>
-                <div className="form-card-desc">{form.description || 'No description'}</div>
-
-                <div className="form-card-footer">
-                    <div className="form-card-meta">
-                        <span>🔲 {form.fields?.length || 0} fields</span>
-                        <span>📅 {formatDate(form.createdAt)}</span>
+                <div className="card-toolbar-v2">
+                    <div className="toolbar-left">
+                        {isPublished && (
+                            <>
+                                <button className="t-icon-btn" title="Copy Submission Link" onClick={() => handleCopyLink(form.id)}>
+                                    <Copy size={18} />
+                                </button>
+                                <button className="t-icon-btn" title="Open Share Page" onClick={() => window.open(`/submit/${form.id}`, '_blank')}>
+                                    <ExternalLink size={18} />
+                                </button>
+                            </>
+                        )}
+                        <button className="t-icon-btn" title="Preview Form" onClick={() => router.push(`/preview/${form.id}`)}>
+                            <Eye size={18} />
+                        </button>
                     </div>
-                    <div className="form-card-actions">
-                        {isPublished ? (
-                            <>
-                                {form.canViewSubmissions && (
-                                    <Link href={`/submissions/${form.id}`} className="btn btn-primary btn-sm">📊 Submissions</Link>
-                                )}
-                                <Link href={`/submit/${form.id}`} className="btn btn-secondary btn-sm">↗ Share</Link>
-                            </>
-                        ) : (
-                            <>
-                                {form.canPublish && (
-                                    <button className="btn btn-publish btn-sm" onClick={() => handlePublish(form.id, form.name)} disabled={busy || bulkDeleting}>
-                                        {busy ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : '🚀 Publish'}
-                                    </button>
-                                )}
-                                {form.canAssignBuilder && !isPending && (
-                                    <Link href={`/workflows/create/${form.id}`} className="btn btn-secondary btn-sm">👤 Assign Builder</Link>
-                                )}
-                                {(form.canStartWorkflow ?? form.canRequestWorkflow) && !isPending && (
-                                    <Link href={`/workflows/create/${form.id}`} className="btn btn-secondary btn-sm">🧭 Start Workflow</Link>
-                                )}
-                                {isPending && (
-                                    <Link href="/workflows/status" className="btn btn-secondary btn-sm">📍 Track Status</Link>
-                                )}
-                            </>
+                    <div className="toolbar-right">
+                        {form.canDelete && (
+                            <button 
+                                className="t-icon-btn t-delete-btn" 
+                                title="Delete Form"
+                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(form); }}
+                            >
+                                <Trash2 size={18} />
+                            </button>
                         )}
                     </div>
                 </div>
 
-                {form.canDelete && (
-                    <label className={`card-select-checkbox${isSelected ? ' card-select-checked' : ''}`} onClick={(e) => e.stopPropagation()} title={isSelected ? 'Deselect' : 'Select'}>
-                        <input type="checkbox" checked={isSelected} onChange={() => toggle(setTabSelected, form.id)} />
-                        <span className="card-select-mark">{isSelected ? '✓' : ''}</span>
-                    </label>
-                )}
+                <div className={`card-selection-v2 ${isSelected ? 'checked' : ''}`} onClick={(e) => { e.stopPropagation(); toggle(setTabSelected, form.id); }}>
+                    <div className="selection-dot">
+                        {isSelected && <CheckCircle2 size={14} />}
+                    </div>
+                </div>
             </div>
         );
     };

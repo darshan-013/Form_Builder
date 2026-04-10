@@ -1182,33 +1182,36 @@ export default function SubmissionsPage() {
                                 {form?.description || 'View all submitted responses'}
                             </p>
                         </div>
-                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                            {versions.length > 0 && (
-                                <select 
-                                    className="form-select" 
-                                    value={selectedVersionId} 
-                                    onChange={handleVersionChange}
-                                    style={{ width: 'auto', padding: '6px 32px 6px 12px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                                >
-                                    {versions.map(v => (
-                                        <option key={v.id} value={v.id}>
-                                            Version {v.versionNumber} {v.isActive ? '(Active)' : (v.publishedAt ? '(Archived)' : '(Draft)')}
-                                        </option>
-                                    ))}
-                                </select>
-                            )}
-                            <Link href={`/submit/${id}`} className="btn btn-secondary" target="_blank">
-                                📝 Submit Form
-                            </Link>
-                            <Link href={`/preview/${id}`} className="btn btn-secondary">
-                                👁 Preview Form
-                            </Link>
-                            <Link href={`/submissions/trash/${id}`} className="btn btn-secondary" title="View deleted submissions">
-                                🗑 Trash
-                            </Link>
-                            {/* Export buttons — only shown when there are submissions and user has EXPORT perm */}
+                        <div className="page-header-actions">
+                            {/* Group 1: Version Selection & Management */}
+                            <div className="header-action-cluster">
+                                {versions.length > 0 && (
+                                    <select 
+                                        className="form-select header-version-select" 
+                                        value={selectedVersionId} 
+                                        onChange={handleVersionChange}
+                                    >
+                                        {versions.map(v => (
+                                            <option key={v.id} value={v.id}>
+                                                V{v.versionNumber} {v.isActive ? '(Active)' : (v.publishedAt ? '(Archived)' : '(Draft)')}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
+                                <Link href={`/submit/${id}`} className="btn btn-secondary" target="_blank">
+                                    📝 Submit
+                                </Link>
+                                <Link href={`/preview/${id}`} className="btn btn-secondary">
+                                    👁 Preview
+                                </Link>
+                                <Link href={`/submissions/trash/${id}`} className="btn btn-secondary" title="View deleted submissions">
+                                    🗑 Trash
+                                </Link>
+                            </div>
+
+                            {/* Group 2: Export Cluster (Only shown when there are submissions and user has EXPORT perm) */}
                             {submissions.length > 0 && can('EXPORT') && (
-                                <div className="export-btn-group">
+                                <div className="header-action-cluster export-cluster">
                                     <button
                                         className="btn btn-export-csv"
                                         onClick={exportCSV}

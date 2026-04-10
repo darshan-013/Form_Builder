@@ -57,15 +57,25 @@
 
 /* ── Light Theme Variables ───────────────────────────────────── */
 [data-theme="light"] {
-  --bg-base: #F0F2F8;
-  --bg-surface: #FFFFFF;
-  --bg-card: rgba(15, 23, 42, 0.04);
-  --bg-card-hover: rgba(15, 23, 42, 0.07);
+  --bg-base: #FFFFFF;
+  --bg-surface: #F8FAFC;
+  --bg-card: rgba(15, 23, 42, 0.02);
+  --bg-card-hover: rgba(15, 23, 42, 0.05);
   --bg-input: #FFFFFF;
 
   --border: rgba(15, 23, 42, 0.08);
   --border-hover: rgba(15, 23, 42, 0.14);
-  --border-focus: rgba(99, 102, 241, 0.65);
+  --border-focus: rgba(15, 23, 42, 0.65);
+
+  /* Overriding Accent palette to neutral/architectural for light mode */
+  --accent: #0F172A;
+  --accent-2: #334155;
+  --accent-3: #64748B;
+  --accent-4: #94A3B8;
+  --accent-grad: linear-gradient(135deg, #0F172A 0%, #334155 100%);
+  --accent-grad-h: linear-gradient(135deg, #334155 0%, #475569 100%);
+  --accent-soft: rgba(15, 23, 42, 0.06);
+  --accent-glow: 0 0 40px rgba(15, 23, 42, 0.12);
 
   --text-primary: #0F172A;
   --text-secondary: #475569;
@@ -73,7 +83,7 @@
 
   --shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.12);
-  --shadow-glow: 0 8px 32px rgba(99, 102, 241, 0.15);
+  --shadow-glow: 0 8px 32px rgba(15, 23, 42, 0.08);
 
   color-scheme: light;
 }

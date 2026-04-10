@@ -411,27 +411,7 @@ export default function EditBuilderPage() {
         setActiveView(nextView);
     };
 
-    useEffect(() => {
-        if (!hasSelection) return;
 
-        const handleOutsidePointerDown = (event) => {
-            const target = event.target;
-            if (!(target instanceof Element)) return;
-
-            // Ignore interactions inside right panel or on selectable builder cards.
-            if (rightPanelRef.current?.contains(target)) return;
-            if (target.closest('.field-card')) return;
-            if (target.closest('.group-container')) return;
-            if (target.closest('.group-container-header')) return;
-
-            setEditField(null);
-            setEditStaticField(null);
-            setEditGroupConfig(null);
-        };
-
-        document.addEventListener('pointerdown', handleOutsidePointerDown);
-        return () => document.removeEventListener('pointerdown', handleOutsidePointerDown);
-    }, [hasSelection]);
 
     const handleSave = async ({ redirectAfterSave = true } = {}) => {
         const normalizedName = sanitizeFormName(formName).trim();
@@ -1000,45 +980,47 @@ export default function EditBuilderPage() {
                             <div style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: 10,
-                                padding: '8px 14px',
-                                margin: '8px 12px 10px',
-                                background: 'var(--bg-card)',
+                                justifyContent: 'center',
+                                gap: 14,
+                                padding: '8px 20px',
+                                margin: '8px 12px 14px',
+                                background: 'rgba(255, 255, 255, 0.03)',
                                 border: '1px solid var(--border)',
                                 borderRadius: 12,
                                 fontSize: 12,
                                 whiteSpace: 'nowrap',
-                                overflowX: 'auto'
+                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)'
                             }}>
-                                <span style={{
-                                    padding: '2px 10px', borderRadius: 999, fontWeight: 700, fontSize: 11,
-                                    background: versionStatus === 'PUBLISHED' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
-                                    color: versionStatus === 'PUBLISHED' ? '#34D399' : '#FCD34D',
-                                    border: `1px solid ${versionStatus === 'PUBLISHED' ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
-                                    letterSpacing: '0.04em', textTransform: 'uppercase'
-                                }}>
-                                    {versionStatus === 'PUBLISHED' ? '✅ Active' : '📝 Draft'}
-                                </span>
-                                {currentVersionNumber && (
-                                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                                        Version {currentVersionNumber}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{
+                                        padding: '2px 10px', borderRadius: 999, fontWeight: 700, fontSize: 11,
+                                        background: versionStatus === 'PUBLISHED' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                                        color: versionStatus === 'PUBLISHED' ? '#34D399' : '#FCD34D',
+                                        border: `1px solid ${versionStatus === 'PUBLISHED' ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                                        letterSpacing: '0.04em', textTransform: 'uppercase'
+                                    }}>
+                                        {versionStatus === 'PUBLISHED' ? '✅ Active' : '📝 Draft'}
                                     </span>
-                                )}
-                                {versionStatus === 'PUBLISHED' && (
-                                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                                        — This is the live version. Saving will create a new draft.
-                                    </span>
-                                )}
+                                    {currentVersionNumber && (
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}>
+                                            Version {currentVersionNumber}
+                                        </span>
+                                    )}
+                                </div>
+
                                 <span style={{ width: 1, height: 18, background: 'var(--border)', opacity: 0.7, flexShrink: 0 }} />
-                                <div className="builder-code-block" style={{ maxWidth: 'none', margin: 0 }}>
-                                    <span className="builder-code-badge" title={`Form code: ${code}`}>
-                                        <span style={{ opacity: 0.88 }}>🔖</span>
-                                        <span style={{ fontSize: 11 }}>Code:</span>
-                                        <strong className="builder-code-value">{code || '—'}</strong>
-                                    </span>
-                                    <span className="builder-code-help" style={{ marginLeft: 8, fontSize: 11 }}>
-                                        Locked after first save.
-                                    </span>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <div className="builder-code-block" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 'none', margin: 0 }}>
+                                        <span className="builder-code-badge" title={`Form code: ${code}`} style={{ width: 'auto', padding: '4px 10px', borderRadius: 8 }}>
+                                            <span style={{ opacity: 0.88 }}>🔖</span>
+                                            <span style={{ fontSize: 11 }}>Code:</span>
+                                            <strong className="builder-code-value" style={{ fontSize: 12 }}>{code || '—'}</strong>
+                                        </span>
+                                        <span className="builder-code-help" style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                            (Locked after first save)
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                             <Canvas

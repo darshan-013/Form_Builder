@@ -216,6 +216,12 @@ public class FormService {
         }
     }
 
+    /** Returns true if the code is NOT already in use. */
+    public boolean isCodeUnique(String code) {
+        if (code == null || code.isBlank()) return true;
+        return !formRepo.existsByCode(code.trim().toLowerCase());
+    }
+
     private void validateCreateCode(String code) {
         validateCodeFormat(code);
         if (formRepo.existsByCode(code)) {

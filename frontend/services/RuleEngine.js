@@ -1,4 +1,4 @@
-import CalculationEngine from './CalculationEngine';
+import CalculationEngine from './CalculationEngine.js';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
@@ -83,6 +83,17 @@ export function getAffectedTargets(depMap, changedKey) {
  */
 export function evaluateConditionExpression(expression, formValues) {
   if (!expression) return true;
+  
+  // If it's a JSON string, try to parse and evaluate as a structured rule
+  if (typeof expression === 'string' && expression.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(expression);
+      if (parsed.conditions || parsed.combinator) {
+        return evaluateStructuredRule(parsed, formValues);
+      }
+    } catch { /* not JSON, evaluate as formula */ }
+  }
+
   try {
     const result = CalculationEngine.evaluateFormula(expression, formValues);
     if (typeof result === 'boolean') return result;
@@ -92,6 +103,154 @@ export function evaluateConditionExpression(expression, formValues) {
   } catch (err) {
     console.warn(`[RuleEngine] Evaluation failed for "${expression}":`, err.message);
     return false; // Fail-safe for visibility: hide if formula is broken
+  }
+}
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════
+ * STRUCTURED RULE EVALUATOR
+ * ══════════════════════════════════════════════════════════════════════════
+ */
+
+export function evaluateStructuredRule(node, formValues) {
+  if (!node) return true;
+  if (!node.conditions || !Array.isArray(node.conditions)) return true;
+  if (node.conditions.length === 0) return true;
+
+  const combinator = node.combinator || 'AND';
+  
+  if (combinator === 'AND') {
+    return node.conditions.every(c => evaluateNode(c, formValues));
+  } else {
+    return node.conditions.some(c => evaluateNode(c, formValues));
+  }
+}
+
+function evaluateNode(node, formValues) {
+  // Nested group
+  if (node.conditions && Array.isArray(node.conditions)) {
+    return evaluateStructuredRule(node, formValues);
+  }
+  // Leaf condition
+  return evaluateLeafCondition(node, formValues);
+}
+
+function evaluateLeafCondition(cond, formValues) {
+  const { fieldKey, operator, value } = cond;
+  const rawValue = formValues[fieldKey];
+  const fieldValue = (rawValue === undefined || rawValue === null) ? '' : String(rawValue);
+  
+  const targetValue = (value === undefined || value === null) ? '' : String(value);
+
+  switch (operator) {
+    // String operators
+    case 'equals':
+    case '=':
+      return fieldValue.toLowerCase() === targetValue.toLowerCase();
+    case 'not equals':
+    case '!=':
+      return fieldValue.toLowerCase() !== targetValue.toLowerCase();
+    case 'contains':
+      return fieldValue.toLowerCase().includes(targetValue.toLowerCase());
+    case 'not contains':
+      return !fieldValue.toLowerCase().includes(targetValue.toLowerCase());
+    case 'starts with':
+      return fieldValue.toLowerCase().startsWith(targetValue.toLowerCase());
+    case 'ends with':
+      return fieldValue.toLowerCase().endsWith(targetValue.toLowerCase());
+    case 'is empty':
+      return fieldValue.trim() === '';
+    case 'is not empty':
+      return fieldValue.trim() !== '';
+    case 'matches regex':
+      try { return new RegExp(targetValue, 'i').test(fieldValue); } catch { return false; }
+    case 'not matches regex':
+      try { return !new RegExp(targetValue, 'i').test(fieldValue); } catch { return false; }
+    
+    // Numeric / Length operators
+    case '>':
+    case 'length >': {
+      const n1 = parseFloat(fieldValue);
+      const n2 = parseFloat(targetValue);
+      if (operator === 'length >') return fieldValue.length > n2;
+      return !isNaN(n1) && !isNaN(n2) && n1 > n2;
+    }
+    case '>=': {
+      const n1 = parseFloat(fieldValue);
+      const n2 = parseFloat(targetValue);
+      return !isNaN(n1) && !isNaN(n2) && n1 >= n2;
+    }
+    case '<':
+    case 'length <': {
+      const n1 = parseFloat(fieldValue);
+      const n2 = parseFloat(targetValue);
+      if (operator === 'length <') return fieldValue.length < n2;
+      return !isNaN(n1) && !isNaN(n2) && n1 < n2;
+    }
+    case '<=': {
+      const n1 = parseFloat(fieldValue);
+      const n2 = parseFloat(targetValue);
+      return !isNaN(n1) && !isNaN(n2) && n1 <= n2;
+    }
+    case 'length =':
+      return fieldValue.length === parseFloat(targetValue);
+    
+    // Range / List operators
+    case 'between': {
+      const parts = targetValue.split(',').map(s => s.trim());
+      if (parts.length < 2) return false;
+      const val = parseFloat(fieldValue);
+      const v1 = parseFloat(parts[0]);
+      const v2 = parseFloat(parts[1]);
+      if (isNaN(val) || isNaN(v1) || isNaN(v2)) {
+        // Fallback to string compare for dates
+        return fieldValue >= parts[0] && fieldValue <= parts[1];
+      }
+      return val >= v1 && val <= v2;
+    }
+    case 'in list': {
+      const list = targetValue.split(',').map(s => s.trim().toLowerCase());
+      return list.includes(fieldValue.toLowerCase());
+    }
+    case 'not in list': {
+      const list = targetValue.split(',').map(s => s.trim().toLowerCase());
+      return !list.includes(fieldValue.toLowerCase());
+    }
+
+    // Date operators
+    case 'before':
+      return fieldValue < targetValue;
+    case 'after':
+      return fieldValue > targetValue;
+    case 'is today': {
+      const today = new Date().toISOString().split('T')[0];
+      return fieldValue.split('T')[0] === today;
+    }
+    case 'is past': {
+      const today = new Date().toISOString().split('T')[0];
+      return fieldValue.split('T')[0] < today;
+    }
+    case 'is future': {
+      const today = new Date().toISOString().split('T')[0];
+      return fieldValue.split('T')[0] > today;
+    }
+
+    // Boolean / State
+    case 'is true':
+      return fieldValue.toLowerCase() === 'true' || fieldValue === '1' || fieldValue.toLowerCase() === 'yes';
+    case 'is false':
+      return fieldValue.toLowerCase() === 'false' || fieldValue === '0' || fieldValue.toLowerCase() === 'no';
+    case 'is uploaded':
+      return fieldValue.trim() !== '' && fieldValue !== '[]';
+    case 'is not uploaded':
+      return fieldValue.trim() === '' || fieldValue === '[]';
+
+    case 'changed':
+      // Not yet supported without history tracking
+      return false;
+
+    default:
+      return false;
   }
 }
 
@@ -172,8 +331,7 @@ export function applyRules(fields, formValues) {
       if (rule.expression) {
         isMatch = evaluateConditionExpression(rule.expression, workingValues);
       } else if (Array.isArray(rule.conditions)) {
-        // Legacy JSON support fallback
-        isMatch = true; 
+        isMatch = evaluateStructuredRule(rule, workingValues);
       }
 
       if (isMatch) {
@@ -205,7 +363,9 @@ export function applyRules(fields, formValues) {
   for (const field of ordered) {
       const rule = field._parsedRule;
       if (!rule) continue;
-      const isMatch = rule.expression ? evaluateConditionExpression(rule.expression, workingValues) : true;
+      const isMatch = rule.expression 
+        ? evaluateConditionExpression(rule.expression, workingValues) 
+        : (Array.isArray(rule.conditions) ? evaluateStructuredRule(rule, workingValues) : true);
       if (isMatch) {
           for (const action of (rule.actions || [])) {
               applyAction(action, finalState, field, workingValues);

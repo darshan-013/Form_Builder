@@ -22,7 +22,7 @@ export default function TrustedSection({ items = TRUST_ITEMS }) {
 
                 <div className={styles.trustGrid}>
                     {items.map((item) => (
-                        <article key={item.label} className={`${styles.card} ${styles.trustCard}`}>
+                        <article key={item.label} className={`${styles.bentoCard} ${styles.trustCard}`}>
                             <p className={styles.trustValue}>{item.value}</p>
                             <p className={styles.trustLabel}>{item.label}</p>
                         </article>

@@ -111,7 +111,9 @@ public class FormController {
                     Map<String, Object> m = new HashMap<>();
                     m.put("id", f.getId());
                     m.put("name", f.getName());
+                    m.put("status", f.getStatus().name());
                     m.put("updatedAt", f.getUpdatedAt());
+                    m.put("createdAt", f.getCreatedAt()); // Also useful
                     return m;
                 })
                 .collect(Collectors.toList());
@@ -125,6 +127,13 @@ public class FormController {
 
         return ResponseEntity.ok(stats);
     }
+
+    @GetMapping(AppConstants.FORM_CHECK_CODE)
+    public ResponseEntity<Map<String, Boolean>> checkCodeUniqueness(@RequestParam String code) {
+        boolean isUnique = formService.isCodeUnique(code);
+        return ResponseEntity.ok(Map.of("isUnique", isUnique));
+    }
+
 
     private Map<String, Object> toWorkflowSummary(WorkflowInstance wf) {
         Map<String, Object> map = new LinkedHashMap<>();

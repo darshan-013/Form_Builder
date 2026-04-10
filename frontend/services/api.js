@@ -148,6 +148,9 @@ export const getFormRenderAdmin = (id, versionId = null) =>
 export const createForm = (dto) =>
     request('POST', '/forms', dto);
 
+export const checkFormCodeUniqueness = (code) =>
+    request('GET', `/forms/check-code?code=${code}`);
+
 export const assignBuilder = (id, builderId) =>
     request('PATCH', `/forms/${id}/assign-builder`, { builderId });
 

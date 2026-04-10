@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Zap, Sun, Moon } from 'lucide-react';
 import styles from '../../styles/Home.module.css';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -18,24 +19,31 @@ export default function LandingNavbar() {
         <header className={`${styles.navbarWrap} ${scrolled ? styles.navbarSolid : styles.navbarTransparent}`}>
             <div className={styles.container}>
                 <nav className={styles.navbar}>
-                    <div className={styles.navLinksPill}>
-                        <Link href="/" className={`${styles.brand} ${styles.brandStart}`}>⚡ FormCraft</Link>
+                    <Link href="/" className={styles.brand}>
+                        <Zap className={styles.brandIcon} size={28} />
+                        FormCraft
+                    </Link>
 
-                        <Link href="/" className={styles.navLinkPill}>⌂ Home</Link>
-                        <a href="#features" className={styles.navLinkPill}>◇ Features</a>
-                        <Link href="/login" className={styles.navLinkPill}>→ Login</Link>
-                        <Link href="/register" className={`${styles.navLinkPill} ${styles.navLinkPrimary}`}>✦ Signup</Link>
+                    <div className={styles.navLinks}>
+                        <a href="#features" className={styles.navLink}>Features</a>
+                        <a href="#overview" className={styles.navLink}>Platform</a>
+                        
+                        <div style={{ width: '1px', height: '24px', background: 'var(--border)', margin: '0 8px' }} />
+                        
+                        <Link href="/login" className={`${styles.navAction} ${styles.navLogin}`}>
+                            Login
+                        </Link>
+                        <Link href="/register" className={`${styles.navAction} ${styles.navRegister}`}>
+                            Get Started
+                        </Link>
 
                         <button
                             type="button"
-                            className="theme-toggle-btn"
+                            className={styles.navThemeButton}
                             onClick={(e) => toggleTheme(e)}
                             title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
-                            aria-label="Toggle theme"
                         >
-                            <span className={`theme-toggle-icon ${theme === 'dark' ? 'icon-sun' : 'icon-moon'}`}>
-                                {theme === 'dark' ? '☀️' : '🌙'}
-                            </span>
+                            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
                     </div>
                 </nav>

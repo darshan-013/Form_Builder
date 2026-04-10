@@ -101,7 +101,7 @@ public class SubmissionService {
     // VALIDATE — direct JDBC, bypasses JPA FetchType.LAZY + open-in-view:false
     // ─────────────────────────────────────────────────────────────────────────
 
-    public void validate(UUID formId, Map<String, Object> data, Map<String, MultipartFile> files) {
+    public void validate(UUID formId, Map<String, Object> data, Map<String, List<MultipartFile>> files) {
         // Safety check: Flatten map if it contains nested 'data' (defensive layer)
         if (data != null && data.containsKey("data") && data.get("data") instanceof Map) {
             @SuppressWarnings("unchecked")
@@ -178,11 +178,24 @@ public class SubmissionService {
             }
 
             FormFieldEntity field = rowToField(row);
+            Object value = (data != null) ? data.get(field.getFieldKey()) : null;
+
+            // Policy 9.5: Backend Sanitization - Trim Whitespace if configured
+            if (value instanceof String && field.getValidationJson() != null) {
+                try {
+                    JsonNode rules = objectMapper.readTree(field.getValidationJson());
+                    if (rules.has("trimWhitespace") && rules.get("trimWhitespace").asBoolean()) {
+                        value = ((String) value).trim();
+                        if (data != null) data.put(field.getFieldKey(), value);
+                    }
+                } catch (Exception ignored) {}
+            }
+
             log.debug("  checking '{}' type={} required={} validationJson={} hasOptions={}",
                     field.getFieldKey(), field.getFieldType(),
                     field.isRequired(), field.getValidationJson(),
                     field.getOptionsJson() != null);
-            Object value = (data != null) ? data.get(field.getFieldKey()) : null;
+            
             List<String> errs = validationService.validateField(field, value, tableName, files);
             if (!errs.isEmpty()) {
                 log.debug("  FAIL '{}': {}", field.getFieldKey(), errs);

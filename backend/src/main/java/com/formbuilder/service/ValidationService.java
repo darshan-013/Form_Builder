@@ -42,8 +42,9 @@ public class ValidationService {
      * @param files     Optional file map for file field validation
      * @return List of error messages (empty if valid)
      */
+     */
     public List<String> validateField(FormFieldEntity field, Object value, String tableName,
-            Map<String, MultipartFile> files) {
+            Map<String, List<MultipartFile>> files) {
         List<String> errors = new ArrayList<>();
         if ("field_group".equals(field.getFieldType())) {
             return errors;
@@ -64,16 +65,18 @@ public class ValidationService {
         // back to a proper JSON string so downstream validators can parse it correctly.
         // value.toString() on a List produces [Item1, Item2] (no quotes) which is not
         // valid JSON.
-        String strValue;
+        String rawValue;
         if (value instanceof List) {
             try {
-                strValue = objectMapper.writeValueAsString(value);
+                rawValue = objectMapper.writeValueAsString(value);
             } catch (JsonProcessingException e) {
-                strValue = value.toString().trim();
+                rawValue = value.toString();
             }
         } else {
-            strValue = (value != null) ? value.toString().trim() : "";
+            rawValue = (value != null) ? value.toString() : "";
         }
+
+        String strValue = rawValue.trim();
         boolean isEmpty = strValue.isEmpty();
 
         // Required check (universal — except boolean, multiple_choice_grid,
@@ -96,7 +99,7 @@ public class ValidationService {
 
         // Type-specific validation
         switch (field.getFieldType().toLowerCase()) {
-            case "text" -> validateTextField(field, strValue, rules, errors, tableName);
+            case "text" -> validateTextField(field, strValue, rawValue, rules, errors, tableName);
             case "number" -> validateNumberField(field, strValue, rules, errors, tableName);
             case "date" -> validateDateField(field, strValue, rules, errors);
             case "time" -> validateTimeField(field, strValue, rules, errors);
@@ -127,7 +130,7 @@ public class ValidationService {
     // TEXT FIELD VALIDATION
     // ═══════════════════════════════════════════════════════════════════════
 
-    private void validateTextField(FormFieldEntity field, String value, JsonNode rules, List<String> errors,
+    private void validateTextField(FormFieldEntity field, String value, String rawValue, JsonNode rules, List<String> errors,
             String tableName) {
         String label = field.getLabel();
 
@@ -149,11 +152,11 @@ public class ValidationService {
                 errors.add(label + " must be exactly " + exact + " characters");
         }
         if (rules.has("noLeadingTrailingSpaces") && rules.get("noLeadingTrailingSpaces").asBoolean()) {
-            if (!value.equals(value.trim()))
+            if (!rawValue.equals(rawValue.trim()))
                 errors.add(label + " must not have leading or trailing spaces");
         }
         if (rules.has("noConsecutiveSpaces") && rules.get("noConsecutiveSpaces").asBoolean()) {
-            if (value.contains("  "))
+            if (rawValue.contains("  "))
                 errors.add(label + " must not contain consecutive spaces");
         }
         if (rules.has("alphabetOnly") && rules.get("alphabetOnly").asBoolean()) {
@@ -168,7 +171,7 @@ public class ValidationService {
             if (!value.matches("^[A-Za-z0-9\\s]+$"))
                 errors.add(label + " must not contain special characters");
         }
-        if (rules.has("allowSpecificSpecialCharacters")) {
+        if (rules.has("allowSpecificSpecialCharacters") && !rules.get("allowSpecificSpecialCharacters").asText().isEmpty()) {
             String allowed = rules.get("allowSpecificSpecialCharacters").asText();
             String escapedAllowed = allowed.replaceAll("([\\[\\-\\\\])", "\\\\$1");
             String pattern = "^[A-Za-z0-9\\s" + escapedAllowed + "]+$";
@@ -178,6 +181,15 @@ public class ValidationService {
             } catch (Exception e) {
                 log.warn("Invalid allowSpecificSpecialCharacters pattern for field {}: {}", field.getFieldKey(),
                         pattern);
+            }
+        }
+        if (rules.has("restrictSpecificSpecialCharacters") && !rules.get("restrictSpecificSpecialCharacters").asText().isEmpty()) {
+            String restricted = rules.get("restrictSpecificSpecialCharacters").asText();
+            for (char c : restricted.toCharArray()) {
+                if (rawValue.indexOf(c) >= 0) {
+                    errors.add(label + " contains restricted character: " + c);
+                    break;
+                }
             }
         }
         if (rules.has("emailFormat") && rules.get("emailFormat").asBoolean()) {
@@ -730,70 +742,97 @@ public class ValidationService {
     // FILE FIELD VALIDATION
     // ═══════════════════════════════════════════════════════════════════════
 
-    private void validateFileField(FormFieldEntity field, Map<String, MultipartFile> files, JsonNode rules,
+    private void validateFileField(FormFieldEntity field, Map<String, List<MultipartFile>> files, JsonNode rules,
             List<String> errors, String tableName) {
         String label = field.getLabel();
-        MultipartFile file = files != null ? files.get(field.getFieldKey()) : null;
+        List<MultipartFile> fileList = files != null ? files.get(field.getFieldKey()) : null;
 
-        if (file == null || file.isEmpty()) {
+        if (fileList == null || fileList.isEmpty() || fileList.stream().allMatch(MultipartFile::isEmpty)) {
             if (field.isRequired())
                 errors.add(label + " is required");
             return;
         }
 
-        String filename = file.getOriginalFilename();
-        long fileSize = file.getSize();
-        String contentType = file.getContentType();
+        // Check if multiple files are allowed
+        boolean singleOnly = rules.has("singleOrMultiple") && "single".equals(rules.get("singleOrMultiple").asText());
+        if (singleOnly && fileList.size() > 1) {
+            errors.add(label + " only allows a single file upload");
+        }
 
-        if (rules.has("allowedExtensions")) {
-            String[] allowed = rules.get("allowedExtensions").asText().split(",");
-            boolean validExt = Arrays.stream(allowed)
-                    .anyMatch(ext -> filename != null && filename.toLowerCase().endsWith(ext.trim().toLowerCase()));
-            if (!validExt)
-                errors.add(label + " must be one of: " + rules.get("allowedExtensions").asText());
-        }
-        if (rules.has("mimeTypeValidation")) {
-            String[] allowedMimes = rules.get("mimeTypeValidation").asText().split(",");
-            boolean validMime = Arrays.stream(allowedMimes)
-                    .anyMatch(mime -> contentType != null && contentType.equals(mime.trim()));
-            if (!validMime)
-                errors.add(label + " has invalid file type");
-        }
-        if (rules.has("maxFileSize")) {
-            long maxSize = rules.get("maxFileSize").asLong() * 1024 * 1024;
-            if (fileSize > maxSize)
-                errors.add(label + " exceeds maximum size of " + rules.get("maxFileSize").asLong() + " MB");
-        }
-        if (rules.has("minFileSize")) {
-            long minSize = rules.get("minFileSize").asLong() * 1024;
-            if (fileSize < minSize)
-                errors.add(label + " is smaller than minimum size of " + rules.get("minFileSize").asLong() + " KB");
-        }
-        if (rules.has("imageDimensionCheck")) {
-            try {
-                BufferedImage image = ImageIO.read(file.getInputStream());
-                if (image != null) {
-                    JsonNode dim = rules.get("imageDimensionCheck");
-                    if (dim.has("minWidth") && image.getWidth() < dim.get("minWidth").asInt())
-                        errors.add(label + " width must be at least " + dim.get("minWidth").asInt() + " pixels");
-                    if (dim.has("maxWidth") && image.getWidth() > dim.get("maxWidth").asInt())
-                        errors.add(label + " width must not exceed " + dim.get("maxWidth").asInt() + " pixels");
-                    if (dim.has("minHeight") && image.getHeight() < dim.get("minHeight").asInt())
-                        errors.add(label + " height must be at least " + dim.get("minHeight").asInt() + " pixels");
-                    if (dim.has("maxHeight") && image.getHeight() > dim.get("maxHeight").asInt())
-                        errors.add(label + " height must not exceed " + dim.get("maxHeight").asInt() + " pixels");
+        long totalSize = 0;
+
+        for (MultipartFile file : fileList) {
+            if (file.isEmpty()) continue;
+
+            String filename = file.getOriginalFilename();
+            long fileSize = file.getSize();
+            String contentType = file.getContentType();
+            
+            totalSize += fileSize;
+
+            if (rules.has("allowedExtensions")) {
+                String allowedText = rules.get("allowedExtensions").asText();
+                if (!allowedText.isBlank()) {
+                    String[] allowed = allowedText.split(",");
+                    boolean validExt = Arrays.stream(allowed)
+                            .anyMatch(ext -> filename != null && filename.toLowerCase().endsWith(ext.trim().toLowerCase()));
+                    if (!validExt)
+                        errors.add(label + ": '" + filename + "' must be one of: " + allowedText);
                 }
-            } catch (IOException e) {
-                log.warn("Failed to read image dimensions for field {}", field.getFieldKey(), e);
+            }
+            if (rules.has("mimeTypeValidation")) {
+                String mimeText = rules.get("mimeTypeValidation").asText();
+                if (!mimeText.isBlank()) {
+                    String[] allowedMimes = mimeText.split(",");
+                    boolean validMime = Arrays.stream(allowedMimes)
+                            .anyMatch(mime -> contentType != null && contentType.equalsIgnoreCase(mime.trim()));
+                    if (!validMime)
+                        errors.add(label + ": '" + filename + "' has an invalid MIME type");
+                }
+            }
+            if (rules.has("maxFileSize")) {
+                long maxSize = rules.get("maxFileSize").asLong() * 1024 * 1024;
+                if (fileSize > maxSize)
+                    errors.add(label + ": '" + filename + "' exceeds maximum size of " + rules.get("maxFileSize").asLong() + " MB");
+            }
+            if (rules.has("minFileSize")) {
+                long minSize = rules.get("minFileSize").asLong() * 1024;
+                if (fileSize < minSize)
+                    errors.add(label + ": '" + filename + "' is smaller than minimum size of " + rules.get("minFileSize").asLong() + " KB");
+            }
+            if (rules.has("imageDimensionCheck")) {
+                try {
+                    BufferedImage image = ImageIO.read(file.getInputStream());
+                    if (image != null) {
+                        JsonNode dim = rules.get("imageDimensionCheck");
+                        if (dim.has("minWidth") && dim.get("minWidth").asInt() > 0 && image.getWidth() < dim.get("minWidth").asInt())
+                            errors.add(label + ": '" + filename + "' width must be at least " + dim.get("minWidth").asInt() + " pixels");
+                        if (dim.has("maxWidth") && dim.get("maxWidth").asInt() > 0 && image.getWidth() > dim.get("maxWidth").asInt())
+                            errors.add(label + ": '" + filename + "' width must not exceed " + dim.get("maxWidth").asInt() + " pixels");
+                        if (dim.has("minHeight") && dim.get("minHeight").asInt() > 0 && image.getHeight() < dim.get("minHeight").asInt())
+                            errors.add(label + ": '" + filename + "' height must be at least " + dim.get("minHeight").asInt() + " pixels");
+                        if (dim.has("maxHeight") && dim.get("maxHeight").asInt() > 0 && image.getHeight() > dim.get("maxHeight").asInt())
+                            errors.add(label + ": '" + filename + "' height must not exceed " + dim.get("maxHeight").asInt() + " pixels");
+                    }
+                } catch (IOException e) {
+                    log.warn("Failed to read image dimensions for field {}", field.getFieldKey(), e);
+                }
+            }
+            if (rules.has("fileNameValidation") && rules.get("fileNameValidation").asBoolean()) {
+                if (filename != null && !filename.matches("^[A-Za-z0-9._-]+$"))
+                    errors.add(label + ": '" + filename + "' contains invalid characters");
+            }
+            if (rules.has("duplicateFilePrevention") && rules.get("duplicateFilePrevention").asBoolean()) {
+                if (filename != null && isDuplicate(tableName, field.getFieldKey(), filename))
+                    errors.add(label + ": a file named '" + filename + "' already exists");
             }
         }
-        if (rules.has("fileNameValidation") && rules.get("fileNameValidation").asBoolean()) {
-            if (filename != null && !filename.matches("^[A-Za-z0-9._-]+$"))
-                errors.add(label + " filename contains invalid characters");
-        }
-        if (rules.has("duplicateFilePrevention") && rules.get("duplicateFilePrevention").asBoolean()) {
-            if (filename != null && isDuplicate(tableName, field.getFieldKey(), filename))
-                errors.add(label + " with this filename already exists");
+
+        // Aggregate rules
+        if (rules.has("totalSizeLimit")) {
+            long maxTotal = rules.get("totalSizeLimit").asLong() * 1024 * 1024;
+            if (totalSize > maxTotal)
+                errors.add(label + " exceeds total maximum size of " + rules.get("totalSizeLimit").asLong() + " MB");
         }
     }
 

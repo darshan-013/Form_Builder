@@ -195,7 +195,7 @@ public class SubmissionController {
         validateFormAccess(id, session);
 
         Map<String, Object> data = new HashMap<>();
-        Map<String, MultipartFile> files = new HashMap<>();
+        Map<String, List<MultipartFile>> files = new HashMap<>();
 
         try {
             multipart.getParameterMap().forEach((key, values) -> {
@@ -204,9 +204,7 @@ public class SubmissionController {
             });
             multipart.getMultiFileMap().forEach((key, fileList) -> {
                 if (fileList != null && !fileList.isEmpty()) {
-                    MultipartFile first = fileList.get(0);
-                    if (first != null && !first.isEmpty())
-                        files.put(key, first);
+                    files.put(key, fileList);
                     data.put("__files__" + key, fileList);
                 }
             });
@@ -233,9 +231,16 @@ public class SubmissionController {
                     data.put(fieldKey, String.join(",", savedNames));
                 data.remove(key);
             }
-            for (Map.Entry<String, MultipartFile> e : files.entrySet()) {
-                if (!savedKeys.contains(e.getKey()))
-                    data.put(e.getKey(), saveFile(e.getValue()));
+            for (Map.Entry<String, List<MultipartFile>> e : files.entrySet()) {
+                if (!savedKeys.contains(e.getKey())) {
+                    List<String> savedNames = new ArrayList<>();
+                    for (MultipartFile f : e.getValue()) {
+                        if (f != null && !f.isEmpty())
+                            savedNames.add(saveFile(f));
+                    }
+                    if (!savedNames.isEmpty())
+                        data.put(e.getKey(), String.join(",", savedNames));
+                }
             }
 
             // Metadata extraction

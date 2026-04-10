@@ -5,9 +5,12 @@ import Link from 'next/link';
 import Navbar from '../components/Navbar';
 import UserProfileChip from '../components/UserProfileChip';
 import { motion } from 'framer-motion';
-import { FileText, CheckCircle, Edit3, MessageSquare } from 'lucide-react';
+import { 
+    FileText, Calendar, Edit3, BarChart3, Copy, 
+    ExternalLink, Eye, Trash2, CheckCircle, MessageSquare, Archive
+} from 'lucide-react';
 import { getDashboardStats } from '../services/api';
-import { toastError } from '../services/toast';
+import { toastSuccess, toastError } from '../services/toast';
 import { useAuth } from '../context/AuthContext';
 import { translateApiError } from '../services/errorTranslator';
 
@@ -35,6 +38,13 @@ export default function DashboardPage() {
     const formatDate = (dt) =>
         dt ? new Date(dt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
+    const handleCopyLink = (formId) => {
+        const url = `${window.location.origin}/submit/${formId}`;
+        navigator.clipboard.writeText(url)
+            .then(() => toastSuccess('Submission link copied to clipboard!'))
+            .catch(() => toastError('Failed to copy link.'));
+    };
+
     const formatRelativeOrDate = (dt) => {
         if (!dt) return '-';
         const parsed = new Date(dt).getTime();
@@ -46,6 +56,48 @@ export default function DashboardPage() {
         return formatDate(dt);
     };
 
+    const renderRecentRow = (form) => {
+        const status = form.status?.toUpperCase();
+        const isPublished = status === 'PUBLISHED';
+        const isDraft = status === 'DRAFT' || !status;
+        
+        return (
+            <div key={form.id} className={`recent-row-v2 animate-in ${isPublished ? 'row-published' : 'row-draft'}`}>
+                <div className="row-main-info">
+                    <div className="row-thumb">
+                        <FileText size={18} color="#3B82F6" />
+                    </div>
+                    <div className="row-name-wrap">
+                        <span className="row-name">{form.name}</span>
+                        <div className={`status-pill-v2 pill-xs ${isPublished ? 'pill-published' : 'pill-draft'}`}>
+                            <span className="pill-dot"></span>
+                            {isPublished ? 'Published' : (form.status || 'Draft').toLowerCase().replace(/^\w/, (c) => c.toUpperCase())}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="row-actions-wrap">
+                    <div className="row-date">{formatRelativeOrDate(form.updatedAt || form.createdAt)}</div>
+                    <div className="row-toolbar">
+                        <button className="row-icon-btn" title="Edit Form" onClick={() => router.push(`/builder/${form.id}`)}>
+                            <Edit3 size={16} />
+                        </button>
+                        {isPublished && (
+                            <>
+                                <button className="row-icon-btn" title="Submissions" onClick={() => router.push(`/submissions/${form.id}`)}>
+                                    <BarChart3 size={16} />
+                                </button>
+                                <button className="row-icon-btn" title="Copy Link" onClick={() => handleCopyLink(form.id)}>
+                                    <Copy size={16} />
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <>
             <Head><title>Dashboard — FormCraft</title></Head>
@@ -53,7 +105,7 @@ export default function DashboardPage() {
             <div className="page">
                 <Navbar />
                 <UserProfileChip />
-                <div className="container">
+                <div className="container" style={{ paddingBottom: '100px' }}>
 
                     <div className="page-header">
                         <div>
@@ -62,59 +114,57 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    <div className="dashboard-stats">
-                        <motion.div
-                            className="stat-card"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.1 }}
-                        >
-                            <div className="stat-icon-bg" style={{ background: 'rgba(139, 92, 246, 0.1)' }}>
-                                <FileText size={20} color="#8B5CF6" />
+                    <div className="dashboard-stats-v2">
+                        <motion.div className="stat-card-v2" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                            <div className="stat-header">
+                                <div className="stat-icon-v2" style={{ background: '#EEF2FF', color: '#6366F1' }}>
+                                    <FileText size={20} />
+                                </div>
+                                <span className="stat-trend">+12%</span>
                             </div>
-                            <div className="stat-label">Total Forms</div>
-                            <div className="stat-value">{stats?.totalForms ?? 0}</div>
+                            <div className="stat-info">
+                                <div className="stat-value-v2">{stats?.totalForms ?? 0}</div>
+                                <div className="stat-label-v2">Total Forms</div>
+                            </div>
                         </motion.div>
 
-                        <motion.div
-                            className="stat-card"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.2 }}
-                        >
-                            <div className="stat-icon-bg" style={{ background: 'rgba(16, 185, 129, 0.1)' }}>
-                                <CheckCircle size={20} color="#10B981" />
+                        <motion.div className="stat-card-v2" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
+                            <div className="stat-header">
+                                <div className="stat-icon-v2" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                                    <CheckCircle size={20} />
+                                </div>
+                                <span className="stat-trend success">Active</span>
                             </div>
-                            <div className="stat-label">Published Forms</div>
-                            <div className="stat-value">{stats?.publishedCount ?? 0}</div>
+                            <div className="stat-info">
+                                <div className="stat-value-v2">{stats?.publishedCount ?? 0}</div>
+                                <div className="stat-label-v2">Published</div>
+                            </div>
                         </motion.div>
 
-                        <motion.div
-                            className="stat-card"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.3 }}
-                        >
-                            <div className="stat-icon-bg" style={{ background: 'rgba(245, 158, 11, 0.1)' }}>
-                                <Edit3 size={20} color="#F59E0B" />
+                        <motion.div className="stat-card-v2" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
+                            <div className="stat-header">
+                                <div className="stat-icon-v2" style={{ background: '#FFF7ED', color: '#F59E0B' }}>
+                                    <Edit3 size={20} />
+                                </div>
                             </div>
-                            <div className="stat-label">Draft Forms</div>
-                            <div className="stat-value">{stats?.draftCount ?? 0}</div>
+                            <div className="stat-info">
+                                <div className="stat-value-v2">{stats?.draftCount ?? 0}</div>
+                                <div className="stat-label-v2">Drafts</div>
+                            </div>
                         </motion.div>
 
-                        <motion.div
-                            className="stat-card"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.4 }}
-                        >
-                            <div className="stat-icon-bg" style={{ background: 'rgba(6, 182, 212, 0.1)' }}>
-                                <MessageSquare size={20} color="#06B6D4" />
+                        <motion.div className="stat-card-v2" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.4 }}>
+                            <div className="stat-header">
+                                <div className="stat-icon-v2" style={{ background: '#F0FDFA', color: '#0D9488' }}>
+                                    <MessageSquare size={20} />
+                                </div>
+                                <span className="stat-trend info">New</span>
                             </div>
-                            <div className="stat-label">Total Submissions</div>
-                            <div className="stat-value">{stats?.totalSubmissions ?? 0}</div>
+                            <div className="stat-info">
+                                <div className="stat-value-v2">{stats?.totalSubmissions ?? 0}</div>
+                                <div className="stat-label-v2">Submissions</div>
+                            </div>
                         </motion.div>
-
                     </div>
 
                     {loading ? (
@@ -138,58 +188,28 @@ export default function DashboardPage() {
                                 </div>
                             </section>
 
-                            <section className="dashboard-section" style={{ marginTop: 16 }}>
-                                <div className="section-bar section-bar-published">
-                                    <div className="section-bar-top" style={{ alignItems: 'center' }}>
-                                        <div className="section-bar-title">
-                                            <span className="section-bar-icon">🕒</span>
-                                            <h2 className="dashboard-section-title">Recent Activity</h2>
-                                            <span className="dashboard-section-count">{recentForms.length}</span>
-                                        </div>
+                            <section className="dashboard-section-v2">
+                                <div className="section-header-v2">
+                                    <div className="section-title-wrap">
+                                        <div className="section-icon-v2">🕒</div>
+                                        <h2 className="section-title-v2">Recent Forms</h2>
+                                        <span className="section-badge-v2">{recentForms.length}</span>
                                     </div>
-                                    <div className="section-bar-bottom" style={{ display: 'block' }}>
-                                        {recentForms.length === 0 ? (
-                                            <span style={{ color: 'var(--text-muted)' }}>No recent activity.</span>
-                                        ) : (
-                                            <div style={{ display: 'grid', gap: 6, width: '100%' }}>
-                                                {recentForms.map((item, idx) => (
-                                                    <div key={item.id || `${item.name || 'recent'}-${idx}`} style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        gap: 12,
-                                                        padding: '12px 6px',
-                                                        borderBottom: idx === recentForms.length - 1 ? 'none' : '1px solid var(--border)'
-                                                    }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                                                            <div style={{
-                                                                width: 40,
-                                                                height: 40,
-                                                                borderRadius: 10,
-                                                                background: 'rgba(99, 102, 241, 0.12)',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                flexShrink: 0
-                                                            }}>
-                                                                ⏺
-                                                            </div>
-                                                            <div style={{ minWidth: 0 }}>
-                                                                <div style={{ fontWeight: 700, color: 'var(--accent-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                    {item.name || 'Untitled Form'}
-                                                                </div>
-                                                                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Last updated</div>
-                                                            </div>
-                                                        </div>
-                                                        <div style={{ fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                                            {formatRelativeOrDate(item.updatedAt || item.createdAt)}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
+                                    <Link href="/forms/vault" className="view-all-link">
+                                        View All Vault <ExternalLink size={14} />
+                                    </Link>
                                 </div>
+
+                                {recentForms.length === 0 ? (
+                                    <div className="empty-state-v2">
+                                        <Archive size={40} />
+                                        <p>No recent activity found. Start by creating a new form!</p>
+                                    </div>
+                                ) : (
+                                    <div className="recent-list-v2">
+                                        {recentForms.slice(0, 6).map(renderRecentRow)}
+                                    </div>
+                                )}
                             </section>
                         </>
                     )}

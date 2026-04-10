@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Sparkles, ArrowRight } from 'lucide-react';
 import styles from '../../styles/Home.module.css';
 import BackgroundShapes from './BackgroundShapes';
 
@@ -9,18 +10,30 @@ export default function Hero() {
             <div className={styles.container}>
                 <div className={styles.heroGlow} />
                 <div className={styles.heroContent}>
-                    <p className={styles.kicker}>Modern Form Operations Platform</p>
+                    <div className={styles.badge}>
+                        <Sparkles size={14} />
+                        <span>FormCraft v2 is now live</span>
+                    </div>
+                    
                     <h1 className={styles.heroTitle}>
-                        Run enterprise form workflows with speed, clarity, and control.
+                        Build elegant forms.<br />
+                        <span className={styles.heroHighlight}>At lightning speed.</span>
                     </h1>
+                    
                     <p className={styles.heroDesc}>
-                        Build dynamic forms, enforce role-based access, and track every critical event
-                        in one premium workspace designed for real operations teams.
+                        A premium form operations platform designed for scale. 
+                        Build dynamic workflows, enforce strict validation, and construct beautiful 
+                        data experiences without writing a single line of backend logic.
                     </p>
 
                     <div className={styles.heroActions}>
-                        <Link href="/register" className={`${styles.ctaButton} ${styles.btnPrimary}`}>Get Started</Link>
-                        <Link href="/login" className={`${styles.ctaButton} ${styles.btnSecondary}`}>Login</Link>
+                        <Link href="/register" className={styles.btnPrimaryLg}>
+                            Start Building Free
+                            <ArrowRight size={18} />
+                        </Link>
+                        <Link href="#features" className={styles.btnSecondaryLg}>
+                            Explore Platform
+                        </Link>
                     </div>
                 </div>
             </div>

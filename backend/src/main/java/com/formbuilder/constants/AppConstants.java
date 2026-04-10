@@ -40,20 +40,21 @@ public class AppConstants {
     public static final String BY_ID_ROLE_BY_ID = "/{id}/roles/{roleId}";
     
     // Form Sub-Endpoints
-    public static final String FORM_BY_ID = "/{id}";
-    public static final String FORM_RENDER = "/{id}/render";
-    public static final String FORM_RENDER_ADMIN = "/{id}/render/admin";
-    public static final String FORM_PUBLISH = "/{id}/publish";
-    public static final String FORM_UNPUBLISH = "/{id}/unpublish";
-    public static final String FORM_ASSIGN_BUILDER = "/{id}/assign-builder";
-    public static final String FORM_VERSIONS = "/{id}/versions";
-    public static final String FORM_VERSION_BY_ID = "/{id}/versions/{versionId}";
-    public static final String FORM_VERSION_PUBLISH = "/{id}/versions/{versionId}/publish";
-    public static final String FORM_VERSION_ACTIVATE = "/{id}/versions/{versionId}/activate";
+    public static final String FORM_BY_ID = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}";
+    public static final String FORM_RENDER = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/render";
+    public static final String FORM_RENDER_ADMIN = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/render/admin";
+    public static final String FORM_PUBLISH = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/publish";
+    public static final String FORM_UNPUBLISH = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/unpublish";
+    public static final String FORM_ASSIGN_BUILDER = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/assign-builder";
+    public static final String FORM_VERSIONS = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/versions";
+    public static final String FORM_VERSION_BY_ID = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/versions/{versionId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}";
+    public static final String FORM_VERSION_PUBLISH = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/versions/{versionId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/publish";
+    public static final String FORM_VERSION_ACTIVATE = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/versions/{versionId:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/activate";
     public static final String FORM_STATS = "/stats";
+    public static final String FORM_CHECK_CODE = "/check-code";
     public static final String FORM_TRASH = "/trash";
-    public static final String FORM_RESTORE = "/{id}/restore";
-    public static final String FORM_PERMANENT_DELETE = "/{id}/permanent";
+    public static final String FORM_RESTORE = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/restore";
+    public static final String FORM_PERMANENT_DELETE = "/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/permanent";
     
     // Field Sub-Endpoints (Granular)
     public static final String FORM_FIELDS = "/{formId}/versions/{versionId}/fields";
