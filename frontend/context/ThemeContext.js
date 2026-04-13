@@ -81,7 +81,7 @@ export function ThemeProvider({ children }) {
       transition: width 0.55s cubic-bezier(0.4,0,0.2,1),
                   height 0.55s cubic-bezier(0.4,0,0.2,1),
                   opacity 0.15s ease 0.45s;
-      background: ${next === 'light' ? '#F0F2F8' : '#060612'};
+      background: ${next === 'light' ? '#FFFFFF' : '#060612'};
       opacity: 1;
     `;
     document.body.appendChild(ripple);

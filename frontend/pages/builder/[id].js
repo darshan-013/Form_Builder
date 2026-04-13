@@ -9,6 +9,7 @@ import FieldConfigModal from '../../components/Builder/FieldConfigModal';
 import StaticFieldModal from '../../components/Builder/StaticFieldModal';
 import GroupConfigModal from '../../components/Builder/GroupConfigModal';
 import CustomValidationsPanel from '../../components/Builder/CustomValidationsPanel';
+import { Zap, Settings, Eye, Save, Rocket, X, Users, Calendar, BarChart3, Clock } from 'lucide-react';
 import { createForm, getForm, updateForm, getVisibilityCandidates, getFormVersions, publishForm, publishVersion, deleteFormVersion, isSchemaDriftError, saveSchemaDriftReport } from '../../services/api';
 import { toastSuccess, toastError, toastInfo } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -674,7 +675,10 @@ export default function EditBuilderPage() {
 
             <div className="builder-page" style={{ gridTemplateColumns: hasSelection ? `${leftWidth}px 1fr ${rightWidth}px` : `${leftWidth}px 1fr` }}>
                 <header className="builder-topbar">
-                    <Link href="/dashboard" className="builder-topbar-brand">⚡ FormCraft</Link>
+                    <Link href="/dashboard" className="builder-topbar-brand">
+                        <Zap size={18} fill="currentColor" strokeWidth={0} style={{ marginRight: 6 }} />
+                        FormCraft
+                    </Link>
 
                     <div className="builder-topbar-meta">
                         <input
@@ -760,7 +764,8 @@ export default function EditBuilderPage() {
                                     onClick={() => setShowSettings(v => !v)}
                                     title="Form Settings"
                                 >
-                                    ⚙️ Settings
+                                    <Settings size={15} />
+                                    Settings
                                 </button>
 
                                 {/* Settings dropdown */}
@@ -769,14 +774,13 @@ export default function EditBuilderPage() {
                                         <div className="settings-dropdown-backdrop" onClick={() => setShowSettings(false)} />
                                         <div className="settings-dropdown">
                                             <div className="settings-dropdown-header">
-                                                <span>⚙️ Form Settings</span>
-                                                <button className="settings-dropdown-close" onClick={() => setShowSettings(false)}>✕</button>
+                                                <span><Settings size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} /> Form Settings</span>
+                                                <button className="settings-dropdown-close" onClick={() => setShowSettings(false)}><X size={14} /></button>
                                             </div>
 
-                                            {/* Toggle: Limit to one submission */}
                                             <div className="form-settings-toggle" onClick={() => setAllowMultipleSubmissions(v => !v)}>
                                                 <div className="form-settings-toggle-info">
-                                                    <span className="form-settings-toggle-label">🔒 Limit to one submission</span>
+                                                    <span className="form-settings-toggle-label">Limit to one submission</span>
                                                     <span className="form-settings-toggle-desc">Each person can only submit this form once per session</span>
                                                 </div>
                                                 <div className={`toggle-switch${!allowMultipleSubmissions ? ' toggle-on' : ''}`} role="switch" aria-checked={!allowMultipleSubmissions}>
@@ -784,20 +788,20 @@ export default function EditBuilderPage() {
                                                 </div>
                                             </div>
 
-                                            {/* Expiry date-time picker */}
                                             <div className="form-settings-expiry">
                                                 <div className="form-settings-expiry-info">
-                                                    <span className="form-settings-toggle-label">📅 Form expiry</span>
+                                                    <span className="form-settings-toggle-label">Form expiry</span>
                                                     <span className="form-settings-toggle-desc">
                                                         {expiresAt
                                                             ? `Closes on ${new Date(expiresAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
                                                             : 'No expiry — form stays open indefinitely'}
                                                     </span>
                                                 </div>
-                                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                <div className="v-tl-connector" style={{ width: 'auto', flexDirection: 'row', gap: 8, height: 'auto' }}>
                                                     <input
                                                         type="datetime-local"
-                                                        className="form-input form-settings-date-input"
+                                                        className="v-input"
+                                                        style={{ width: 'auto', padding: '8px 12px' }}
                                                         value={expiresAt}
                                                         min={new Date().toISOString().slice(0, 16)}
                                                         onChange={e => setExpiresAt(e.target.value)}
@@ -805,12 +809,11 @@ export default function EditBuilderPage() {
                                                     />
                                                     {expiresAt && (
                                                         <button
-                                                            className="btn btn-secondary btn-sm"
+                                                            className="v-action-btn delete"
                                                             onClick={() => setExpiresAt('')}
                                                             title="Clear expiry"
-                                                            style={{ whiteSpace: 'nowrap', padding: '6px 10px' }}
                                                         >
-                                                            ✕ Clear
+                                                            <Trash2 size={14} />
                                                         </button>
                                                     )}
                                                 </div>
@@ -819,7 +822,7 @@ export default function EditBuilderPage() {
                                             {/* User-based form access */}
                                             <div className="form-settings-expiry">
                                                 <div className="form-settings-expiry-info">
-                                                    <span className="form-settings-toggle-label">👥 Who can see this form?</span>
+                                                    <span className="form-settings-toggle-label">Who can see this form?</span>
                                                     <span className="form-settings-toggle-desc">
                                                         {allowedUsers.length === 0
                                                             ? 'No explicit users selected. Default visibility rules apply.'
@@ -828,25 +831,35 @@ export default function EditBuilderPage() {
                                                 </div>
 
                                                 <div className="visibility-users-block">
-                                                    <input
-                                                        type="text"
-                                                        className="form-input visibility-users-search"
-                                                        placeholder="Search users by name or username"
-                                                        value={userSearch}
-                                                        onChange={(e) => setUserSearch(e.target.value)}
-                                                    />
+                                                    <div style={{ position: 'relative' }}>
+                                                        <Users size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                                        <input
+                                                            type="text"
+                                                            className="v-input"
+                                                            style={{ paddingLeft: 36 }}
+                                                            placeholder="Search users by name or username"
+                                                            value={userSearch}
+                                                            onChange={(e) => setUserSearch(e.target.value)}
+                                                        />
+                                                    </div>
 
                                                     {filteredVisibilityUsers.length > 0 && (
-                                                        <div className="visibility-users-results">
+                                                        <div className="visibility-users-results v-rules-list" style={{ gap: 4, marginTop: 8, maxHeight: 200, overflowY: 'auto' }}>
                                                             {filteredVisibilityUsers.map(user => (
                                                                 <button
                                                                     key={`${user.id ?? 'u'}-${user.username}`}
                                                                     type="button"
                                                                     className="visibility-user-option"
+                                                                    style={{ padding: '8px 12px', borderRadius: 8, display: 'flex', gap: 12, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}
                                                                     onClick={() => addAllowedUser(user)}
                                                                 >
-                                                                    <span className="visibility-user-name">{user.name || user.username}</span>
-                                                                    <span className="visibility-user-username">@{user.username}</span>
+                                                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--accent-soft)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
+                                                                        {(user.name || user.username)[0].toUpperCase()}
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="v-rule-message" style={{ fontSize: 13 }}>{user.name || user.username}</div>
+                                                                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{user.username}</div>
+                                                                    </div>
                                                                 </button>
                                                             ))}
                                                         </div>
@@ -868,18 +881,17 @@ export default function EditBuilderPage() {
                                                     </div>
 
                                                     {allowedUsers.length > 0 && (
-                                                        <div className="visibility-users-chips">
+                                                        <div className="visibility-users-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                                                             {allowedUsers.map(user => (
-                                                                <span key={`${user.id ?? 'u'}-${user.username}`} className="visibility-user-chip">
+                                                                <span key={`${user.id ?? 'u'}-${user.username}`} className="v-badge field" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px' }}>
                                                                     <span>{user.name || user.username}</span>
-                                                                    <span className="visibility-user-chip-username">@{user.username}</span>
                                                                     <button
                                                                         type="button"
-                                                                        className="visibility-user-chip-remove"
+                                                                        style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', display: 'flex', padding: 0 }}
                                                                         onClick={() => removeAllowedUser(user)}
                                                                         aria-label={`Remove ${user.username}`}
                                                                     >
-                                                                        ✕
+                                                                        <X size={10} />
                                                                     </button>
                                                                 </span>
                                                             ))}
@@ -898,7 +910,8 @@ export default function EditBuilderPage() {
                             onClick={handleOpenPreview}
                             disabled={saving}
                         >
-                            👁 Preview
+                            <Eye size={15} />
+                            Preview
                         </button>
 
 
@@ -911,8 +924,8 @@ export default function EditBuilderPage() {
                         >
                             {saveSuccess ? '✓ Saved!' : saving
                                 ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Saving…</>
-                                : isCreateMode ? '💾 Create Form'
-                                    : versionStatus === 'PUBLISHED' ? '💾 Save as New Draft' : '💾 Save Changes'}
+                                : isCreateMode ? <><Save size={15} /> Create Form</>
+                                    : versionStatus === 'PUBLISHED' ? <><Save size={15} /> Save as New Draft</> : <><Save size={15} /> Save Changes</>}
                         </button>
                         
                         {/* Publish Version button only visible for Drafts */}
@@ -921,9 +934,9 @@ export default function EditBuilderPage() {
                                 className="btn btn-primary btn-sm"
                                 onClick={handlePublish}
                                 disabled={saving}
-                                style={{ backgroundColor: 'var(--success)', borderColor: 'var(--success)' }}
+                                style={{ backgroundColor: '#10b981', borderColor: '#10b981' }}
                             >
-                                {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '🚀 Publish Version'}
+                                {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <><Rocket size={15} /> Publish Version</>}
                             </button>
                         )}
 
@@ -1085,13 +1098,16 @@ export default function EditBuilderPage() {
                         </div>
                     </div>
                 ) : (
-                    <div className="vh-full-view" style={{ gridColumn: '1 / -1', padding: '40px', overflowY: 'auto' }}>
-                        <div style={{ maxWidth: 800, margin: '0 auto' }}>
-                            <div style={{ marginBottom: 32, textAlign: 'center' }}>
-                                <h2>Form Version History</h2>
-                                <p style={{ color: 'var(--text-muted)' }}>View previous drafts and published versions of this form.</p>
+                    <div className="vh-full-view" style={{ gridColumn: '1 / -1', padding: '60px 40px', overflowY: 'auto' }}>
+                        <div style={{ maxWidth: 840, margin: '0 auto' }}>
+                            <div className="v-rules-divider" style={{ marginBottom: 48 }}>
+                                <div style={{ textAlign: 'center' }}>
+                                    <h2 className="v-title" style={{ justifyContent: 'center', fontSize: 24 }}>Form Version History</h2>
+                                    <p className="v-subtitle" style={{ marginLeft: 0 }}>View previous drafts and published versions of this form.</p>
+                                </div>
                             </div>
-                            <div className="timeline">
+
+                            <div className="timeline-v2">
                                 {versions.map((v, index) => {
                                     const normalizedStatus = resolveVersionStatus(v);
                                     const st = normalizedStatus.toLowerCase();
@@ -1099,81 +1115,70 @@ export default function EditBuilderPage() {
                                     const isCurrentlyViewing = v.id === (versionId || versions[0]?.id);
                                     
                                     return (
-                                        <div key={v.id} className={`tl-item ${st}`} style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', marginBottom: isLast ? 0 : '24px' }}>
-                                            <div className="tl-connector" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20, paddingTop: 14 }}>
-                                                <div className="tl-dot" style={{
-                                                    width: 18, height: 18, borderRadius: '50%',
-                                                    border: `4px solid ${st === 'published' ? 'var(--success)' : 'var(--warning)'}`,
-                                                    background: st === 'published' ? 'var(--success)' : 'var(--bg-base)',
-                                                    boxShadow: st === 'published' ? '0 0 16px rgba(16,185,129,0.5)' : 'none',
-                                                    zIndex: 2
-                                                }} />
-                                                {!isLast && <div className="tl-line" style={{ width: 2, flex: 1, minHeight: 60, background: 'var(--border)', margin: '8px 0', opacity: 0.5 }} />}
+                                        <div key={v.id} className="version-card-v2">
+                                            <div className="v-tl-connector">
+                                                <div className={`v-tl-dot ${st}`} />
+                                                {!isLast && <div className="v-tl-line" />}
                                             </div>
 
-                                            <div className="tl-card" style={{
-                                                flex: 1, padding: '24px', borderRadius: '16px',
-                                                border: `2px solid ${isCurrentlyViewing ? 'var(--accent)' : 'var(--border)'}`,
-                                                background: isCurrentlyViewing ? 'var(--bg-card)' : 'rgba(255,255,255,0.02)',
-                                                position: 'relative',
-                                                boxShadow: isCurrentlyViewing ? '0 8px 30px rgba(0,0,0,0.2)' : 'none'
-                                            }}>
+                                            <div className={`v-tile ${isCurrentlyViewing ? 'current' : ''}`}>
                                                 {st === 'published' && (
-                                                    <div style={{ position: 'absolute', top: 0, right: 24, background: 'var(--success)', color: '#fff', fontSize: 11, fontWeight: 800, padding: '4px 12px', borderRadius: '0 0 8px 8px', letterSpacing: '0.1em' }}>
-                                                        LIVE
-                                                    </div>
+                                                    <div className="v-tile-status-ribbon">LIVE</div>
                                                 )}
                                                 
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                                                    <div style={{ fontWeight: 800, fontSize: '1.5rem', color: isCurrentlyViewing ? 'var(--primary)' : 'var(--text-base)' }}>
-                                                        v{v.versionNumber}
+                                                <div className="v-tile-header">
+                                                    <div className="v-num">
+                                                        <span>v</span>{v.versionNumber}
                                                     </div>
-                                                    <span style={{
-                                                        fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 99,
-                                                        color: st === 'published' ? 'var(--success)' : 'var(--warning)',
-                                                        background: st === 'published' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                                                        border: `1px solid ${st === 'published' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`
-                                                    }}>{normalizedStatus}</span>
+                                                    <span className={`v-status-pill ${st}`}>{normalizedStatus}</span>
                                                 </div>
 
-                                                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+                                                <div className="v-tile-meta">
+                                                    <div className="v-meta-item">
+                                                        <Clock size={14} />
+                                                        {new Date(v.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    </div>
+                                                    <div className="v-meta-item">
+                                                        <BarChart3 size={14} />
+                                                        {v.fieldCount || 0} fields
+                                                    </div>
+                                                </div>
+
+                                                <div className="v-tile-actions">
                                                     {st === 'draft' && (
                                                         <button
-                                                            className="btn btn-sm btn-publish"
+                                                            className="btn btn-sm btn-primary"
                                                             onClick={() => setConfirmModal({ type: 'publish', versionId: v.id, versionNumber: v.versionNumber })}
                                                             disabled={!!actioning}
-                                                            style={{ fontSize: 13, padding: '8px 16px' }}
+                                                            style={{ background: '#10b981', borderColor: '#10b981' }}
                                                         >
-                                                            {actioning === v.id ? '⌛' : '🚀 Activate Form'}
+                                                            {actioning === v.id ? '⌛' : <><Rocket size={14} /> Activate Form</>}
                                                         </button>
                                                     )}
-                                                    {st !== 'published' && (
-                                                        <button
-                                                            className="btn btn-sm btn-secondary"
-                                                            onClick={() => setConfirmModal({ type: 'delete', versionId: v.id, versionNumber: v.versionNumber })}
-                                                            disabled={!!actioning}
-                                                            style={{ color: 'var(--error)', borderColor: 'var(--border)', fontSize: 13, padding: '8px 16px' }}
-                                                        >
-                                                            {actioning === v.id ? '⌛' : '🗑️ Delete'}
-                                                        </button>
-                                                    )}
-                                                    {!isCurrentlyViewing && (
-                                                        <button 
-                                                            className="btn btn-sm btn-secondary"
-                                                            onClick={() => {
-                                                                router.push(`/builder/${id}?versionId=${v.id}`);
-                                                                setActiveView('canvas');
-                                                            }}
-                                                            style={{ fontSize: 13, padding: '8px 16px' }}
-                                                        >
-                                                            👁 Load on Canvas
-                                                        </button>
-                                                    )}
-                                                    {isCurrentlyViewing && (
-                                                        <span style={{ display: 'flex', alignItems: 'center', padding: '0 8px', fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
-                                                            ✓ Currently viewing
-                                                        </span>
-                                                    )}
+                                                    
+                                                    <Link 
+                                                        href={`/builder/${id}?versionId=${v.id}`}
+                                                        className={`btn btn-sm ${isCurrentlyViewing ? 'btn-active' : 'btn-secondary'}`}
+                                                        style={isCurrentlyViewing ? { pointerEvents: 'none', opacity: 0.8 } : {}}
+                                                    >
+                                                        {isCurrentlyViewing ? 'Viewing Current' : 'View this version'}
+                                                    </Link>
+
+                                                    <button 
+                                                        className="btn btn-sm btn-secondary"
+                                                        onClick={() => router.push(`/preview/${id}?versionId=${v.id}`)}
+                                                    >
+                                                        <Eye size={14} /> Preview
+                                                    </button>
+
+                                                    <button 
+                                                        className="btn btn-sm btn-secondary"
+                                                        style={{ marginLeft: 'auto', color: '#f87171' }}
+                                                        onClick={() => setConfirmModal({ type: 'delete', versionId: v.id, versionNumber: v.versionNumber })}
+                                                        disabled={!!actioning}
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
                                                 </div>
 
                                                 <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>

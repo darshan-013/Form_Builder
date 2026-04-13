@@ -71,18 +71,16 @@
   grid-row: 1;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 8px 20px;
-  background: rgba(6, 6, 18, 0.85);
+  flex-wrap: nowrap;
+  gap: 20px;
+  padding: 0 24px;
+  height: 64px;
+  background: rgba(6, 6, 18, 0.4);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  z-index: 50;
-  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
-  /* Gradient underline glow */
-  border-bottom: 1px solid transparent;
-  background-clip: padding-box;
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  z-index: 1001; /* Above panel contents */
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   position: relative;
 }
 
@@ -115,47 +113,57 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.5) 30%, rgba(99, 102, 241, 0.5) 60%, transparent 100%);
+  background: linear-gradient(90deg, 
+    rgba(139, 92, 246, 0) 0%, 
+    rgba(139, 92, 246, 0.3) 25%, 
+    rgba(99, 102, 241, 0.3) 75%, 
+    rgba(99, 102, 241, 0) 100%
+  );
+  filter: blur(0.5px);
 }
 
 .builder-topbar-brand {
   font-family: 'Outfit', sans-serif;
-  font-size: 17px;
-  font-weight: 900;
-  background: var(--accent-grad);
+  font-size: 20px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #a78bfa, #6366f1);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   white-space: nowrap;
-  margin-right: 8px;
-  filter: drop-shadow(0 0 16px rgba(139, 92, 246, 0.4));
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
+  filter: drop-shadow(0 0 12px rgba(139, 92, 246, 0.3));
+  transition: opacity 0.2s;
+}
+
+.builder-topbar-brand:hover {
+  opacity: 0.85;
 }
 
 .builder-form-name-input {
   flex: 1;
-  max-width: 320px;
-  padding: 8px 14px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-sm);
+  padding: 9px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   color: var(--text-primary);
   font-size: 14px;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-weight: 600;
   outline: none;
-  transition: var(--transition);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .builder-form-name-input:hover {
-  border-color: rgba(255, 255, 255, 0.17);
-  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .builder-form-name-input:focus {
-  border-color: var(--border-focus);
-  background: rgba(139, 92, 246, 0.1);
-  box-shadow: 0 0 24px rgba(139, 92, 246, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(139, 92, 246, 0.05);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.1);
   transform: translateY(-1px);
 }
 
@@ -167,12 +175,77 @@
 .builder-topbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  flex: 1 1 auto;
-  min-width: 0;
+  gap: 12px;
+  flex: 0 0 auto;
   margin-left: auto;
+}
+
+.badge-text {
+  font-family: 'Outfit', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 12px;
+  background: rgba(139, 92, 246, 0.1);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 10px rgba(139, 92, 246, 0.1);
+}
+
+.builder-topbar-actions .btn {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 8px 16px;
+  height: 38px;
+}
+
+.builder-topbar-actions .btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.builder-topbar-actions .btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.builder-topbar-actions .btn-secondary.btn-active {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #a78bfa;
+  box-shadow: 0 0 15px rgba(139, 92, 246, 0.1);
+}
+
+.builder-topbar-actions .btn-primary {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  border: none;
+  color: white;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+}
+
+.builder-topbar-actions .btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+}
+
+.builder-topbar-actions .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
 }
 
 .builder-topbar-left {
@@ -185,10 +258,10 @@
    Builder view liquid toggle
 ================================= */
 .builder-topbar .liquid-group {
-  --gap: 4px;
-  --radius: 14px;
-  --speed: 0.45s;
-  --ease: cubic-bezier(0.22, 0.9, 0.25, 1);
+  --gap: 3px;
+  --radius: 12px;
+  --speed: 0.4s;
+  --ease: cubic-bezier(0.34, 1.56, 0.64, 1); /* Bouncy liquid bounce */
 
   position: relative;
   display: inline-grid;
@@ -234,11 +307,11 @@
   position: absolute;
   inset: var(--gap);
   width: calc((100% - (var(--gap) * 2)) / 3);
-  border-radius: calc(var(--radius) - 3px);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.92), rgba(99, 102, 241, 0.92));
+  border-radius: calc(var(--radius) - 2px);
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
   z-index: 1;
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.28);
-  transition: transform var(--speed) var(--ease), background 0.3s ease;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  transition: transform var(--speed) var(--ease);
 }
 
 .builder-topbar .liquid-slider::after {
@@ -734,7 +807,8 @@
 .builder-right-panel {
   grid-row: 2;
   grid-column: 3;
-  overflow-y: auto;
+  position: relative;
+  overflow: hidden; /* Body container will handle its own scroll */
   background: rgba(8, 6, 20, 0.7);
   border-left: 1px solid rgba(255, 255, 255, 0.07);
   backdrop-filter: blur(20px);
@@ -742,6 +816,104 @@
   display: flex;
   flex-direction: column;
 }
+
+/* ── Panel Scrolling Overrides ───────────────────── */
+/* We use a fixed-height internal scroll strategy: 
+   The modal fills the sidebar completely, and the body 
+   container within the modal handles vertical overflow. */
+
+.builder-right-panel .cfg-panel-v2 {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  z-index: 10 !important;
+  transform: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.builder-right-panel .cfg-overlay-v2 {
+  display: none !important;
+}
+
+.builder-right-panel .cfg-body-container {
+  overflow-y: auto !important;
+  flex: 1 !important;
+  min-height: 0 !important; /* Critical for flex scrolling */
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.builder-right-panel .cfg-body-v2 {
+  flex: none !important; /* Allow body content to grow naturally inside scrollable container */
+  padding-bottom: 40px !important;
+}
+
+.builder-right-panel .cfg-footer-v2 {
+  flex-shrink: 0 !important;
+  background: rgba(8, 6, 20, 0.95) !important;
+  backdrop-filter: blur(10px) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+
+[data-theme="light"] .builder-right-panel .cfg-footer-v2 {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-top-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Static & Group Modal Overrides */
+.builder-right-panel .config-panel-container {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.builder-right-panel .modal-box {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  border: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.builder-right-panel .modal-body {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  min-height: 0 !important;
+  padding: 24px 32px !important;
+}
+
+.builder-right-panel .modal-footer {
+  flex-shrink: 0 !important;
+  background: rgba(8, 6, 20, 0.95) !important;
+  backdrop-filter: blur(10px) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+
+[data-theme="light"] .builder-right-panel .modal-footer {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-top-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+
 
 .right-panel-empty {
   display: flex;
@@ -2332,6 +2504,87 @@
 .field-card-page-break:hover {
   border-color: rgba(139, 92, 246, 0.6) !important;
   background: rgba(139, 92, 246, 0.08) !important;
+}
+
+.page-break-card-content .settings-dropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 320px;
+  background: rgba(15, 12, 35, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  z-index: 1002;
+  padding: 8px;
+  animation: dropdownFadeIn 0.25s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.settings-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 8px;
+}
+
+.settings-dropdown-header span {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: #a78bfa;
+}
+
+.settings-dropdown-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.settings-dropdown-close:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.form-settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.form-settings-toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.form-settings-toggle-label {
+  display: block;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.form-settings-toggle-desc {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .page-break-card-content {

@@ -1,4 +1,6 @@
 import '../styles/globals.css';
+import '../styles/landing.css';
+
 import '../styles/auth.css';
 import '../styles/builder.css';
 import '../styles/dashboard.css';
@@ -13,6 +15,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { ThemeProvider } from '../context/ThemeContext';
 import { AuthProvider } from '../context/AuthContext';
 import LocalToast from '../components/LocalToast';
+import SmoothScroll from '../components/landing/SmoothScroll';
 
 function routeRank(path) {
   if (!path) return 0;
@@ -46,24 +49,36 @@ export default function App({ Component, pageProps }) {
     prevPathRef.current = router.asPath;
   }, [router.asPath]);
 
+  const isLandingPage = router.pathname === '/';
+  const content = (
+    <>
+      <LocalToast />
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={router.asPath}
+          custom={direction}
+          variants={pageMotion}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <Component {...pageProps} />
+        </motion.div>
+      </AnimatePresence>
+    </>
+  );
+
   return (
     <AuthProvider>
       <ThemeProvider>
-        <LocalToast />
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={router.asPath}
-            custom={direction}
-            variants={pageMotion}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <Component {...pageProps} />
-          </motion.div>
-        </AnimatePresence>
+        {isLandingPage ? (
+          <SmoothScroll>{content}</SmoothScroll>
+        ) : (
+          content
+        )}
       </ThemeProvider>
     </AuthProvider>
   );
 }
+

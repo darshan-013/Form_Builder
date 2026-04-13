@@ -68,10 +68,14 @@ export default function IndexPage() {
   return (
     <>
       <Head>
-        <title>FormCraft - Modern Form Operations Platform</title>
+        <title>FormCraft — Build elegant forms at lightning speed</title>
+        <meta name="description" content="A premium form operations platform. Build dynamic workflows, enforce validation, and construct beautiful data experiences." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@700;800&display=swap" rel="stylesheet" />
       </Head>
 
-      <div className={styles.page}>
+      <div id="landing-layout" className={styles.page}>
         <LandingNavbar />
         <main className={styles.main}>
           <Hero />
