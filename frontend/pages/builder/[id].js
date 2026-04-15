@@ -535,7 +535,8 @@ export default function EditBuilderPage() {
             if (redirectAfterSave) {
                 setTimeout(() => {
                     if (isViewer) {
-                        router.replace(`/workflows/create/${savedFormId || id}`);
+                        // Viewers go to form vault after creation
+                        router.replace('/forms/vault');
                     } else if (isCreateMode && savedFormId) {
                         router.replace(`/builder/${savedFormId}`);
                     } else {

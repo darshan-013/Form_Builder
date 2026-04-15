@@ -349,9 +349,92 @@ export default function CreateWorkflowPage() {
 
     return (
         <>
-            <Head><title>Create Workflow — FormCraft</title></Head>
+            <Head><title>{isViewer ? 'Assign Builder' : 'Create Workflow'} — FormCraft</title></Head>
             <Navbar />
-            <div className="container wf-setup-page">
+
+            {/* Simplified view for Viewers - just builder assignment */}
+            {isViewer ? (
+                <div className="container" style={{ maxWidth: '600px', margin: '40px auto' }}>
+                    <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+                        <h1 style={{ fontSize: '28px', fontWeight: 800, marginBottom: '8px' }}>Assign Builder</h1>
+                        <p style={{ color: '#64748B', fontSize: '14px' }}>
+                            Form: <strong>{form?.name || 'Loading...'}</strong>
+                        </p>
+                    </div>
+
+                    <div className="card" style={{ padding: '32px', borderRadius: '12px' }}>
+                        <div className="wf-group">
+                            <div className="wf-group-label">SELECT BUILDER</div>
+                            <div className="wf-search-wrap">
+                                <input
+                                    type="text"
+                                    className="form-input wf-search-input"
+                                    value={builderSearch}
+                                    onChange={(e) => setBuilderSearch(e.target.value)}
+                                    placeholder="Search builder"
+                                    disabled={!builders.length}
+                                />
+                            </div>
+                            {!builders.length ? (
+                                <div className="wf-empty-text">No builders available.</div>
+                            ) : (
+                                <div className="wf-radio-grid">
+                                    {filterUsers(builders, builderSearch).map((u) => {
+                                        const optionValue = String(u.id);
+                                        const checked = targetBuilderId === optionValue;
+                                        return (
+                                            <label
+                                                key={u.id}
+                                                className={`wf-radio-card${checked ? ' active' : ''}`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="builder"
+                                                    value={optionValue}
+                                                    checked={checked}
+                                                    onChange={(e) => setTargetBuilderId(e.target.value)}
+                                                />
+                                                <span className="wf-radio-text">
+                                                    <strong>{u.name || u.username}</strong> ({u.username})
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '32px', justifyContent: 'flex-end' }}>
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => router.back()}
+                                disabled={submitting}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handleSubmit}
+                                disabled={!targetBuilderId || submitting}
+                                style={{ minWidth: '140px' }}
+                            >
+                                {submitting ? (
+                                    <>
+                                        <span className="spinner" style={{ width: 14, height: 14, marginRight: '6px' }} />
+                                        Assigning...
+                                    </>
+                                ) : (
+                                    'Hand over to Builder'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                /* Full workflow setup for Builders and Admins */
+                <div className="container wf-setup-page">
                 <WorkflowHeader
                     title="Workflow Process"
                     subtitle="Configure and preview a horizontal process before starting the workflow."
@@ -533,7 +616,8 @@ export default function CreateWorkflowPage() {
 
                     <div className="wf-chain-text">{chainLabel}</div>
                 </div>
-            </div>
+                </div>
+            )}
         </>
     );
 }

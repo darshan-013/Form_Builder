@@ -705,6 +705,7 @@ public class FormService {
             field.setLabel(dto.getLabel());
             field.setFieldType(dto.getFieldType());
             field.setRequired(dto.isRequired());
+            field.setDisabled(dto.isDisabled());
             field.setReadOnly(dto.isReadOnly());
             field.setDefaultValue(dto.getDefaultValue());
             field.setFieldOrder(dto.getFieldOrder());

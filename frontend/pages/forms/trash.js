@@ -22,6 +22,10 @@ export default function FormsTrashPage() {
     const [restoreTarget, setRestoreTarget] = useState(null);
     const [purgeTarget, setPurgeTarget] = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
+    const [selectedForms, setSelectedForms] = useState(new Set());
+    const [bulkRestoreModal, setBulkRestoreModal] = useState(false);
+    const [bulkPurgeModal, setBulkPurgeModal] = useState(false);
+    const [bulkActioning, setBulkActioning] = useState(false);
 
     useEffect(() => {
         if (authLoading) return;
@@ -75,6 +79,53 @@ export default function FormsTrashPage() {
         }
     };
 
+    const handleBulkRestore = async () => {
+        setBulkActioning(true);
+        let restored = 0;
+        for (const id of [...selectedForms]) {
+            try {
+                await restoreForm(id);
+                restored++;
+            } catch {
+                // Continue with best effort
+            }
+        }
+        setForms(prev => prev.filter(f => !selectedForms.has(f.id)));
+        clearSelection();
+        setBulkActioning(false);
+        setBulkRestoreModal(false);
+        toastSuccess(`${restored} form${restored !== 1 ? 's' : ''} restored.`);
+    };
+
+    const handleBulkPurge = async () => {
+        setBulkActioning(true);
+        let deleted = 0;
+        for (const id of [...selectedForms]) {
+            try {
+                await permanentlyDeleteForm(id);
+                deleted++;
+            } catch {
+                // Continue with best effort
+            }
+        }
+        setForms(prev => prev.filter(f => !selectedForms.has(f.id)));
+        clearSelection();
+        setBulkActioning(false);
+        setBulkPurgeModal(false);
+        toastSuccess(`${deleted} form${deleted !== 1 ? 's' : ''} permanently deleted.`);
+    };
+
+    const toggleSelect = (id) => {
+        setSelectedForms(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+
+    const selectAll = () => setSelectedForms(new Set(filteredForms.map(f => f.id)));
+    const clearSelection = () => setSelectedForms(new Set());
+
     const filteredForms = forms.filter(f =>
         f.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         f.code?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -116,6 +167,14 @@ export default function FormsTrashPage() {
                                 <h2 className="dashboard-section-title">Archived Forms</h2>
                                 <span className="dashboard-section-count">{filteredForms.length}</span>
                             </div>
+                            {selectedForms.size > 0 && (
+                                <div className="section-sel-row">
+                                    <span className="bulk-count">{selectedForms.size} selected</span>
+                                    <button className="sb-btn sb-btn-ghost" onClick={clearSelection}>✕ Clear</button>
+                                    <button className="sb-btn sb-btn-success" onClick={() => setBulkRestoreModal(true)} disabled={bulkActioning}>↶ Restore {selectedForms.size}</button>
+                                    <button className="sb-btn sb-btn-danger" onClick={() => setBulkPurgeModal(true)} disabled={bulkActioning}>🗑 Delete {selectedForms.size}</button>
+                                </div>
+                            )}
                         </div>
                         <div className="section-bar-bottom">
                             <div className="section-search-wrapper">
@@ -144,73 +203,97 @@ export default function FormsTrashPage() {
                         </div>
                     ) : (
                         <>
+                            <div style={{ marginBottom: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                <button
+                                    className={`sb-btn ${selectedForms.size === filteredForms.length ? 'sb-btn-active' : 'sb-btn-ghost'}`}
+                                    onClick={selectedForms.size === filteredForms.length ? clearSelection : selectAll}
+                                    disabled={filteredForms.length === 0}
+                                >
+                                    {selectedForms.size === filteredForms.length ? '☑ Deselect All' : '☐ Select All'}
+                                </button>
+                            </div>
                             <div className="dashboard-grid">
-                                {filteredForms.slice((page - 1) * pageSize, page * pageSize).map(form => (
-                                    <motion.div 
-                                        key={form.id}
-                                        initial={{ opacity: 0, scale: 0.95 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        className="form-card"
-                                    >
-                                        <div className="form-card-header">
-                                            <div className="form-card-icon">📁</div>
-                                            <div className="form-card-menu">
-                                                <button 
-                                                    className="btn btn-secondary btn-sm" 
-                                                    title="Restore"
-                                                    onClick={() => setRestoreTarget(form)}
-                                                >
-                                                    <RotateCcw size={16} />
-                                                </button>
-                                                <button 
-                                                    className="btn btn-danger btn-sm" 
-                                                    title="Permanent Delete"
-                                                    onClick={() => setPurgeTarget(form)}
-                                                >
-                                                    ✕
-                                                </button>
+                                {filteredForms.slice((page - 1) * pageSize, page * pageSize).map(form => {
+                                    const isSelected = selectedForms.has(form.id);
+                                    return (
+                                        <motion.div
+                                            key={form.id}
+                                            initial={{ opacity: 0, scale: 0.95 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            className="form-card"
+                                            onClick={() => toggleSelect(form.id)}
+                                            style={{ cursor: 'pointer', opacity: isSelected ? 0.8 : 1, border: isSelected ? '2px solid #8B5CF6' : undefined }}
+                                        >
+                                            <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 10 }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => toggleSelect(form.id)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    style={{ cursor: 'pointer', width: 18, height: 18 }}
+                                                />
                                             </div>
-                                        </div>
 
-                                        <div className="form-card-name" style={{ color: 'var(--text-primary)' }}>{form.name}</div>
-                                        <div className="form-card-desc">{form.description || 'No description'}</div>
+                                            <div className="form-card-header">
+                                                <div className="form-card-icon">📁</div>
+                                                <div className="form-card-menu">
+                                                    <button
+                                                        className="btn btn-secondary btn-sm"
+                                                        title="Restore"
+                                                        onClick={(e) => { e.stopPropagation(); setRestoreTarget(form); }}
+                                                    >
+                                                        <RotateCcw size={16} />
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-danger btn-sm"
+                                                        title="Permanent Delete"
+                                                        onClick={(e) => { e.stopPropagation(); setPurgeTarget(form); }}
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            </div>
 
-                                        <div style={{ 
-                                            marginTop: 'auto',
-                                            padding: '10px',
-                                            borderRadius: '8px',
-                                            background: 'rgba(239, 68, 68, 0.05)',
-                                            border: '1px solid rgba(239, 68, 68, 0.1)',
-                                            fontSize: '11px',
-                                            color: 'var(--text-muted)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                                <span>Archived At:</span>
-                                                <span style={{ color: '#F87171' }}>{formatDate(form.archivedAt)}</span>
-                                            </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Created By:</span>
-                                                <span>{form.createdBy}</span>
-                                            </div>
-                                        </div>
+                                            <div className="form-card-name" style={{ color: 'var(--text-primary)' }}>{form.name}</div>
+                                            <div className="form-card-desc">{form.description || 'No description'}</div>
 
-                                        <div className="form-card-footer" style={{ marginTop: 12 }}>
-                                            <div className="form-card-meta">
-                                                <span>Code: {form.code}</span>
+                                            <div style={{
+                                                marginTop: 'auto',
+                                                padding: '10px',
+                                                borderRadius: '8px',
+                                                background: 'rgba(239, 68, 68, 0.05)',
+                                                border: '1px solid rgba(239, 68, 68, 0.1)',
+                                                fontSize: '11px',
+                                                color: 'var(--text-muted)'
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                    <span>Archived At:</span>
+                                                    <span style={{ color: '#F87171' }}>{formatDate(form.archivedAt)}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>Created By:</span>
+                                                    <span>{form.createdBy}</span>
+                                                </div>
                                             </div>
-                                            <div className="form-card-actions">
-                                                <button 
-                                                    className="btn btn-publish btn-sm" 
-                                                    style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', borderColor: 'rgba(16, 185, 129, 0.3)' }}
-                                                    onClick={() => setRestoreTarget(form)}
-                                                >
-                                                    <RotateCcw size={14} style={{ marginRight: 6 }} />
-                                                    Restore
-                                                </button>
+
+                                            <div className="form-card-footer" style={{ marginTop: 12 }}>
+                                                <div className="form-card-meta">
+                                                    <span>Code: {form.code}</span>
+                                                </div>
+                                                <div className="form-card-actions">
+                                                    <button
+                                                        className="btn btn-publish btn-sm"
+                                                        style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', borderColor: 'rgba(16, 185, 129, 0.3)' }}
+                                                        onClick={(e) => { e.stopPropagation(); setRestoreTarget(form); }}
+                                                    >
+                                                        <RotateCcw size={14} style={{ marginRight: 6 }} />
+                                                        Restore
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </motion.div>
-                                ))}
+                                        </motion.div>
+                                    );
+                                })}
                             </div>
 
                             {filteredForms.length > pageSize && (
@@ -267,6 +350,44 @@ export default function FormsTrashPage() {
                             <button className="btn btn-secondary" onClick={() => setPurgeTarget(null)} disabled={actionLoading}>Cancel</button>
                             <button className="btn btn-danger" onClick={handlePurge} disabled={actionLoading}>
                                 {actionLoading ? 'Deleting...' : 'Permanently Delete'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Bulk Restore Dialog */}
+            {bulkRestoreModal && (
+                <div className="confirm-dialog">
+                    <div className="confirm-box">
+                        <div className="confirm-icon" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10B981' }}>
+                            <RotateCcw size={28} />
+                        </div>
+                        <h3>Restore {selectedForms.size} Form{selectedForms.size !== 1 ? 's' : ''}?</h3>
+                        <p>Restoring <strong>{selectedForms.size} form{selectedForms.size !== 1 ? 's' : ''}</strong> will make them active and available on the dashboard again.</p>
+                        <div className="confirm-actions">
+                            <button className="btn btn-secondary" onClick={() => setBulkRestoreModal(false)} disabled={bulkActioning}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleBulkRestore} disabled={bulkActioning} style={{ background: '#10B981', borderColor: '#10B981' }}>
+                                {bulkActioning ? 'Restoring...' : `Yes, Restore ${selectedForms.size}`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Bulk Purge Dialog */}
+            {bulkPurgeModal && (
+                <div className="confirm-dialog">
+                    <div className="confirm-box">
+                        <div className="confirm-icon">
+                            <AlertTriangle size={28} color="#EF4444" />
+                        </div>
+                        <h3 className="text-danger">Permanent Delete {selectedForms.size} Form{selectedForms.size !== 1 ? 's' : ''}?</h3>
+                        <p>Warning: This will <strong>PERMANENTLY</strong> delete <strong>{selectedForms.size} form{selectedForms.size !== 1 ? 's' : ''}</strong> and all their submissions. This action cannot be undone.</p>
+                        <div className="confirm-actions">
+                            <button className="btn btn-secondary" onClick={() => setBulkPurgeModal(false)} disabled={bulkActioning}>Cancel</button>
+                            <button className="btn btn-danger" onClick={handleBulkPurge} disabled={bulkActioning}>
+                                {bulkActioning ? 'Deleting...' : `Permanently Delete ${selectedForms.size}`}
                             </button>
                         </div>
                     </div>

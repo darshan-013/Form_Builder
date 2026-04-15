@@ -262,10 +262,12 @@ const ProfilePage = () => {
                                     <form onSubmit={handleProfileSubmit} className="profile-form">
                                         <div className="form-grid">
                                             <div className="form-group">
-                                                <label className="form-label">Full Name</label>
+                                                <label className="form-label">
+                                                    <User size={16} />
+                                                    Full Name
+                                                </label>
                                                 <div className="input-with-icon">
-                                                    <User className="input-icon" size={16} />
-                                                    <input 
+                                                    <input
                                                         type="text" 
                                                         className="form-input"
                                                         placeholder="Enter your full name"
@@ -276,10 +278,12 @@ const ProfilePage = () => {
                                             </div>
 
                                             <div className="form-group">
-                                                <label className="form-label">Username</label>
+                                                <label className="form-label">
+                                                    <span>@</span>
+                                                    Username
+                                                </label>
                                                 <div className="input-with-icon">
-                                                    <span className="input-prefix">@</span>
-                                                    <input 
+                                                    <input
                                                         type="text" 
                                                         className="form-input"
                                                         placeholder="username"
@@ -290,11 +294,13 @@ const ProfilePage = () => {
                                             </div>
 
                                             <div className="form-group full-width">
-                                                <label className="form-label">Email Address</label>
+                                                <label className="form-label">
+                                                    <Mail size={16} />
+                                                    Email Address
+                                                </label>
                                                 <div className="input-with-icon">
-                                                    <Mail className="input-icon" size={16} />
-                                                    <input 
-                                                        type="email" 
+                                                    <input
+                                                        type="email"
                                                         className="form-input"
                                                         placeholder="you@example.com"
                                                         value={profileData.email}
@@ -327,10 +333,12 @@ const ProfilePage = () => {
 
                                     <form onSubmit={handlePasswordSubmit} className="profile-form">
                                         <div className="form-group">
-                                            <label className="form-label">Current Password</label>
+                                            <label className="form-label">
+                                                <Key size={16} />
+                                                Current Password
+                                            </label>
                                             <div className="input-with-icon">
-                                                <Key className="input-icon" size={16} />
-                                                <input 
+                                                <input
                                                     type="password" 
                                                     autoComplete="current-password"
                                                     placeholder="Enter current password"
@@ -343,10 +351,12 @@ const ProfilePage = () => {
 
                                         <div className="form-grid">
                                             <div className="form-group">
-                                                <label className="form-label">New Password</label>
+                                                <label className="form-label">
+                                                    <Lock size={16} />
+                                                    New Password
+                                                </label>
                                                 <div className="input-with-icon">
-                                                    <Lock className="input-icon" size={16} />
-                                                    <input 
+                                                    <input
                                                         type="password" 
                                                         autoComplete="new-password"
                                                         placeholder="New password"
@@ -358,10 +368,12 @@ const ProfilePage = () => {
                                             </div>
 
                                             <div className="form-group">
-                                                <label className="form-label">Confirm New Password</label>
+                                                <label className="form-label">
+                                                    <Lock size={16} />
+                                                    Confirm New Password
+                                                </label>
                                                 <div className="input-with-icon">
-                                                    <Lock className="input-icon" size={16} />
-                                                    <input 
+                                                    <input
                                                         type="password" 
                                                         autoComplete="new-password"
                                                         placeholder="Confirm new password"
@@ -622,6 +634,35 @@ const ProfilePage = () => {
                     font-size: 20px;
                     font-weight: 700;
                     color: var(--text-primary);
+                }
+
+                .form-group {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+
+                .form-label {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 12px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    color: var(--text-secondary);
+                }
+
+                .form-label svg {
+                    width: 16px;
+                    height: 16px;
+                    flex-shrink: 0;
+                    color: var(--text-muted);
+                }
+
+                .form-label span {
+                    font-weight: 600;
+                    color: var(--text-muted);
                 }
 
                 .profile-form {

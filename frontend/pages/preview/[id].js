@@ -63,7 +63,7 @@ export default function PreviewPage() {
                 <Link href={builderHref} className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <ArrowLeft size={14} /> Back to Builder
                 </Link>
-                
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div className="preview-badge">
                         <Eye size={14} /> Preview Mode
@@ -78,10 +78,10 @@ export default function PreviewPage() {
                         <p style={{ marginTop: '20px', color: 'var(--text-muted)' }}>Preparing preview...</p>
                     </div>
                 ) : form ? (
-                    <FormRenderer 
-                        form={form} 
+                    <FormRenderer
+                        form={form}
                         isPreview={true}
-                        onSubmit={() => Promise.resolve()} 
+                        onSubmit={() => Promise.resolve()}
                     />
                 ) : (
                     <div className="empty-state" style={{ padding: '80px 0' }}>

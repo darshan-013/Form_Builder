@@ -33,6 +33,7 @@ export default function FormVaultPage() {
     const [tabSelected, setTabSelected] = useState(new Set());
     const [tabPage, setTabPage] = useState(1);
     const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [bulkConfirmModal, setBulkConfirmModal] = useState(false);
     const pageSize = 9;
 
     useEffect(() => {
@@ -95,8 +96,9 @@ export default function FormVaultPage() {
                 n.delete(deleteTarget.id);
                 return n;
             });
-            toastSuccess(`"${deleteTarget.name}" archived successfully.`);
+            setDeleteTarget(null);
             setDeleteErrorMessage('');
+            toastSuccess(`"${deleteTarget.name}" archived successfully.`);
         } catch (error) {
             const liveSubmissionBlock = error?.status === 409 && (
                 error?.errorCode === 'CONFLICT' ||
@@ -128,6 +130,7 @@ export default function FormVaultPage() {
         setForms((prev) => prev.map((f) => (tabSelected.has(f.id) ? { ...f, status: 'ARCHIVED' } : f)));
         clearSelection();
         setBulkDeleting(false);
+        setBulkConfirmModal(false);
         toastSuccess(`${archived} form${archived !== 1 ? 's' : ''} archived.`);
     };
 
@@ -210,8 +213,9 @@ export default function FormVaultPage() {
                 </div>
 
                 <div className="card-primary-actions">
-                    {(isAdmin || (!isViewer && form.status === 'DRAFT') || (isViewer && form.status === 'DRAFT')) && (
-                        <button 
+                    {/* EDIT button - Admins and Builders only (not Viewers) */}
+                    {(isAdmin || (!isViewer && form.status === 'DRAFT')) && (
+                        <button
                             className="btn-edit-main"
                             onClick={() => router.push(`/builder/${form.id}`)}
                         >
@@ -219,6 +223,8 @@ export default function FormVaultPage() {
                             EDIT
                         </button>
                     )}
+
+                    {/* Published form - show DATA button */}
                     {isPublished ? (
                         <button 
                             className="btn-data-main"
@@ -227,8 +233,10 @@ export default function FormVaultPage() {
                             <BarChart3 size={16} />
                             DATA
                         </button>
-                    ) : (form.status === 'ASSIGNED' && user?.username === form.assignedBuilderUsername) ? (
-                        <button 
+                    ) :
+                    /* Assigned to current builder - show INITIATE button */
+                    (form.status === 'ASSIGNED' && user?.username === form.assignedBuilderUsername) ? (
+                        <button
                             className="btn-data-main initiate-btn-vault"
                             onClick={() => router.push(`/workflows/create/${form.id}`)}
                             style={{ background: 'rgba(34, 197, 94, 0.12)', color: '#86EFAC', border: '1px solid rgba(34, 197, 94, 0.3)' }}
@@ -236,8 +244,10 @@ export default function FormVaultPage() {
                             <CheckCircle2 size={16} />
                             INITIATE
                         </button>
-                    ) : (isAdmin || isViewer) && (form.status === 'DRAFT' || isRejected) ? (
-                        <button 
+                    ) :
+                    /* Admin or Viewer in DRAFT/REJECTED - show ASSIGN button */
+                    (isAdmin || isViewer) && (form.status === 'DRAFT' || isRejected) ? (
+                        <button
                             className="btn-data-main assign-btn-vault"
                             onClick={() => router.push(`/workflows/create/${form.id}`)}
                             style={{ background: 'rgba(139, 92, 246, 0.12)', color: '#C4B5FD', border: '1px solid rgba(139, 92, 246, 0.3)' }}
@@ -245,8 +255,10 @@ export default function FormVaultPage() {
                             <UserPlus size={16} />
                             ASSIGN
                         </button>
-                    ) : form.workflow ? (
-                        <button 
+                    ) :
+                    /* Form in progress - show PROGRESS button */
+                    form.workflow ? (
+                        <button
                             className="btn-data-main progress-btn-vault"
                             onClick={() => router.push(`/workflows/status?workflowId=${form.workflow.id}`)}
                             style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)' }}
@@ -267,7 +279,7 @@ export default function FormVaultPage() {
 
                 <div className="card-toolbar-v2">
                     <div className="toolbar-left">
-                        {isPublished && (
+                        {isPublished && !isViewer && (
                             <>
                                 <button className="t-icon-btn" title="Copy Submission Link" onClick={() => handleCopyLink(form.id)}>
                                     <Copy size={18} />
@@ -283,7 +295,7 @@ export default function FormVaultPage() {
                     </div>
                     <div className="toolbar-right">
                         {form.canDelete && (
-                            <button 
+                            <button
                                 className="t-icon-btn t-delete-btn" 
                                 title="Delete Form"
                                 onClick={(e) => { e.stopPropagation(); setDeleteTarget(form); }}
@@ -361,8 +373,8 @@ export default function FormVaultPage() {
                                         <div className="section-sel-row">
                                             <span className="bulk-count">{tabSelected.size} selected</span>
                                             <button className="sb-btn sb-btn-ghost" onClick={clearSelection}>✕ Clear</button>
-                                            {can('DELETE') && (
-                                                <button className="sb-btn sb-btn-danger" onClick={handleBulkDelete} disabled={bulkDeleting}>🗂 Archive {tabSelected.size}</button>
+                                            {(can('DELETE') || isViewer) && (
+                                                <button className="sb-btn sb-btn-danger" onClick={() => setBulkConfirmModal(true)} disabled={bulkDeleting}>🗂 Archive {tabSelected.size}</button>
                                             )}
                                         </div>
                                     )}
@@ -434,6 +446,25 @@ export default function FormVaultPage() {
                                     </button>
                                 </>
                             )}
+                         </div>
+                    </div>
+                </div>
+            )}
+
+            {bulkConfirmModal && (
+                <div className="confirm-dialog">
+                    <div className="confirm-box">
+                        <div className="confirm-icon">🗑</div>
+                        <h3>Archive {tabSelected.size} Form{tabSelected.size !== 1 ? 's' : ''}?</h3>
+                        <p>
+                            You are about to archive <strong>{tabSelected.size} form{tabSelected.size !== 1 ? 's' : ''}</strong>.<br />
+                            Archived forms are hidden from active workflows and submissions.
+                        </p>
+                         <div className="confirm-actions">
+                            <button className="btn btn-secondary" onClick={() => setBulkConfirmModal(false)} disabled={bulkDeleting}>Cancel</button>
+                            <button className="btn btn-danger" onClick={handleBulkDelete} disabled={bulkDeleting}>
+                                {bulkDeleting ? 'Archiving…' : `Yes, Archive ${tabSelected.size}`}
+                            </button>
                          </div>
                     </div>
                 </div>

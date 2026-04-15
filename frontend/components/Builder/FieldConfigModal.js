@@ -344,14 +344,48 @@ export default function FieldConfigModal({ field, onSave, onClose, siblingFields
                         title="Required Field" 
                         subtext="User must provide a value before submitting"
                         active={local.required} 
-                        onChange={(val) => set('required', val)} 
+                        onChange={(val) => {
+                            if (val) {
+                                // If enabling Required, disable Read-only and Disabled
+                                set('required', true);
+                                set('readOnly', false);
+                                set('disabled', false);
+                            } else {
+                                set('required', false);
+                            }
+                        }}
                     />
                     <ConfigBlock 
                         icon={Eye} 
                         title="Make Read-only" 
                         subtext="Field is visible but cannot be modified"
                         active={local.readOnly} 
-                        onChange={(val) => set('readOnly', val)} 
+                        onChange={(val) => {
+                            if (val) {
+                                // If enabling Read-only, disable Required and Disabled
+                                set('readOnly', true);
+                                set('required', false);
+                                set('disabled', false);
+                            } else {
+                                set('readOnly', false);
+                            }
+                        }}
+                    />
+                    <ConfigBlock
+                        icon={ToggleLeft}
+                        title="Disabled Field"
+                        subtext="Field is grayed out and cannot be interacted with"
+                        active={local.disabled}
+                        onChange={(val) => {
+                            if (val) {
+                                // If enabling Disabled, disable Required and Read-only
+                                set('disabled', true);
+                                set('required', false);
+                                set('readOnly', false);
+                            } else {
+                                set('disabled', false);
+                            }
+                        }}
                     />
                 </div>
             </div>

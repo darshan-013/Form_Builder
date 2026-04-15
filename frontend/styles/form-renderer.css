@@ -1,4 +1,4 @@
-/* ══════════════════════════════════════════════════
+nly /* ══════════════════════════════════════════════════
    FormRenderer — Dark Glassmorphism v3
    /preview/[id]  and  /submit/[id]
    ══════════════════════════════════════════════════ */
@@ -209,6 +209,21 @@
 
 .form-renderer-body .form-input::placeholder {
   color: var(--text-muted);
+}
+
+/* Disabled inputs */
+.form-renderer-body .form-input:disabled,
+.form-renderer-body .form-select:disabled,
+.form-renderer-body .form-textarea:disabled {
+  opacity: 0.55;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.07);
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+
+.form-renderer-body .form-input:disabled::placeholder {
+  color: rgba(255, 255, 255, 0.3);
 }
 
 /* ── Boolean toggle ───────────────────────────────── */
@@ -1164,6 +1179,21 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 
 [data-theme="light"] .form-renderer-body .form-input::placeholder {
   color: #9CA3AF;
+}
+
+/* Disabled inputs - light theme */
+[data-theme="light"] .form-renderer-body .form-input:disabled,
+[data-theme="light"] .form-renderer-body .form-select:disabled,
+[data-theme="light"] .form-renderer-body .form-textarea:disabled {
+  opacity: 0.6;
+  background: #F3F4F6;
+  border-color: #E5E7EB;
+  cursor: not-allowed;
+  color: #6B7280;
+}
+
+[data-theme="light"] .form-renderer-body .form-input:disabled::placeholder {
+  color: #D1D5DB;
 }
 
 /* Radio options */
