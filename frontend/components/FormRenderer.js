@@ -5,6 +5,7 @@ import CalculationEngine from '../services/CalculationEngine';
 import { getDraft, saveDraft } from '../services/api';
 import { toastInfo, showWarning } from '../services/toast';
 import { translateApiError } from '../services/errorTranslator';
+import { Eye } from 'lucide-react';
 
 /**
  * FormRenderer — enterprise dynamic form renderer with Conditional Rule Engine.
@@ -554,10 +555,10 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
 
   // ── Main render ────────────────────────────────────────────────────────────
   return (
-    <div className="form-renderer-card">
+    <div className={`form-renderer-card${isPreview ? ' is-preview' : ''}`}>
       {isPreview && (
-        <div className="preview-banner">
-          👁&nbsp;<strong>Preview Mode</strong> — submissions are disabled
+        <div className="preview-banner" style={{ background: 'rgba(139, 92, 246, 0.08)', borderColor: 'rgba(139, 92, 246, 0.2)', color: 'var(--accent)', justifyContent: 'center', padding: '12px 24px', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Eye size={16} /> <strong>Preview Mode</strong> — submissions are disabled
         </div>
       )}
 

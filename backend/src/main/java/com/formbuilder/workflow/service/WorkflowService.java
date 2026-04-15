@@ -152,13 +152,13 @@ public class WorkflowService {
         FormEntity form = formRepo.findById(formId)
                 .orElseThrow(() -> new NoSuchElementException("Form not found: " + formId));
 
-        if (!(isAdmin || (isViewer && Objects.equals(form.getCreatedBy(), actorUsername)))) {
-            throw new IllegalStateException("Only form owner Viewer or Admin can assign a Builder");
+        if (!(isAdmin || isViewer)) {
+            throw new IllegalStateException("Only Viewer or Admin can assign a Builder");
         }
 
-        // Viewer can assign only once; reassignment is Admin-only.
-        if (!isAdmin && form.getAssignedBuilderId() != null) {
-            throw new IllegalStateException("Viewer cannot change Builder after first assignment. Contact Admin.");
+        // Viewer can assign once; reassignment is allowed only if REJECTED or for Admin.
+        if (!isAdmin && form.getAssignedBuilderId() != null && form.getStatus() != FormEntity.FormStatus.REJECTED) {
+            throw new IllegalStateException("Assignment already exists. Only Admins can reassign unless the form was REJECTED.");
         }
 
         if (form.getStatus() == FormEntity.FormStatus.ARCHIVED) {
@@ -505,6 +505,18 @@ public class WorkflowService {
                 .status(mapDecisionStatus(wi))
                 .submittedAt(wi.getCreatedAt())
                 .lastUpdatedAt(wi.getUpdatedAt())
+                .steps(wi.getSteps().stream()
+                        .map(s -> CreatorWorkflowStatusDTO.StepInfo.builder()
+                                .approverName(s.getApprover().getName() != null && !s.getApprover().getName().isBlank() 
+                                        ? s.getApprover().getName() 
+                                        : s.getApprover().getUsername())
+                                .stepIndex(s.getStepIndex())
+                                .status(s.getStatus().name())
+                                .comments(s.getComments())
+                                .decidedAt(s.getDecidedAt())
+                                .build())
+                        .sorted(Comparator.comparing(CreatorWorkflowStatusDTO.StepInfo::getStepIndex))
+                        .toList())
                 .build();
     }
 

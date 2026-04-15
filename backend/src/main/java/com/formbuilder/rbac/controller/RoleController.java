@@ -50,8 +50,8 @@ public class RoleController {
          */
         @GetMapping
         public ResponseEntity<?> getAllRoles(
-                        @RequestParam(defaultValue = "0") Integer page,
-                        @RequestParam(defaultValue = "10") Integer size) {
+                        @RequestParam(name = "page", defaultValue = "0") Integer page,
+                        @RequestParam(name = "size", defaultValue = "10") Integer size) {
                 List<Role> roles = roleService.getAllRoles();
 
                 List<Map<String, Object>> allRoles = roles.stream()
@@ -152,7 +152,7 @@ public class RoleController {
          * 4. Actor cannot assign permissions they don't hold
          */
         @PutMapping(AppConstants.BY_ID)
-        public ResponseEntity<?> updateRole(@PathVariable Integer id,
+        public ResponseEntity<?> updateRole(@PathVariable("id") Integer id,
                         @RequestBody UpdateRoleRequest body,
                         Authentication auth,
                         HttpSession session) {
@@ -193,7 +193,7 @@ public class RoleController {
          * 3. System roles cannot be deleted
          */
         @DeleteMapping(AppConstants.BY_ID)
-        public ResponseEntity<?> deleteRole(@PathVariable Integer id,
+        public ResponseEntity<?> deleteRole(@PathVariable("id") Integer id,
                         Authentication auth,
                         HttpSession session) {
 
@@ -236,7 +236,7 @@ public class RoleController {
          * 4. Actor cannot assign permissions they don't hold
          */
         @PostMapping(AppConstants.BY_ID_PERMISSIONS)
-        public ResponseEntity<?> assignPermissions(@PathVariable Integer id,
+        public ResponseEntity<?> assignPermissions(@PathVariable("id") Integer id,
                         @RequestBody PermissionsRequest body,
                         Authentication auth,
                         HttpSession session) {

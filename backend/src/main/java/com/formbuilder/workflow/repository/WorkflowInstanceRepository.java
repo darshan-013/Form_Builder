@@ -16,6 +16,7 @@ public interface WorkflowInstanceRepository extends JpaRepository<WorkflowInstan
     @EntityGraph(attributePaths = { "form", "creator", "targetBuilder", "steps", "steps.approver" })
     Optional<WorkflowInstance> findById(Long id);
 
+    @EntityGraph(attributePaths = { "form", "creator", "targetBuilder", "steps", "steps.approver" })
     Optional<WorkflowInstance> findByForm_IdAndStatus(UUID formId, WorkflowInstanceStatus status);
 
     @Query("SELECT DISTINCT wi FROM WorkflowInstance wi " +

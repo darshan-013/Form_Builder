@@ -25,8 +25,8 @@ public class CustomValidationRuleController {
 
     @GetMapping(AppConstants.FORM_CUSTOM_VALIDATIONS)
     public ResponseEntity<List<CustomValidationRuleDTO>> getRules(
-            @PathVariable UUID formId,
-            @PathVariable UUID versionId,
+            @PathVariable("formId") UUID formId,
+            @PathVariable("versionId") UUID versionId,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains("Admin") || roles.contains("Role Administrator");
@@ -48,8 +48,8 @@ public class CustomValidationRuleController {
 
     @PostMapping(AppConstants.FORM_CUSTOM_VALIDATIONS)
     public ResponseEntity<CustomValidationRuleDTO> addRule(
-            @PathVariable UUID formId,
-            @PathVariable UUID versionId,
+            @PathVariable("formId") UUID formId,
+            @PathVariable("versionId") UUID versionId,
             @RequestBody CustomValidationRuleDTO dto,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -61,9 +61,9 @@ public class CustomValidationRuleController {
 
     @PutMapping(AppConstants.FORM_CUSTOM_VALIDATIONS_BY_ID)
     public ResponseEntity<CustomValidationRuleDTO> updateRule(
-            @PathVariable UUID formId,
-            @PathVariable UUID versionId,
-            @PathVariable UUID ruleId,
+            @PathVariable("formId") UUID formId,
+            @PathVariable("versionId") UUID versionId,
+            @PathVariable("ruleId") UUID ruleId,
             @RequestBody CustomValidationRuleDTO dto,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -77,9 +77,9 @@ public class CustomValidationRuleController {
 
     @DeleteMapping(AppConstants.FORM_CUSTOM_VALIDATIONS_BY_ID)
     public ResponseEntity<Void> deleteRule(
-            @PathVariable UUID formId,
-            @PathVariable UUID versionId,
-            @PathVariable UUID ruleId,
+            @PathVariable("formId") UUID formId,
+            @PathVariable("versionId") UUID versionId,
+            @PathVariable("ruleId") UUID ruleId,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains("Admin") || roles.contains("Role Administrator");

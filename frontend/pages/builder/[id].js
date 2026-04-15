@@ -9,7 +9,7 @@ import FieldConfigModal from '../../components/Builder/FieldConfigModal';
 import StaticFieldModal from '../../components/Builder/StaticFieldModal';
 import GroupConfigModal from '../../components/Builder/GroupConfigModal';
 import CustomValidationsPanel from '../../components/Builder/CustomValidationsPanel';
-import { Zap, Settings, Eye, Save, Rocket, X, Users, Calendar, BarChart3, Clock } from 'lucide-react';
+import { Zap, Settings, Eye, Save, Rocket, X, Users, Calendar, BarChart3, Clock, Trash2, Shield } from 'lucide-react';
 import { createForm, getForm, updateForm, getVisibilityCandidates, getFormVersions, publishForm, publishVersion, deleteFormVersion, isSchemaDriftError, saveSchemaDriftReport } from '../../services/api';
 import { toastSuccess, toastError, toastInfo } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -366,6 +366,16 @@ export default function EditBuilderPage() {
             .catch(() => toastError('Failed to load form.'))
             .finally(() => setLoading(false));
 
+        // Restriction Check for Viewers
+        if (isViewer && id !== NEW_FORM_ROUTE_ID) {
+            getForm(id, versionId).then(f => {
+                if (f.status === 'ASSIGNED' || f.status === 'PENDING_APPROVAL' || f.status === 'PUBLISHED') {
+                    toastInfo('This form is now locked (Assigned/Live). Opening preview instead.');
+                    router.replace(`/preview/${id}${versionId ? `?versionId=${versionId}` : ''}`);
+                }
+            }).catch(() => {});
+        }
+
         // Also load all versions for history dropdown
         getFormVersions(id)
             .then(setVersions)
@@ -524,7 +534,9 @@ export default function EditBuilderPage() {
 
             if (redirectAfterSave) {
                 setTimeout(() => {
-                    if (isCreateMode && savedFormId) {
+                    if (isViewer) {
+                        router.replace(`/workflows/create/${savedFormId || id}`);
+                    } else if (isCreateMode && savedFormId) {
                         router.replace(`/builder/${savedFormId}`);
                     } else {
                         router.push('/forms/vault');
@@ -778,125 +790,127 @@ export default function EditBuilderPage() {
                                                 <button className="settings-dropdown-close" onClick={() => setShowSettings(false)}><X size={14} /></button>
                                             </div>
 
-                                            <div className="form-settings-toggle" onClick={() => setAllowMultipleSubmissions(v => !v)}>
-                                                <div className="form-settings-toggle-info">
-                                                    <span className="form-settings-toggle-label">Limit to one submission</span>
-                                                    <span className="form-settings-toggle-desc">Each person can only submit this form once per session</span>
-                                                </div>
-                                                <div className={`toggle-switch${!allowMultipleSubmissions ? ' toggle-on' : ''}`} role="switch" aria-checked={!allowMultipleSubmissions}>
-                                                    <div className="toggle-knob" />
-                                                </div>
-                                            </div>
-
-                                            <div className="form-settings-expiry">
-                                                <div className="form-settings-expiry-info">
-                                                    <span className="form-settings-toggle-label">Form expiry</span>
-                                                    <span className="form-settings-toggle-desc">
-                                                        {expiresAt
-                                                            ? `Closes on ${new Date(expiresAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-                                                            : 'No expiry — form stays open indefinitely'}
-                                                    </span>
-                                                </div>
-                                                <div className="v-tl-connector" style={{ width: 'auto', flexDirection: 'row', gap: 8, height: 'auto' }}>
-                                                    <input
-                                                        type="datetime-local"
-                                                        className="v-input"
-                                                        style={{ width: 'auto', padding: '8px 12px' }}
-                                                        value={expiresAt}
-                                                        min={new Date().toISOString().slice(0, 16)}
-                                                        onChange={e => setExpiresAt(e.target.value)}
-                                                        title="Set form expiry date and time"
-                                                    />
-                                                    {expiresAt && (
-                                                        <button
-                                                            className="v-action-btn delete"
-                                                            onClick={() => setExpiresAt('')}
-                                                            title="Clear expiry"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* User-based form access */}
-                                            <div className="form-settings-expiry">
-                                                <div className="form-settings-expiry-info">
-                                                    <span className="form-settings-toggle-label">Who can see this form?</span>
-                                                    <span className="form-settings-toggle-desc">
-                                                        {allowedUsers.length === 0
-                                                            ? 'No explicit users selected. Default visibility rules apply.'
-                                                            : `${allowedUsers.length} user${allowedUsers.length !== 1 ? 's' : ''} selected. Only selected users will see this published form.`}
-                                                    </span>
-                                                </div>
-
-                                                <div className="visibility-users-block">
-                                                    <div style={{ position: 'relative' }}>
-                                                        <Users size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                                        <input
-                                                            type="text"
-                                                            className="v-input"
-                                                            style={{ paddingLeft: 36 }}
-                                                            placeholder="Search users by name or username"
-                                                            value={userSearch}
-                                                            onChange={(e) => setUserSearch(e.target.value)}
-                                                        />
-                                                    </div>
-
-                                                    {filteredVisibilityUsers.length > 0 && (
-                                                        <div className="visibility-users-results v-rules-list" style={{ gap: 4, marginTop: 8, maxHeight: 200, overflowY: 'auto' }}>
-                                                            {filteredVisibilityUsers.map(user => (
-                                                                <button
-                                                                    key={`${user.id ?? 'u'}-${user.username}`}
-                                                                    type="button"
-                                                                    className="visibility-user-option"
-                                                                    style={{ padding: '8px 12px', borderRadius: 8, display: 'flex', gap: 12, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}
-                                                                    onClick={() => addAllowedUser(user)}
-                                                                >
-                                                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--accent-soft)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
-                                                                        {(user.name || user.username)[0].toUpperCase()}
-                                                                    </div>
-                                                                    <div>
-                                                                        <div className="v-rule-message" style={{ fontSize: 13 }}>{user.name || user.username}</div>
-                                                                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{user.username}</div>
-                                                                    </div>
-                                                                </button>
-                                                            ))}
+                                            <div className="settings-dropdown-body">
+                                                {/* Limit Submissions */}
+                                                <div className="s-card" onClick={() => setAllowMultipleSubmissions(v => !v)}>
+                                                    <div className="s-row">
+                                                        <div className="s-info">
+                                                            <div className="s-icon"><Zap size={16} /></div>
+                                                            <div className="s-text">
+                                                                <span className="s-title">Submission Limit</span>
+                                                                <span className="s-desc">Restrict entries to once per session</span>
+                                                            </div>
                                                         </div>
-                                                    )}
-
-                                                    <div className="visibility-users-actions">
-                                                        <button
-                                                            type="button"
-                                                            className="btn btn-secondary btn-sm"
-                                                            style={{ fontSize: 11, padding: '2px 8px' }}
-                                                            onClick={clearAllowedUsers}
-                                                            disabled={allowedUsers.length === 0}
-                                                        >
-                                                            Clear users
-                                                        </button>
-                                                        <span style={{ color: 'var(--text-muted)', alignSelf: 'center' }}>
-                                                            🔒 Admin & Role Admin always have access
-                                                        </span>
+                                                        <div className={`toggle-switch${!allowMultipleSubmissions ? ' toggle-on' : ''}`}>
+                                                            <div className="toggle-knob" />
+                                                        </div>
                                                     </div>
+                                                </div>
 
-                                                    {allowedUsers.length > 0 && (
-                                                        <div className="visibility-users-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                                                            {allowedUsers.map(user => (
-                                                                <span key={`${user.id ?? 'u'}-${user.username}`} className="v-badge field" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px' }}>
-                                                                    <span>{user.name || user.username}</span>
-                                                                    <button
-                                                                        type="button"
-                                                                        style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', display: 'flex', padding: 0 }}
-                                                                        onClick={() => removeAllowedUser(user)}
-                                                                        aria-label={`Remove ${user.username}`}
-                                                                    >
-                                                                        <X size={10} />
-                                                                    </button>
+                                                {/* Expiry */}
+                                                <div className="s-card">
+                                                    <div className="s-row" style={{ marginBottom: 12 }}>
+                                                        <div className="s-info">
+                                                            <div className="s-icon"><Calendar size={16} /></div>
+                                                            <div className="s-text">
+                                                                <span className="s-title">Auto-Expire</span>
+                                                                <span className="s-desc">
+                                                                    {expiresAt ? 'Scheduled to close' : 'Form stays open indefinitely'}
                                                                 </span>
-                                                            ))}
+                                                            </div>
                                                         </div>
-                                                    )}
+                                                    </div>
+                                                    <div className="v-editor-actions" style={{ marginTop: 0, gap: 8, padding: '0 4px' }}>
+                                                        <input
+                                                            type="datetime-local"
+                                                            className="v-input"
+                                                            style={{ flex: 1, minWidth: 0 }}
+                                                            value={expiresAt}
+                                                            min={new Date().toISOString().slice(0, 16)}
+                                                            onChange={e => setExpiresAt(e.target.value)}
+                                                        />
+                                                        {expiresAt && (
+                                                            <button className="v-action-btn delete" onClick={() => setExpiresAt('')} title="Clear Expiry">
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="s-divider" />
+
+                                                {/* Access Control */}
+                                                <div className="s-card">
+                                                    <div className="s-row">
+                                                        <div className="s-info">
+                                                            <div className="s-icon"><Users size={16} /></div>
+                                                            <div className="s-text">
+                                                                <span className="s-title">Access Control</span>
+                                                                <span className="s-desc">
+                                                                    {allowedUsers.length === 0 ? 'Publicly accessible' : `${allowedUsers.length} restricted users`}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="visibility-users-block">
+                                                        <div style={{ position: 'relative', width: '100%' }}>
+                                                            <Users size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', zIndex: 1 }} />
+                                                            <input
+                                                                type="text"
+                                                                className="v-input"
+                                                                style={{ paddingLeft: 36, width: '100%' }}
+                                                                placeholder="Search users..."
+                                                                value={userSearch}
+                                                                onChange={(e) => setUserSearch(e.target.value)}
+                                                            />
+                                                        </div>
+
+                                                        {filteredVisibilityUsers.length > 0 && (
+                                                            <div className="visibility-users-results">
+                                                                {filteredVisibilityUsers.map(user => (
+                                                                    <button
+                                                                        key={`${user.id ?? 'u'}-${user.username}`}
+                                                                        className="visibility-user-option"
+                                                                        onClick={() => addAllowedUser(user)}
+                                                                    >
+                                                                        <div className="v-user-avatar" style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent-soft)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                                                                            {(user.name || user.username)[0].toUpperCase()}
+                                                                        </div>
+                                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                                            <div className="s-title" style={{ fontSize: 12 }}>{user.name || user.username}</div>
+                                                                            <div className="s-desc">@{user.username}</div>
+                                                                        </div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                                                            <button
+                                                                className="btn btn-secondary btn-sm"
+                                                                style={{ fontSize: 10, padding: '4px 10px', height: 26 }}
+                                                                onClick={clearAllowedUsers}
+                                                                disabled={allowedUsers.length === 0}
+                                                            >
+                                                                Clear All
+                                                            </button>
+                                                            <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                                <Shield size={10} /> Admin Override
+                                                            </span>
+                                                        </div>
+
+                                                        {allowedUsers.length > 0 && (
+                                                            <div className="visibility-users-chips">
+                                                                {allowedUsers.map(user => (
+                                                                    <div key={`${user.id ?? 'u'}-${user.username}`} className="visibility-chip">
+                                                                        <span>{user.name || user.username}</span>
+                                                                        <X className="visibility-chip-remove" size={12} onClick={() => removeAllowedUser(user)} />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1088,7 +1102,7 @@ export default function EditBuilderPage() {
                         </AnimatePresence>
                     </>
                 ) : activeView === 'validations' ? (
-                    <div className="vh-full-view" style={{ gridColumn: '1 / -1', padding: '40px', overflowY: 'auto', background: 'var(--bg-base)' }}>
+                    <div className="vh-full-view" style={{ gridColumn: '1 / -1', padding: '40px', overflowY: 'auto' }}>
                         <div style={{ maxWidth: 800, margin: '0 auto' }}>
                            <CustomValidationsPanel 
                                formId={id} 
@@ -1181,7 +1195,7 @@ export default function EditBuilderPage() {
                                                     </button>
                                                 </div>
 
-                                                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                                <div style={{ fontSize: '0.9rem', color: '#94a3b8' }}>
                                                     <div>Created {new Date(v.createdAt).toLocaleDateString()} {v.createdBy && `by ${v.createdBy}`}</div>
                                                     {v.publishedAt && <div>Published {new Date(v.publishedAt).toLocaleDateString()}</div>}
                                                 </div>

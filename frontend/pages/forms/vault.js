@@ -7,7 +7,7 @@ import UserProfileChip from '../../components/UserProfileChip';
 import { 
     FileText, Calendar, Edit3, BarChart3, Copy, 
     ExternalLink, Eye, Trash2, 
-    CheckCircle2 
+    CheckCircle2, UserPlus
 } from 'lucide-react';
 import { getForms, deleteForm, publishForm, isSchemaDriftError, saveSchemaDriftReport } from '../../services/api';
 import { toastSuccess, toastError } from '../../services/toast';
@@ -17,6 +17,9 @@ import { translateApiError } from '../../services/errorTranslator';
 export default function FormVaultPage() {
     const router = useRouter();
     const { can, user, hasRole, loading: authLoading } = useAuth();
+    const isAdmin = hasRole('Admin') || user?.role === 'Admin';
+    const isViewer = hasRole('Viewer') || user?.role === 'Viewer';
+    const isBuilder = hasRole('Builder') || user?.role === 'Builder';
 
     const [forms, setForms] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -207,13 +210,15 @@ export default function FormVaultPage() {
                 </div>
 
                 <div className="card-primary-actions">
-                    <button 
-                        className="btn-edit-main"
-                        onClick={() => router.push(`/builder/${form.id}`)}
-                    >
-                        <Edit3 size={16} />
-                        EDIT
-                    </button>
+                    {(isAdmin || (!isViewer && form.status === 'DRAFT') || (isViewer && form.status === 'DRAFT')) && (
+                        <button 
+                            className="btn-edit-main"
+                            onClick={() => router.push(`/builder/${form.id}`)}
+                        >
+                            <Edit3 size={16} />
+                            EDIT
+                        </button>
+                    )}
                     {isPublished ? (
                         <button 
                             className="btn-data-main"
@@ -222,10 +227,37 @@ export default function FormVaultPage() {
                             <BarChart3 size={16} />
                             DATA
                         </button>
+                    ) : (form.status === 'ASSIGNED' && user?.username === form.assignedBuilderUsername) ? (
+                        <button 
+                            className="btn-data-main initiate-btn-vault"
+                            onClick={() => router.push(`/workflows/create/${form.id}`)}
+                            style={{ background: 'rgba(34, 197, 94, 0.12)', color: '#86EFAC', border: '1px solid rgba(34, 197, 94, 0.3)' }}
+                        >
+                            <CheckCircle2 size={16} />
+                            INITIATE
+                        </button>
+                    ) : (isAdmin || isViewer) && (form.status === 'DRAFT' || isRejected) ? (
+                        <button 
+                            className="btn-data-main assign-btn-vault"
+                            onClick={() => router.push(`/workflows/create/${form.id}`)}
+                            style={{ background: 'rgba(139, 92, 246, 0.12)', color: '#C4B5FD', border: '1px solid rgba(139, 92, 246, 0.3)' }}
+                        >
+                            <UserPlus size={16} />
+                            ASSIGN
+                        </button>
+                    ) : form.workflow ? (
+                        <button 
+                            className="btn-data-main progress-btn-vault"
+                            onClick={() => router.push(`/workflows/status?workflowId=${form.workflow.id}`)}
+                            style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+                        >
+                            <BarChart3 size={16} />
+                            PROGRESS
+                        </button>
                     ) : (
                         <button 
                             className="btn-data-main publish-btn"
-                            disabled={busy}
+                            disabled={busy || form.status === 'ASSIGNED' || isViewer}
                             onClick={() => handlePublish(form.id, form.name)}
                         >
                             {busy ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : <><BarChart3 size={16} /> PUBLISH</>}

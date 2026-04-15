@@ -35,7 +35,7 @@ public class FileDownloadController {
      * @return ResponseEntity with file content and proper headers
      */
     @GetMapping("/download/{filename:.+}")
-    public ResponseEntity<Resource> downloadFile(@PathVariable String filename) {
+    public ResponseEntity<Resource> downloadFile(@PathVariable("filename") String filename) {
         try {
             // Try to find file in multiple possible locations
             Path filePath = findFile(filename);
@@ -81,7 +81,7 @@ public class FileDownloadController {
      * @return ResponseEntity with file content and inline disposition
      */
     @GetMapping("/view/{filename:.+}")
-    public ResponseEntity<Resource> viewFile(@PathVariable String filename) {
+    public ResponseEntity<Resource> viewFile(@PathVariable("filename") String filename) {
         try {
             // Try to find file in multiple possible locations
             Path filePath = findFile(filename);

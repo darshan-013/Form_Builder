@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -21,5 +22,18 @@ public class CreatorWorkflowStatusDTO {
     private String status;
     private LocalDateTime submittedAt;
     private LocalDateTime lastUpdatedAt;
+    private List<StepInfo> steps;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StepInfo {
+        private String approverName;
+        private Integer stepIndex;
+        private String status;
+        private String comments;
+        private LocalDateTime decidedAt;
+    }
 }
 

@@ -70,7 +70,9 @@ public class FormController {
             map.put("createdBy", f.getCreatedBy());
             map.put("createdAt", f.getCreatedAt());
             map.put("updatedAt", f.getUpdatedAt());
-            map.put("isOwner", f.getCreatedBy().equals(username));
+            map.put("isOwner", Objects.equals(f.getCreatedBy(), username));
+            map.put("assignedBuilderId", f.getAssignedBuilderId());
+            map.put("assignedBuilderUsername", f.getAssignedBuilderUsername());
 
             // Workflow status
             WorkflowInstance wf = workflowService.getWorkflowForForm(f.getId());
@@ -129,7 +131,7 @@ public class FormController {
     }
 
     @GetMapping(AppConstants.FORM_CHECK_CODE)
-    public ResponseEntity<Map<String, Boolean>> checkCodeUniqueness(@RequestParam String code) {
+    public ResponseEntity<Map<String, Boolean>> checkCodeUniqueness(@RequestParam("code") String code) {
         boolean isUnique = formService.isCodeUnique(code);
         return ResponseEntity.ok(Map.of("isUnique", isUnique));
     }
@@ -147,12 +149,14 @@ public class FormController {
                 .toList();
 
         List<String> flowChain = ordered.stream().map(step -> {
+            if (step.getApprover() == null) return "Unknown";
             String name = step.getApprover().getName();
             return (name != null && !name.isBlank()) ? name : step.getApprover().getUsername();
         }).toList();
         map.put("flowChain", flowChain);
 
         String currentFlowView = ordered.stream().map(step -> {
+            if (step.getApprover() == null) return "Unknown";
             String name = step.getApprover().getName();
             String label = (name != null && !name.isBlank()) ? name : step.getApprover().getUsername();
             if (wf.getStatus() == WorkflowInstanceStatus.ACTIVE
@@ -178,8 +182,8 @@ public class FormController {
     /** Update form — owner or Admin can edit. */
     @PutMapping(AppConstants.FORM_BY_ID)
     public ResponseEntity<FormEntity> updateForm(
-            @PathVariable UUID id,
-            @RequestParam(required = false) UUID versionId,
+            @PathVariable("id") UUID id,
+            @RequestParam(name = "versionId", required = false) UUID versionId,
             @Valid @RequestBody FormDTO dto,
             Authentication auth,
             HttpSession session) {
@@ -211,8 +215,8 @@ public class FormController {
     /** Single form with static fields bundled — used by builder edit page. */
     @GetMapping(AppConstants.FORM_BY_ID)
     public ResponseEntity<Map<String, Object>> getById(
-            @PathVariable UUID id,
-            @RequestParam(required = false) UUID versionId,
+            @PathVariable("id") UUID id,
+            @RequestParam(name = "versionId", required = false) UUID versionId,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
@@ -287,7 +291,7 @@ public class FormController {
     }
 
     @GetMapping(AppConstants.FORM_VERSIONS)
-    public ResponseEntity<List<Map<String, Object>>> getVersions(@PathVariable UUID id, Authentication auth) {
+    public ResponseEntity<List<Map<String, Object>>> getVersions(@PathVariable("id") UUID id, Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
         FormEntity form = formService.getFormForAction(id, auth.getName(), isAdmin);
@@ -310,8 +314,8 @@ public class FormController {
 
     @GetMapping(AppConstants.FORM_VERSION_BY_ID)
     public ResponseEntity<Map<String, Object>> getVersionDefinition(
-            @PathVariable UUID id,
-            @PathVariable UUID versionId,
+            @PathVariable("id") UUID id,
+            @PathVariable("versionId") UUID versionId,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
@@ -331,8 +335,8 @@ public class FormController {
 
     @GetMapping(AppConstants.FORM_FIELDS)
     public ResponseEntity<List<Map<String, Object>>> listFields(
-            @PathVariable UUID formId,
-            @PathVariable UUID versionId,
+            @PathVariable("formId") UUID formId,
+            @PathVariable("versionId") UUID versionId,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
@@ -364,7 +368,7 @@ public class FormController {
      * No ownership check: anyone with the link can submit to a published form.
      */
     @GetMapping(AppConstants.FORM_RENDER)
-    public ResponseEntity<?> render(@PathVariable UUID id, jakarta.servlet.http.HttpSession session) {
+    public ResponseEntity<?> render(@PathVariable("id") UUID id, jakarta.servlet.http.HttpSession session) {
         FormEntity form = formService.getFormById(id);
         // Public render only works if there is a published version
         Optional<FormVersionEntity> published = form.getPublishedVersion();
@@ -391,8 +395,8 @@ public class FormController {
      */
     @GetMapping(AppConstants.FORM_RENDER_ADMIN)
     public ResponseEntity<?> renderAdmin(
-            @PathVariable UUID id,
-            @RequestParam(required = false) UUID versionId,
+            @PathVariable("id") UUID id,
+            @RequestParam(name = "versionId", required = false) UUID versionId,
             Authentication auth,
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -449,9 +453,9 @@ public class FormController {
      */
     @PutMapping(AppConstants.FORM_FIELD_BY_KEY)
     public ResponseEntity<Map<String, Object>> updateField(
-            @PathVariable UUID formId,
-            @PathVariable UUID versionId,
-            @PathVariable String fieldKey,
+            @PathVariable("formId") UUID formId,
+            @PathVariable("versionId") UUID versionId,
+            @PathVariable("fieldKey") String fieldKey,
             @Valid @RequestBody FormFieldDTO dto,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -467,9 +471,9 @@ public class FormController {
      */
     @PutMapping(AppConstants.FORM_VALIDATION_BY_ID)
     public ResponseEntity<Map<String, Object>> updateValidation(
-            @PathVariable UUID formId,
-            @PathVariable UUID versionId,
-            @PathVariable UUID validationId,
+            @PathVariable("formId") UUID formId,
+            @PathVariable("versionId") UUID versionId,
+            @PathVariable("validationId") UUID validationId,
             @RequestBody Map<String, Object> req,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -482,11 +486,11 @@ public class FormController {
 
     @GetMapping(AppConstants.BY_ID_SUBMISSIONS)
     public ResponseEntity<Map<String, Object>> listSubmissions(
-            @PathVariable UUID id,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String filter,
+            @PathVariable("id") UUID id,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            @RequestParam(name = "sort", required = false) String sort,
+            @RequestParam(name = "filter", required = false) String filter,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
@@ -496,7 +500,7 @@ public class FormController {
 
     @PostMapping(AppConstants.BY_ID_SUBMISSIONS_BULK)
     public ResponseEntity<Map<String, Object>> bulkSubmissionOperation(
-            @PathVariable UUID id,
+            @PathVariable("id") UUID id,
             @RequestBody Map<String, Object> req,
             Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
@@ -528,7 +532,7 @@ public class FormController {
     }
 
     @GetMapping(value = AppConstants.BY_ID_SUBMISSIONS_EXPORT, produces = "text/csv")
-    public ResponseEntity<String> exportSubmissionsCsv(@PathVariable UUID id, Authentication auth) {
+    public ResponseEntity<String> exportSubmissionsCsv(@PathVariable("id") UUID id, Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
         formService.getFormForAction(id, auth.getName(), isAdmin);
@@ -576,7 +580,7 @@ public class FormController {
      * Assign/Reassign Builder before workflow starts. Viewer owner or Admin only.
      */
     @PatchMapping(AppConstants.FORM_ASSIGN_BUILDER)
-    public ResponseEntity<Map<String, Object>> assignBuilder(@PathVariable UUID id,
+    public ResponseEntity<Map<String, Object>> assignBuilder(@PathVariable("id") UUID id,
             @Valid @RequestBody AssignBuilderRequest req,
             Authentication auth,
             HttpSession session) {
@@ -620,7 +624,7 @@ public class FormController {
 
     /** Archive only. Owner or Admin. */
     @DeleteMapping(AppConstants.FORM_BY_ID)
-    public ResponseEntity<Void> delete(@PathVariable UUID id, Authentication auth, HttpSession session) {
+    public ResponseEntity<Void> delete(@PathVariable("id") UUID id, Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         if (roles.contains(ROLE_ROLE_ADMIN)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -645,7 +649,7 @@ public class FormController {
 
     /** Soft-delete a specific form version. */
     @DeleteMapping(AppConstants.FORM_VERSION_BY_ID)
-    public ResponseEntity<Void> deleteVersion(@PathVariable UUID id, @PathVariable UUID versionId, Authentication auth, HttpSession session) {
+    public ResponseEntity<Void> deleteVersion(@PathVariable("id") UUID id, @PathVariable("versionId") UUID versionId, Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
         
@@ -669,7 +673,7 @@ public class FormController {
 
     /** Publish — owner or Admin can publish a form. */
     @PatchMapping(AppConstants.FORM_PUBLISH)
-    public ResponseEntity<Map<String, Object>> publish(@PathVariable UUID id, Authentication auth,
+    public ResponseEntity<Map<String, Object>> publish(@PathVariable("id") UUID id, Authentication auth,
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
@@ -700,7 +704,7 @@ public class FormController {
 
     /** Publish a specific version — owner or Admin can activate a version. */
     @PatchMapping({AppConstants.FORM_VERSION_PUBLISH, AppConstants.FORM_VERSION_ACTIVATE})
-    public ResponseEntity<Map<String, Object>> publishVersion(@PathVariable UUID id, @PathVariable UUID versionId, Authentication auth,
+    public ResponseEntity<Map<String, Object>> publishVersion(@PathVariable("id") UUID id, @PathVariable("versionId") UUID versionId, Authentication auth,
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
@@ -732,7 +736,7 @@ public class FormController {
 
     /** Unpublish — owner or Admin can unpublish a form. */
     @PatchMapping(AppConstants.FORM_UNPUBLISH)
-    public ResponseEntity<Map<String, Object>> unpublish(@PathVariable UUID id, Authentication auth,
+    public ResponseEntity<Map<String, Object>> unpublish(@PathVariable("id") UUID id, Authentication auth,
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         if (roles.contains(ROLE_ROLE_ADMIN)) {
@@ -782,7 +786,7 @@ public class FormController {
     }
 
     @PostMapping(AppConstants.FORM_RESTORE)
-    public ResponseEntity<Void> restore(@PathVariable UUID id, Authentication auth) {
+    public ResponseEntity<Void> restore(@PathVariable("id") UUID id, Authentication auth) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN) || roles.contains(ROLE_ROLE_ADMIN);
         formService.restoreForm(id, auth.getName(), isAdmin);
@@ -790,7 +794,7 @@ public class FormController {
     }
 
     @DeleteMapping(AppConstants.FORM_PERMANENT_DELETE)
-    public ResponseEntity<Void> permanentlyDelete(@PathVariable UUID id, Authentication auth, HttpSession session) {
+    public ResponseEntity<Void> permanentlyDelete(@PathVariable("id") UUID id, Authentication auth, HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         boolean isAdmin = roles.contains(ROLE_ADMIN);
         

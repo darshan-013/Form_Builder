@@ -349,11 +349,7 @@ export const getUsers = async (params = null) => {
 };
 
 export const getUser = (id) =>
-    request('GET', '/users').then(users => {
-        const user = users.find(u => u.id === Number(id));
-        if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
-        return user;
-    });
+    request('GET', `/users/${id}`);
 
 export const createUser = (username, name, email) =>
     request('POST', '/users', { username, name, email });

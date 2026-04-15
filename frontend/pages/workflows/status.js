@@ -59,7 +59,7 @@ export default function WorkflowStatusPage() {
 
             return {
                 id: `step-${oneBased}`,
-                name: oneBased === total ? targetName : `Authority ${oneBased}`,
+                name: oneBased === total ? targetName : (row.steps?.[i]?.approverName || `Authority ${oneBased}`),
                 icon: oneBased === total ? 'builder' : 'check',
                 role: oneBased === total ? 'Builder' : `Approver ${oneBased}`,
                 status,
@@ -135,7 +135,44 @@ export default function WorkflowStatusPage() {
                                     <WorkflowDiagram steps={buildSteps(r)} activeStepIndex={r.currentStep} />
                                 </div>
 
-                                <div style={{ marginTop: 14, textAlign: 'right' }}>
+                                {r.steps && r.steps.length > 0 && (
+                                    <div className="workflow-timeline" style={{ marginTop: 20 }}>
+                                        <div className="timeline-header" style={{ fontSize: 13, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+                                            Process Log
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                            {r.steps.map((s, idx) => (
+                                                <div key={idx} className={`timeline-entry ${s.status === 'REJECTED' ? 'entry-rejected' : ''}`} style={{ 
+                                                    padding: '12px 16px', borderRadius: 12, background: 'rgba(248, 250, 252, 0.5)', border: '1px solid #E2E8F0',
+                                                    ...(s.status === 'REJECTED' ? { borderColor: 'rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.03)' } : {})
+                                                }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                        <span style={{ fontWeight: 700, fontSize: 13, color: '#1E293B' }}>{s.approverName}</span>
+                                                        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, 
+                                                            ...(s.status === 'APPROVED' ? { background: '#DEF7EC', color: '#03543F' } : 
+                                                               s.status === 'REJECTED' ? { background: '#FDE8E8', color: '#9B1C1C' } :
+                                                               { background: '#E5E7EB', color: '#374151' })
+                                                        }}>
+                                                            {s.status}
+                                                        </span>
+                                                    </div>
+                                                    {s.comments && (
+                                                        <div style={{ fontSize: 13, color: '#475569', fontStyle: 'italic', marginTop: 6, linePadding: 1.5 }}>
+                                                            &ldquo;{s.comments}&rdquo;
+                                                        </div>
+                                                    )}
+                                                    {s.decidedAt && (
+                                                        <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>
+                                                            {new Date(s.decidedAt).toLocaleString('en-IN')}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div style={{ marginTop: 24, textAlign: 'right' }}>
                                     <Link 
                                         href={`/preview/${r.formId}`} 
                                         className="btn btn-outline btn-sm"

@@ -79,7 +79,7 @@ public class WorkflowController {
     }
 
     @PostMapping("/steps/{stepId}/approve")
-    public ResponseEntity<?> approve(@PathVariable Long stepId,
+    public ResponseEntity<?> approve(@PathVariable("stepId") Long stepId,
             @RequestBody(required = false) DecideRequest req,
             Authentication auth,
             HttpSession session) {
@@ -103,7 +103,7 @@ public class WorkflowController {
     }
 
     @PostMapping("/steps/{stepId}/reject")
-    public ResponseEntity<?> reject(@PathVariable Long stepId,
+    public ResponseEntity<?> reject(@PathVariable("stepId") Long stepId,
             @RequestBody(required = false) DecideRequest req,
             Authentication auth,
             HttpSession session) {
@@ -195,7 +195,7 @@ public class WorkflowController {
     }
 
     @PostMapping("/{workflowId}/approve")
-    public ResponseEntity<?> approveWorkflow(@PathVariable Long workflowId,
+    public ResponseEntity<?> approveWorkflow(@PathVariable("workflowId") Long workflowId,
             @RequestBody(required = false) DecideRequest req,
             Authentication auth,
             HttpSession session) {
@@ -211,7 +211,7 @@ public class WorkflowController {
     }
 
     @PostMapping("/{workflowId}/reject")
-    public ResponseEntity<?> rejectWorkflow(@PathVariable Long workflowId,
+    public ResponseEntity<?> rejectWorkflow(@PathVariable("workflowId") Long workflowId,
             @RequestBody(required = false) DecideRequest req,
             Authentication auth,
             HttpSession session) {

@@ -449,6 +449,7 @@ public class FormService {
         // 5. Update Versioned Content (Groups, Static Fields, Fields)
         // Rely on orphanRemoval = true to handle deletions via collection clear
         activeVersion.getFields().clear();
+        activeVersion.getGroups().clear();
         
         // Use ID Mapping to ensure linkages are preserved while rotating all IDs to avoid session collisions
         Map<UUID, UUID> groupIdMap = saveGroups(activeVersion, dto.getGroups());

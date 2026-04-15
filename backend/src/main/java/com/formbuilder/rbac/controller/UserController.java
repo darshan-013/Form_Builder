@@ -55,8 +55,8 @@ public class UserController {
     @GetMapping
     public ResponseEntity<?> getAllUsers(
             Authentication auth,
-            @RequestParam(defaultValue = "0") Integer page,
-            @RequestParam(defaultValue = "10") Integer size) {
+            @RequestParam(name = "page", defaultValue = "0") Integer page,
+            @RequestParam(name = "size", defaultValue = "10") Integer size) {
         List<User> users = userRoleService.getAllUsers();
 
         String currentUsername = auth != null ? auth.getName() : null;
@@ -86,6 +86,16 @@ public class UserController {
         List<Map<String, Object>> content = visibleUsers.subList(from, to);
 
         return ResponseEntity.ok(toPagedResponse(content, safePage, safeSize, totalElements));
+    }
+
+    // ── GET /api/users/{id} ─────────────────────────────────────────────
+    /**
+     * Returns a single RBAC user by ID with roles and permissions.
+     */
+    @GetMapping(AppConstants.BY_ID)
+    public ResponseEntity<?> getUserById(@PathVariable("id") Integer id) {
+        User user = userRoleService.getUserById(id);
+        return ResponseEntity.ok(toUserResponse(user));
     }
 
     // ── POST /api/users ──────────────────────────────────────────────────
@@ -132,7 +142,7 @@ public class UserController {
      * </pre>
      */
     @PutMapping(AppConstants.BY_ID)
-    public ResponseEntity<?> updateUser(@PathVariable Integer id,
+    public ResponseEntity<?> updateUser(@PathVariable("id") Integer id,
                                         @RequestBody UpdateUserRequest body) {
 
         User updated = userRoleService.updateUser(id, body.name, body.email);
@@ -146,7 +156,7 @@ public class UserController {
      * Deletes an RBAC user profile. CASCADE in DB handles user_roles cleanup.
      */
     @DeleteMapping(AppConstants.BY_ID)
-    public ResponseEntity<?> deleteUser(@PathVariable Integer id,
+    public ResponseEntity<?> deleteUser(@PathVariable("id") Integer id,
                                         Authentication auth,
                                         HttpSession session) {
 
@@ -203,7 +213,7 @@ public class UserController {
      * ON CONFLICT DO NOTHING — idempotent.
      */
     @PostMapping(AppConstants.BY_ID_ROLES)
-    public ResponseEntity<?> assignRole(@PathVariable Integer id,
+    public ResponseEntity<?> assignRole(@PathVariable("id") Integer id,
                                         @RequestBody AssignRoleRequest body,
                                         Authentication auth,
                                         HttpSession session) {
@@ -254,8 +264,8 @@ public class UserController {
      * Removes a role from a user.
      */
     @DeleteMapping(AppConstants.BY_ID_ROLE_BY_ID)
-    public ResponseEntity<?> removeRole(@PathVariable Integer id,
-                                        @PathVariable Integer roleId,
+    public ResponseEntity<?> removeRole(@PathVariable("id") Integer id,
+                                        @PathVariable("roleId") Integer roleId,
                                         Authentication auth,
                                         HttpSession session) {
 
@@ -292,7 +302,7 @@ public class UserController {
      * </pre>
      */
     @GetMapping(AppConstants.BY_ID_PERMISSIONS)
-    public ResponseEntity<?> getUserPermissions(@PathVariable Integer id) {
+    public ResponseEntity<?> getUserPermissions(@PathVariable("id") Integer id) {
 
         Set<String> permissionKeys = userRoleService.getUserPermissionKeysById(id);
 

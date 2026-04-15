@@ -24,8 +24,8 @@ public class ModuleController {
 
     @GetMapping
     public ResponseEntity<?> getAllModules(
-            @RequestParam(defaultValue = "0") Integer page,
-            @RequestParam(defaultValue = "10") Integer size) {
+            @RequestParam(name = "page", defaultValue = "0") Integer page,
+            @RequestParam(name = "size", defaultValue = "10") Integer size) {
         List<Module> allModules = moduleService.getAllModules();
         int safePage = normalizePage(page);
         int safeSize = normalizeSize(size);
@@ -43,18 +43,18 @@ public class ModuleController {
     }
 
     @PutMapping(AppConstants.BY_ID)
-    public Module updateModule(@PathVariable Long id, @RequestBody Module module) {
+    public Module updateModule(@PathVariable("id") Long id, @RequestBody Module module) {
         return moduleService.updateModule(id, module);
     }
 
     @PostMapping(AppConstants.MODULE_BY_ROLE)
-    public ResponseEntity<Void> assignToRole(@PathVariable Integer roleId, @RequestBody List<Long> moduleIds) {
+    public ResponseEntity<Void> assignToRole(@PathVariable("roleId") Integer roleId, @RequestBody List<Long> moduleIds) {
         moduleService.assignModulesToRole(roleId, moduleIds);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping(AppConstants.MODULE_BY_ROLE)
-    public List<RoleModule> getByRole(@PathVariable Integer roleId) {
+    public List<RoleModule> getByRole(@PathVariable("roleId") Integer roleId) {
         return moduleService.getModulesByRole(roleId);
     }
 
