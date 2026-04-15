@@ -34,6 +34,111 @@
   margin-top: 4px;
 }
 
+.users-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.users-search-input {
+  width: 260px;
+  min-height: 38px;
+}
+
+.users-actions-col {
+  width: 100px;
+}
+
+.users-muted-sm {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.users-alert {
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-size: 14px;
+}
+
+.users-alert-error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.users-form-group {
+  margin-bottom: 20px;
+}
+
+.users-help-text {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.users-note {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.users-note-tight {
+  margin-bottom: 4px;
+}
+
+.users-note-spaced {
+  margin-bottom: 16px;
+}
+
+.users-note-inline {
+  align-self: center;
+}
+
+.users-input-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.user-form-actions-inline {
+  border-top: none;
+  margin-top: 8px;
+  padding-top: 0;
+}
+
+.role-actions-inline {
+  margin-top: 12px;
+}
+
+.users-current-role-block {
+  margin-bottom: 16px;
+}
+
+.users-subtitle-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.users-subtitle-label-spaced {
+  margin-bottom: 8px;
+}
+
+.users-effective-permissions {
+  margin-top: 20px;
+}
+
+.users-perm-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
 /* ── Users Table ─────────────────────────────────── */
 .users-table-wrap {
   background: var(--bg-card);

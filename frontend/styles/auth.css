@@ -13,6 +13,20 @@
   overflow: hidden;
 }
 
+html.auth-scroll-lock,
+body.auth-scroll-lock {
+  height: 100%;
+  overflow: hidden;
+}
+
+body.auth-scroll-lock {
+  overscroll-behavior: none;
+}
+
+body.auth-scroll-lock .auth-page {
+  min-height: 100dvh;
+}
+
 /* Large animated orbs behind card */
 .auth-page::before,
 .auth-page::after {

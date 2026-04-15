@@ -14,6 +14,12 @@ import java.util.Map;
 @RestController
 public class RootController {
 
+    @GetMapping("/favicon.ico")
+    public ResponseEntity<Void> favicon() {
+        // Avoid noisy 500 logs when browsers request favicon from API root.
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/")
     public ResponseEntity<?> root() {
         return ResponseEntity.ok(Map.of(

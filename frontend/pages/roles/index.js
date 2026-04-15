@@ -16,7 +16,7 @@ export default function RolesPage() {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [deleting, setDeleting] = useState(false);
     const [search, setSearch] = useState('');
-    const [viewMode, setViewMode] = useState('all');
+    const [viewMode, setViewMode] = useState('system');
     const [page, setPage] = useState(0);
     const [size, setSize] = useState(10);
     const [totalElements, setTotalElements] = useState(0);
@@ -178,20 +178,12 @@ export default function RolesPage() {
 
             <div className="roles-page">
                 <div className="roles-page-header">
-                    <div>
-                        <h1>🛡️ Role Management</h1>
+                    <div className="roles-page-title-block">
+                        <h1>Role Management</h1>
                         <p>Manage roles and their permission assignments</p>
                     </div>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <button
-                                type="button"
-                                className={`btn btn-sm ${viewMode === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                                onClick={() => setViewMode('all')}
-                                aria-pressed={viewMode === 'all'}
-                            >
-                                All Roles
-                            </button>
+                    <div className="roles-toolbar">
+                        <div className="roles-filter-group">
                             <button
                                 type="button"
                                 className={`btn btn-sm ${viewMode === 'system' ? 'btn-primary' : 'btn-secondary'}`}
@@ -209,17 +201,18 @@ export default function RolesPage() {
                                 Custom Roles
                             </button>
                         </div>
-                        <input
-                            type="text"
-                            className="form-input"
-                            placeholder="Search roles or permissions..."
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            style={{ width: 260 }}
-                        />
-                        <Link href="/roles/create" className="btn btn-primary">
-                            + New Role
-                        </Link>
+                        <div className="roles-action-row">
+                            <input
+                                type="text"
+                                className="form-input roles-search-input"
+                                placeholder="Search roles or permissions..."
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                            />
+                            <Link href="/roles/create" className="btn btn-primary roles-new-role-btn">
+                                + New Role
+                            </Link>
+                        </div>
                     </div>
                 </div>
 

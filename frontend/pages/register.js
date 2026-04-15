@@ -30,7 +30,7 @@ const staggerContainer = {
 
 export default function RegisterPage() {
     const router = useRouter();
-    const { theme } = useTheme();
+    const { theme, toggleTheme } = useTheme();
     const [form, setForm] = useState({ username: '', email: '', password: '', confirm: '' });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);

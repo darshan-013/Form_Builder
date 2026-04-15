@@ -32,7 +32,7 @@ const staggerContainer = {
 export default function LoginPage() {
     const router = useRouter();
     const { refreshAuth } = useAuth();
-    const { theme } = useTheme();
+    const { theme, toggleTheme } = useTheme();
     const [form, setForm] = useState({ username: '', password: '' });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);

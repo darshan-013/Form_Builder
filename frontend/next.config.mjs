@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
+const backendOrigin = process.env.BACKEND_ORIGIN || 'http://localhost:9090';
+
 const nextConfig = {
   /**
-   * Proxy all /api/* calls to the Spring Boot backend on port 8080.
+   * Proxy all /api/* calls to the Spring Boot backend.
    * The browser only ever talks to localhost:3000, so JSESSIONID is a
    * first-party cookie — Edge/Chrome Tracking Prevention does NOT block it.
    */
@@ -9,7 +11,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8080/api/:path*',
+        destination: `${backendOrigin}/api/:path*`,
       },
     ];
   },

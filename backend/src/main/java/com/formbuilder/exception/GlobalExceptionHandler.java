@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -119,6 +120,12 @@ public class GlobalExceptionHandler {
             }
         }
         return ResponseEntity.badRequest().body(new ErrorResponse("DATABASE_ERROR", "A database constraint was violated.", List.of()));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("NOT_FOUND", "Resource not found: " + ex.getResourcePath(), List.of()));
     }
 
     @ExceptionHandler(Exception.class)

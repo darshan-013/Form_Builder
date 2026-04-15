@@ -1,6 +1,6 @@
 /**
  * API service layer.
- * All requests go through Next.js rewrite proxy -> Spring Boot :8080
+ * All requests go through Next.js rewrite proxy -> Spring Boot backend.
  * Session cookie (JSESSIONID) is carried automatically via credentials:'include'.
  */
 

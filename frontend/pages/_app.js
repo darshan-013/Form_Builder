@@ -38,6 +38,8 @@ const pageMotion = {
 export default function App({ Component, pageProps }) {
   const router = useRouter();
   const prevPathRef = useRef(router.asPath);
+  const isAuthPage = router.pathname === '/login' || router.pathname === '/register';
+  const isBuilderNewPage = router.pathname === '/builder/new';
 
   const direction = useMemo(() => {
     const prev = routeRank(prevPathRef.current);
@@ -48,6 +50,44 @@ export default function App({ Component, pageProps }) {
   useEffect(() => {
     prevPathRef.current = router.asPath;
   }, [router.asPath]);
+
+  useEffect(() => {
+    const lockClass = 'auth-scroll-lock';
+    const html = document.documentElement;
+    const body = document.body;
+
+    if (isAuthPage) {
+      html.classList.add(lockClass);
+      body.classList.add(lockClass);
+    } else {
+      html.classList.remove(lockClass);
+      body.classList.remove(lockClass);
+    }
+
+    return () => {
+      html.classList.remove(lockClass);
+      body.classList.remove(lockClass);
+    };
+  }, [isAuthPage]);
+
+  useEffect(() => {
+    const lockClass = 'builder-new-scroll-lock';
+    const html = document.documentElement;
+    const body = document.body;
+
+    if (isBuilderNewPage) {
+      html.classList.add(lockClass);
+      body.classList.add(lockClass);
+    } else {
+      html.classList.remove(lockClass);
+      body.classList.remove(lockClass);
+    }
+
+    return () => {
+      html.classList.remove(lockClass);
+      body.classList.remove(lockClass);
+    };
+  }, [isBuilderNewPage]);
 
   const isLandingPage = router.pathname === '/';
   const content = (
