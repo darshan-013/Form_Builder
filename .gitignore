@@ -22,6 +22,9 @@ backend/.gradle/
 frontend/.next/
 frontend/dist/
 frontend/.turbo/
+backend/src/main/resources/application.yml
+backend/src/main/resources/application-*.yml
+.env
 
 # Environment secrets
 backend/.env
