@@ -65,6 +65,27 @@ public class SubmissionController {
     }
 
     /**
+     * POST /api/v1/submissions - Simplified global submission endpoint.
+     * Logic: Expects { "formId": "...", "data": { ... } } or { "formCode": "...", "data": { ... } }
+     */
+    @PostMapping(value = AppConstants.API_SUBMISSIONS, consumes = "application/json")
+    public ResponseEntity<?> submitStandard(
+            @RequestBody Map<String, Object> body,
+            HttpSession session,
+            Authentication auth) {
+        
+        String idOrCode = null;
+        if (body.get("formId") != null) idOrCode = body.get("formId").toString();
+        else if (body.get("formCode") != null) idOrCode = body.get("formCode").toString();
+        
+        if (idOrCode == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Either 'formId' or 'formCode' must be provided in the request body."));
+        }
+
+        return submitJson(idOrCode, body, session, auth);
+    }
+
+    /**
      * POST /api/v1/runtime/forms/{idOrCode}/submit — JSON body
      */
     @PostMapping(value = {AppConstants.RUNTIME_SUBMIT, AppConstants.RUNTIME_SUBMIT_V2}, consumes = { "application/json", "application/json;charset=UTF-8" })

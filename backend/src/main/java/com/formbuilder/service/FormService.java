@@ -601,11 +601,12 @@ public class FormService {
         for (FormVersionEntity v : previouslyActive) {
             log.info("Deactivating version v{} (id: {})", v.getVersionNumber(), v.getId());
             v.setActive(false);
-            // Removed redundant versionRepo.save(v) to avoid premature flushes
+            // Redundant save removed, but explicit flush needed to clear unique constraint
             int discarded = submissionService.clearRespondentDrafts(form.getId(), v.getId());
             log.info("Requirement 3.2: Discarded {} drafts for deactivated version v{} of form '{}'", 
                 discarded, v.getVersionNumber(), form.getName());
         }
+        versionRepo.flush();
 
         // 2. Promote DRAFT to PUBLISHED
         log.info("Promoting draft version {} (id: {}) to PUBLISHED", draftVersion.getVersionNumber(), draftVersion.getId());
@@ -668,11 +669,12 @@ public class FormService {
         for (FormVersionEntity v : previouslyActive) {
             log.info("Deactivating version v{} (id: {})", v.getVersionNumber(), v.getId());
             v.setActive(false);
-            // Removed redundant versionRepo.save(v)
+            // Redundant save removed, but explicit flush needed to clear unique constraint
             int discarded = submissionService.clearRespondentDrafts(form.getId(), v.getId());
             log.info("Requirement 3.2: Discarded {} drafts for deactivated version v{} of form '{}'", 
                 discarded, v.getVersionNumber(), form.getName());
         }
+        versionRepo.flush();
 
         // 2. Promote target to PUBLISHED
         log.info("Promoting target version v{} (id: {}) to PUBLISHED", targetVersion.getVersionNumber(), targetVersion.getId());

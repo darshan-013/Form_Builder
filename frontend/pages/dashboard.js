@@ -7,9 +7,10 @@ import UserProfileChip from '../components/UserProfileChip';
 import { motion } from 'framer-motion';
 import { 
     FileText, Calendar, Edit3, BarChart3, Copy, 
-    ExternalLink, Eye, Trash2, CheckCircle, MessageSquare, Archive
+    ExternalLink, Eye, Trash2, CheckCircle, MessageSquare, Archive, Code
 } from 'lucide-react';
 import { getDashboardStats } from '../services/api';
+import ApiGatewayModal from '../components/Builder/ApiGatewayModal';
 import { toastSuccess, toastError } from '../services/toast';
 import { useAuth } from '../context/AuthContext';
 import { translateApiError } from '../services/errorTranslator';
@@ -21,6 +22,7 @@ export default function DashboardPage() {
     const isBuilder = hasRole('Builder') || user?.role === 'Builder';
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState(null);
+    const [apiGatewayTarget, setApiGatewayTarget] = useState(null); // form object
 
     useEffect(() => {
         if (authLoading) return;
@@ -98,6 +100,9 @@ export default function DashboardPage() {
                                 </button>
                                 <button className="row-icon-btn" title="Copy Link" onClick={() => handleCopyLink(form.id)}>
                                     <Copy size={16} />
+                                </button>
+                                <button className="row-icon-btn" title="API Gateway" onClick={() => setApiGatewayTarget(form)}>
+                                    <Code size={16} />
                                 </button>
                             </>
                         )}
@@ -223,6 +228,14 @@ export default function DashboardPage() {
                         </>
                     )}
                 </div>
+
+                {apiGatewayTarget && (
+                    <ApiGatewayModal
+                        isOpen={!!apiGatewayTarget}
+                        onClose={() => setApiGatewayTarget(null)}
+                        formId={apiGatewayTarget.id}
+                    />
+                )}
             </div>
         </>
     );

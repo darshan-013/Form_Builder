@@ -214,17 +214,17 @@ function validateNumber(value, rules, label) {
     errors.push(`${label} cannot be zero`);
   }
 
-  if (rules.minValue !== undefined && rules.minValue !== '' && num < Number(rules.minValue)) {
+  if (rules.minValue != null && rules.minValue !== '' && num < Number(rules.minValue)) {
     errors.push(`${label} must be at least ${rules.minValue}`);
   }
-  if (rules.maxValue !== undefined && rules.maxValue !== '' && num > Number(rules.maxValue)) {
+  if (rules.maxValue != null && rules.maxValue !== '' && num > Number(rules.maxValue)) {
     errors.push(`${label} must not exceed ${rules.maxValue}`);
   }
 
-  if (rules.maxDigits) {
+  if (rules.maxDigits != null && rules.maxDigits !== '') {
     const intPart = raw.split('.')[0].replace('-', '');
     if (intPart.length > Number(rules.maxDigits)) {
-      errors.push(`${label} must not have more than ${rules.maxDigits} digit${rules.maxDigits === 1 ? '' : 's'}`);
+      errors.push(`${label} must not have more than ${rules.maxDigits} digit${Number(rules.maxDigits) === 1 ? '' : 's'}`);
     }
   }
   if (rules.maxDecimalPlaces != null && rules.maxDecimalPlaces !== '' && raw.includes('.')) {

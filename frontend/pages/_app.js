@@ -9,6 +9,7 @@ import '../styles/responsive.css';
 import '../styles/roles.css';
 import '../styles/users.css';
 import '../styles/Sidebar.css';
+import '../styles/docs.css';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef } from 'react';

@@ -85,7 +85,30 @@ async function request(method, path, body) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
 
     if (!res.ok) {
-        const err = new Error(data?.error || data?.message || 'Request failed');
+        let msg = data?.error || data?.message || 'Request failed';
+        
+        // If we have granular validation errors, join them for a better toast experience
+        if (Array.isArray(data?.errors) && data.errors.length > 0) {
+            // Filter unique message parts to avoid redundancy
+            const uniqueErrors = [...new Set(data.errors.map(e => `${e.field}: ${e.message}`))];
+            msg = `Validation Error: ${uniqueErrors.join(', ')}`;
+        } else if (data?.errorCode === 'VALIDATION_ERROR' && data?.details) {
+            msg = `Validation Error: ${data.details}`;
+        }
+
+        // Detailed console logging for development
+        // Silence 401 on /auth/me as it's a standard check for session existence
+        const isAuthMeCheck = res.status === 401 && path.includes('/auth/me');
+        
+        if (!isAuthMeCheck) {
+            console.error(`[API ERROR] ${method} ${path} (${res.status}):`, {
+                errorCode: data?.errorCode,
+                message: msg,
+                rawDetails: data
+            });
+        }
+
+        const err = new Error(msg);
         err.status = res.status;
         err.errorCode = data?.errorCode;
         err.errors = data?.errors;
@@ -503,3 +526,8 @@ export function clearSchemaDriftReport() {
     if (typeof window === 'undefined') return;
     window.sessionStorage.removeItem(SCHEMA_DRIFT_STORAGE_KEY);
 }
+
+// -- AI Architect ---------------------------------------------------------------
+
+export const chatWithAi = (prompt, history = []) =>
+    request('POST', '/ai/chat', { prompt, history });

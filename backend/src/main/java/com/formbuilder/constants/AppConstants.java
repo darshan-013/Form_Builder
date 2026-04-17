@@ -26,6 +26,7 @@ public class AppConstants {
     public static final String API_MODULES = API_BASE + "/modules";
     public static final String API_FILES = API_BASE + "/files";
     public static final String API_UPLOAD = API_FILES + "/upload";
+    public static final String API_SUBMISSIONS = API_BASE + "/submissions";
 
     // Auth Sub-Endpoints
     public static final String AUTH_LOGIN = "/login";

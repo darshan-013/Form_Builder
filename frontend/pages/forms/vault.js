@@ -7,9 +7,10 @@ import UserProfileChip from '../../components/UserProfileChip';
 import { 
     FileText, Calendar, Edit3, BarChart3, Copy, 
     ExternalLink, Eye, Trash2, 
-    CheckCircle2, UserPlus
+    CheckCircle2, UserPlus, Code
 } from 'lucide-react';
 import { getForms, deleteForm, publishForm, isSchemaDriftError, saveSchemaDriftReport } from '../../services/api';
+import ApiGatewayModal from '../../components/Builder/ApiGatewayModal';
 import { toastSuccess, toastError } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
 import { translateApiError } from '../../services/errorTranslator';
@@ -27,6 +28,7 @@ export default function FormVaultPage() {
     const [deleting, setDeleting] = useState(false);
     const [deleteErrorMessage, setDeleteErrorMessage] = useState('');
     const [statusLoading, setStatusLoading] = useState({});
+    const [apiGatewayTarget, setApiGatewayTarget] = useState(null); // form object
 
     const [activeTab, setActiveTab] = useState('all');
     const [tabSearch, setTabSearch] = useState('');
@@ -298,6 +300,9 @@ export default function FormVaultPage() {
                         <button className="t-icon-btn" title="Preview Form" onClick={() => router.push(`/preview/${form.id}`)}>
                             <Eye size={18} />
                         </button>
+                        <button className="t-icon-btn" title="API Gateway" onClick={(e) => { e.stopPropagation(); setApiGatewayTarget(form); }}>
+                            <Code size={18} />
+                        </button>
                     </div>
                     <div className="toolbar-right">
                         {form.canDelete && (
@@ -424,6 +429,14 @@ export default function FormVaultPage() {
                         </>
                     )}
                 </div>
+
+                {apiGatewayTarget && (
+                    <ApiGatewayModal
+                        isOpen={!!apiGatewayTarget}
+                        onClose={() => setApiGatewayTarget(null)}
+                        formId={apiGatewayTarget.id}
+                    />
+                )}
             </div>
 
             {deleteTarget && (

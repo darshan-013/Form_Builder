@@ -6,6 +6,7 @@ module.exports = {
   darkMode: ['selector', '[data-theme="dark"]'],
   content: [
     "./pages/index.js",
+    "./pages/docs.js",
     "./components/landing/**/*.{js,jsx,ts,tsx}",
   ],
   theme: {

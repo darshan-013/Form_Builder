@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS custom_validation_rules (
     execution_order INT DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+)^
 
 CREATE INDEX IF NOT EXISTS idx_custom_validation_version ON custom_validation_rules(form_version_id);
 ^

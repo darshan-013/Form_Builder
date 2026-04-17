@@ -38,7 +38,8 @@ public class DynamicTableService {
             Map.entry("file", "TEXT"),
             Map.entry("multiple_choice_grid", "TEXT"),
             Map.entry("star_rating", "INTEGER"),
-            Map.entry("checkbox_grid", "TEXT")
+            Map.entry("checkbox_grid", "TEXT"),
+            Map.entry("checkbox", "BOOLEAN")
     );
 
     private final JdbcTemplate jdbc;
@@ -94,6 +95,9 @@ public class DynamicTableService {
                 """, q(tableName));
         log.debug("DDL createTable: {}", createSql.trim());
         jdbc.execute(createSql);
+        verifiedTables.add(tableName);
+        tablesVerifiedDraftColumns.add(tableName);
+        tablesVerifiedSoftDelete.add(tableName);
 
         for (FormFieldEntity field : fields) {
             if (!"field_group".equals(field.getFieldType())) {
@@ -102,20 +106,40 @@ public class DynamicTableService {
         }
     }
 
+    private final Set<String> tablesVerifiedDraftColumns = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public void addDraftColumnsIfMissing(String tableName) {
+        if (tablesVerifiedDraftColumns.contains(tableName)) return;
         try {
-            jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS form_version_id UUID");
-            jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS is_draft BOOLEAN NOT NULL DEFAULT TRUE");
-            jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)");
+            Set<String> existingColumns = getExistingColumns(tableName);
+            if (!existingColumns.contains("form_version_id")) {
+                jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS form_version_id UUID");
+            }
+            if (!existingColumns.contains("is_draft")) {
+                jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS is_draft BOOLEAN NOT NULL DEFAULT TRUE");
+            }
+            if (!existingColumns.contains("user_id")) {
+                jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)");
+            }
+            tablesVerifiedDraftColumns.add(tableName);
         } catch (Exception e) {
             log.warn("Could not add standard columns to {}: {}", tableName, e.getMessage());
         }
     }
 
+    private final Set<String> tablesVerifiedSoftDelete = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public void addSoftDeleteColumnIfMissing(String tableName) {
+        if (tablesVerifiedSoftDelete.contains(tableName)) return;
         try {
-            jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS is_soft_deleted BOOLEAN NOT NULL DEFAULT FALSE");
-            jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP");
+            Set<String> existingColumns = getExistingColumns(tableName);
+            if (!existingColumns.contains("is_soft_deleted")) {
+                jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS is_soft_deleted BOOLEAN NOT NULL DEFAULT FALSE");
+            }
+            if (!existingColumns.contains("deleted_at")) {
+                jdbc.execute("ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP");
+            }
+            tablesVerifiedSoftDelete.add(tableName);
         } catch (Exception e) {
             log.warn("Could not add soft-delete columns to {}: {}", tableName, e.getMessage());
         }
@@ -123,8 +147,11 @@ public class DynamicTableService {
 
     public void addColumn(String tableName, String fieldKey, String fieldType) {
         if ("field_group".equals(fieldType)) return;
-        String sql = "ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS " + q(fieldKey) + " " + sqlType(fieldType);
-        jdbc.execute(sql);
+        Set<String> existingColumns = getExistingColumns(tableName);
+        if (!existingColumns.contains(fieldKey.toLowerCase())) {
+            String sql = "ALTER TABLE " + q(tableName) + " ADD COLUMN IF NOT EXISTS " + q(fieldKey) + " " + sqlType(fieldType);
+            jdbc.execute(sql);
+        }
     }
 
     public void addColumnIfMissing(String tableName, String fieldKey, String fieldType) {
@@ -144,6 +171,21 @@ public class DynamicTableService {
 
     public void dropTable(String tableName) {
         jdbc.execute("DROP TABLE IF EXISTS " + q(tableName));
+        verifiedTables.remove(tableName);
+        tablesVerifiedDraftColumns.remove(tableName);
+        tablesVerifiedSoftDelete.remove(tableName);
+    }
+
+    private Set<String> getExistingColumns(String tableName) {
+        Set<String> columns = new HashSet<>();
+        jdbc.query("SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+                (java.sql.ResultSet rs) -> {
+                    while (rs.next()) {
+                        columns.add(rs.getString("column_name").toLowerCase());
+                    }
+                    return null;
+                }, tableName.toLowerCase());
+        return columns;
     }
 
     @Transactional
@@ -178,9 +220,14 @@ public class DynamicTableService {
         return jdbc.queryForList(sql, tableName);
     }
 
+    private final Set<String> verifiedTables = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public boolean tableExists(String tableName) {
+        if (verifiedTables.contains(tableName)) return true;
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?", Integer.class, tableName);
-        return count != null && count > 0;
+        boolean exists = count != null && count > 0;
+        if (exists) verifiedTables.add(tableName);
+        return exists;
     }
 
     public void ensureTableExists(String tableName, UUID formId) {

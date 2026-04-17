@@ -8,8 +8,9 @@ import Canvas from '../../components/Builder/Canvas';
 import FieldConfigModal from '../../components/Builder/FieldConfigModal';
 import StaticFieldModal from '../../components/Builder/StaticFieldModal';
 import GroupConfigModal from '../../components/Builder/GroupConfigModal';
+import AiArchitectModal from '../../components/Builder/AiArchitectModal';
 import CustomValidationsPanel from '../../components/Builder/CustomValidationsPanel';
-import { Zap, Settings, Eye, Save, Rocket, X, Users, Calendar, BarChart3, Clock, Trash2, Shield } from 'lucide-react';
+import { Zap, Settings, Eye, Save, Rocket, X, Users, Calendar, BarChart3, Clock, Trash2, Shield, Sparkles, Code } from 'lucide-react';
 import { createForm, getForm, updateForm, getVisibilityCandidates, getFormVersions, publishForm, publishVersion, deleteFormVersion, isSchemaDriftError, saveSchemaDriftReport } from '../../services/api';
 import { toastSuccess, toastError, toastInfo } from '../../services/toast';
 import { useAuth } from '../../context/AuthContext';
@@ -21,6 +22,17 @@ const NEW_FORM_META_KEY = 'builder_new_form_meta_v1';
 const VIEW_ORDER = { canvas: 0, validations: 1, versions: 2 };
 
 const sanitizeFormName = (value = '') => value.replace(/[^A-Za-z0-9_ ]+/g, '').replace(/\s{2,}/g, ' ');
+
+const generateUUID = () => {
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
+        return window.crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+};
 
 const getFormNameError = (value, { requireValue = false } = {}) => {
     const normalized = sanitizeFormName(value).trim();
@@ -59,6 +71,7 @@ export default function EditBuilderPage() {
     const [expiresAt, setExpiresAt] = useState(''); // ISO string or ''
     // removed visibility state
     const [showSettings, setShowSettings] = useState(false);
+    const [showAiModal, setShowAiModal] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [versionStatus, setVersionStatus] = useState('DRAFT'); // 'PUBLISHED' or 'DRAFT'
     const [branching, setBranching] = useState(false);
@@ -67,10 +80,12 @@ export default function EditBuilderPage() {
     const [viewDirection, setViewDirection] = useState(1);
     const [confirmModal, setConfirmModal] = useState(null); // { type: 'publish'|'delete', versionId, versionNumber }
     const [actioning, setActioning] = useState(null); // tracking loading state for version actions
+    const [pendingImportSchema, setPendingImportSchema] = useState(null);
     const [isDirty, setIsDirty] = useState(false);
     const [initialSignature, setInitialSignature] = useState(null);
     const [currentVersionNumber, setCurrentVersionNumber] = useState(null);
     const [code, setCode] = useState('');
+    const [refreshKey, setRefreshKey] = useState(0);
 
     // Resizable panels state
     const [leftWidth, setLeftWidth] = useState(264);
@@ -380,7 +395,7 @@ export default function EditBuilderPage() {
         getFormVersions(id)
             .then(setVersions)
             .catch(() => console.error('Failed to load version history'));
-    }, [id, versionId, isCreateMode]);
+    }, [id, versionId, isCreateMode, refreshKey]);
 
     useEffect(() => {
         if (initialSignature === null) return;
@@ -409,6 +424,77 @@ export default function EditBuilderPage() {
     const updateGroup = (updatedGroup) => {
         setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? { ...updatedGroup } : g)));
         setEditGroupConfig(null);
+    };
+
+    const handleImportSchema = (schema) => {
+        if (!schema) return;
+        setPendingImportSchema(schema);
+        setConfirmModal({ type: 'import' });
+    };
+
+    const executeImport = (schema) => {
+        setFormName(sanitizeFormName(schema.name || formName));
+        setFormDescription(schema.description || formDescription);
+        
+        const RESERVED_KEYWORDS = new Set(['id', 'user', 'role', 'table', 'status', 'created_at', 'updated_at', 'is_draft', 'deleted_at', 'key', 'primary', 'view', 'constraint', 'group', 'order', 'limit', 'offset', 'union', 'distinct', 'column', 'index', 'trigger', 'grant', 'revoke', 'select', 'insert', 'update', 'delete', 'from', 'where', 'join']);
+
+        // Map fields to include a local unique ID and ensure fieldKey uniqueness
+        const usedKeys = new Set();
+        const importedFields = (schema.fields || []).map((f, i) => {
+            // Normalize checkbox type to boolean for UI compatibility
+            if (f.fieldType === 'checkbox') f.fieldType = 'boolean';
+
+            let baseKey = (f.fieldKey || `${f.fieldType || 'field'}_${i}`)
+                .toLowerCase()
+                .replace(/[^a-z0-9_]/g, '_')
+                .replace(/^_+|_+$/g, '');
+            
+            // Ensure key starts with a letter or underscore (backend requirement)
+            if (!/^[a-z_]/.test(baseKey)) baseKey = 'f_' + baseKey || 'field';
+            if (!baseKey) baseKey = `field_${i}`;
+
+            // Check against reserved keywords
+            if (RESERVED_KEYWORDS.has(baseKey)) {
+                baseKey = `attr_${baseKey}`;
+            }
+            
+            let finalKey = baseKey;
+            let counter = 1;
+            while (usedKeys.has(finalKey)) {
+                finalKey = `${baseKey}_${counter++}`;
+            }
+            usedKeys.add(finalKey);
+
+            // Defensive stringification for JSON-based fields from AI
+            const stringify = (val) => (val && typeof val === 'object') ? JSON.stringify(val) : val;
+
+            return {
+                ...f,
+                id: generateUUID(),
+                fieldKey: finalKey,
+                fieldOrder: i,
+                isStatic: STATIC_TYPES.has(f.fieldType),
+                validationJson: stringify(f.validationJson),
+                rulesJson: stringify(f.rulesJson),
+                uiConfigJson: stringify(f.uiConfigJson)
+            };
+        });
+
+        // Defensive stringification for JSON-based fields from AI
+        const stringify = (val) => (val && typeof val === 'object') ? JSON.stringify(val) : val;
+
+        const importedGroups = (schema.groups || []).map((g, i) => ({
+            ...g,
+            id: generateUUID(),
+            groupOrder: i,
+            rulesJson: stringify(g.rulesJson)
+        }));
+
+        setFields(importedFields);
+        setGroups(importedGroups);
+        setIsDirty(true);
+        toastSuccess("Form architecture successfully imported! ✓");
+        setPendingImportSchema(null);
     };
 
     const hasSelection = !!(editField || editStaticField || editGroupConfig);
@@ -445,6 +531,8 @@ export default function EditBuilderPage() {
         const dynamicFieldsList = [];
         const staticFields = [];
 
+        const stringify = (val) => (val && typeof val === 'object') ? JSON.stringify(val) : val;
+
         fields.forEach((f, i) => {
             if (STATIC_TYPES.has(f.fieldType)) {
                 staticFields.push({
@@ -462,9 +550,9 @@ export default function EditBuilderPage() {
                     required: f.required,
                     defaultValue: f.defaultValue || null,
                     validationRegex: f.validationRegex || null,
-                    validationJson: f.validationJson || null,
-                    rulesJson: f.rulesJson || null,
-                    uiConfigJson: f.uiConfigJson || null,
+                    validationJson: stringify(f.validationJson) || null,
+                    rulesJson: stringify(f.rulesJson) || null,
+                    uiConfigJson: stringify(f.uiConfigJson) || null,
                     sharedOptionsId: f.sharedOptionsId || null,
                     fieldOrder: i,
                     // Calculated fields persistence
@@ -492,7 +580,7 @@ export default function EditBuilderPage() {
                 groupTitle: g.groupTitle || 'Untitled Section',
                 groupDescription: g.groupDescription || '',
                 groupOrder: i,
-                rulesJson: g.rulesJson || null,
+                rulesJson: stringify(g.rulesJson) || null,
             })),
             allowMultipleSubmissions: allowMultipleSubmissions,
             allowedUsers: allowedUsers,
@@ -599,14 +687,22 @@ export default function EditBuilderPage() {
     const handleActionConfirm = async () => {
         if (!confirmModal) return;
         const { type, versionId } = confirmModal;
+        
+        if (type === 'import') {
+            if (pendingImportSchema) {
+                executeImport(pendingImportSchema);
+            }
+            setConfirmModal(null);
+            return;
+        }
+
         setActioning(versionId);
         setConfirmModal(null);
         try {
             if (type === 'publish') {
                 await publishVersion(id, versionId);
                 toastSuccess(`Version ${confirmModal.versionNumber} activated successfully.`);
-                setActiveView('canvas');
-                router.push(`/builder/${id}?versionId=${versionId}`); // Reload canvas for new version
+                router.push('/forms/vault');
             } else if (type === 'delete') {
                 await deleteFormVersion(id, versionId);
                 toastSuccess(`Version ${confirmModal.versionNumber} deleted.`);
@@ -768,6 +864,20 @@ export default function EditBuilderPage() {
                                 {pageBreakCount > 0 ? ` · ${pageCount} pages` : ''}
                             </span>
                         )}
+
+                        <button
+                            className="btn btn-secondary btn-sm ai-architect-btn"
+                            style={{ 
+                                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1))',
+                                border: '1px solid rgba(168, 85, 247, 0.2)',
+                                color: '#6366f1',
+                                fontWeight: '600'
+                            }}
+                            onClick={() => setShowAiModal(true)}
+                        >
+                            <Sparkles size={15} style={{ marginRight: 6 }} />
+                            AI Architect
+                        </button>
 
                         {/* Settings button */}
                         {!isViewer && (
@@ -963,23 +1073,31 @@ export default function EditBuilderPage() {
                     <div className="builder-modal-backdrop" onClick={() => setConfirmModal(null)} style={{ zIndex: 10001 }}>
                         <div className="builder-modal" onClick={e => e.stopPropagation()}>
                             <div className="builder-modal-icon">
-                                {confirmModal.type === 'delete' ? '🗑️' : '🚀'}
+                                {confirmModal.type === 'delete' ? '🗑️' : (confirmModal.type === 'import' ? '🪄' : '🚀')}
                             </div>
-                            <h3>{confirmModal.type === 'delete' ? 'Delete this version?' : (versionStatus === 'PUBLISHED' ? 'Activate this version?' : 'Publish this version?')}</h3>
+                            <h3>
+                                {confirmModal.type === 'delete' 
+                                    ? 'Delete this version?' 
+                                    : confirmModal.type === 'import'
+                                        ? 'Import AI Design?'
+                                        : (versionStatus === 'PUBLISHED' ? 'Activate this version?' : 'Publish this version?')}
+                            </h3>
                             <p>
                                 {confirmModal.type === 'delete'
                                     ? "This version will be moved to the trash. You can restore it later if needed by contacting an administrator."
-                                    : "Are you sure you want to activate this version? It will instantly replace the current live version of this form."
+                                    : confirmModal.type === 'import'
+                                        ? "Importing this design will REPLACE your current form fields and sections. This action cannot be undone."
+                                        : "Are you sure you want to activate this version? It will instantly replace the current live version of this form."
                                 }
                             </p>
                             <div className="builder-modal-actions">
-                                <button className="btn btn-secondary" onClick={() => setConfirmModal(null)}>Cancel</button>
+                                <button className="btn btn-secondary" onClick={() => { setConfirmModal(null); setPendingImportSchema(null); }}>Cancel</button>
                                 <button 
-                                    className={`btn ${confirmModal.type === 'delete' ? 'btn-danger' : 'btn-publish'}`} 
+                                    className={`btn ${confirmModal.type === 'delete' ? 'btn-danger' : (confirmModal.type === 'import' ? 'btn-primary' : 'btn-publish')}`} 
                                     onClick={handleActionConfirm}
                                     disabled={!!actioning}
                                 >
-                                    {actioning ? '⌛' : (confirmModal.type === 'delete' ? 'Yes, Delete' : 'Yes, Activate')}
+                                    {actioning ? '⌛' : (confirmModal.type === 'delete' ? 'Yes, Delete' : (confirmModal.type === 'import' ? 'Yes, Import' : 'Yes, Activate'))}
                                 </button>
                             </div>
                         </div>
@@ -1209,6 +1327,16 @@ export default function EditBuilderPage() {
                     </div>
                 )}
                     </motion.div>
+                </AnimatePresence>
+
+                <AnimatePresence>
+                    {showAiModal && (
+                        <AiArchitectModal 
+                            isOpen={showAiModal} 
+                            onClose={() => setShowAiModal(false)} 
+                            onImport={handleImportSchema}
+                        />
+                    )}
                 </AnimatePresence>
             </div>
 

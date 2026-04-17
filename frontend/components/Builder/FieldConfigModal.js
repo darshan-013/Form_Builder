@@ -29,10 +29,26 @@ function ConfigBlock({ icon: Icon, title, active, onChange, subtext }) {
     );
 }
 
-const toKey = (label = '') => (label || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9_]/g, '') 
-    .substring(0, 100) || '';
+const toKey = (label = '') => {
+    let base = (label || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '')
+        .substring(0, 100);
+    
+    if (!base) return '';
+    
+    // Policy: Must start with a letter
+    if (!/^[a-z]/.test(base)) {
+        base = 'f_' + base;
+    }
+
+    const RESERVED = ['id', 'user', 'role', 'table', 'status', 'created_at', 'updated_at', 'is_draft', 'deleted_at', 'key', 'primary', 'view', 'constraint', 'group', 'order', 'limit', 'offset', 'union', 'distinct', 'column', 'index', 'trigger', 'grant', 'revoke', 'select', 'insert', 'update', 'delete', 'from', 'where', 'join'];
+    if (RESERVED.includes(base)) {
+        base = 'attr_' + base;
+    }
+    
+    return base;
+};
 
 /**
  * FieldConfigModal — Slide-up modal to edit all field properties.

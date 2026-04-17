@@ -61,16 +61,24 @@ export default function Sidebar({ isOpen, onClose }) {
 
             const generalIndex = normalizedMenu.findIndex((section) => section?.section === 'General');
             const formVaultItem = { label: 'Form Vault', href: '/forms/vault', icon: '🗄' };
+            const docsItem = { label: 'API Docs', href: '/docs', icon: '📚' };
 
             if (generalIndex >= 0) {
                 const items = Array.isArray(normalizedMenu[generalIndex].items) ? [...normalizedMenu[generalIndex].items] : [];
-                const hasFormVault = items.some((item) => item?.href === '/forms/vault');
-                if (!hasFormVault) {
+                
+                // Add Form Vault if missing
+                if (!items.some((item) => item?.href === '/forms/vault')) {
                     items.push(formVaultItem);
                 }
+                
+                // Add API Docs if missing
+                if (!items.some((item) => item?.href === '/docs')) {
+                    items.push(docsItem);
+                }
+                
                 normalizedMenu[generalIndex] = { ...normalizedMenu[generalIndex], items };
             } else {
-                normalizedMenu.unshift({ section: 'General', items: [formVaultItem] });
+                normalizedMenu.unshift({ section: 'General', items: [formVaultItem, docsItem] });
             }
 
             setMenuData(normalizedMenu);

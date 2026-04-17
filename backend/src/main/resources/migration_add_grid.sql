@@ -12,7 +12,7 @@ ALTER TABLE form_fields DROP CONSTRAINT IF EXISTS form_fields_field_type_check^
 
 ALTER TABLE form_fields ADD CONSTRAINT form_fields_field_type_check
 CHECK (field_type IN (
-  'text', 'number', 'date', 'boolean',
+  'text', 'number', 'date', 'time', 'date_time', 'boolean',
   'dropdown', 'radio', 'file',
   'multiple_choice', 'linear_scale',
   'field_group',

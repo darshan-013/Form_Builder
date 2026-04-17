@@ -6,6 +6,7 @@
 @import "tailwindcss/utilities";
 
 @source "./pages/index.js";
+@source "./pages/docs.js";
 @source "./components/landing/**/*.js";
 
 /* ── Custom animation & pattern utilities ───────────────── */

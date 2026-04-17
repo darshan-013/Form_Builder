@@ -135,42 +135,42 @@ public class ValidationService {
 
         // trimWhitespace: backend always trims before validating — honoured by design
 
-        if (rules.has("minLength")) {
+        if (rules.hasNonNull("minLength")) {
             int min = rules.get("minLength").asInt();
             if (value.length() < min)
                 errors.add(label + " must be at least " + min + " characters");
         }
-        if (rules.has("maxLength")) {
+        if (rules.hasNonNull("maxLength")) {
             int max = rules.get("maxLength").asInt();
             if (value.length() > max)
                 errors.add(label + " must not exceed " + max + " characters");
         }
-        if (rules.has("exactLength")) {
+        if (rules.hasNonNull("exactLength")) {
             int exact = rules.get("exactLength").asInt();
             if (value.length() != exact)
                 errors.add(label + " must be exactly " + exact + " characters");
         }
-        if (rules.has("noLeadingTrailingSpaces") && rules.get("noLeadingTrailingSpaces").asBoolean()) {
+        if (rules.hasNonNull("noLeadingTrailingSpaces") && rules.get("noLeadingTrailingSpaces").asBoolean()) {
             if (!rawValue.equals(rawValue.trim()))
                 errors.add(label + " must not have leading or trailing spaces");
         }
-        if (rules.has("noConsecutiveSpaces") && rules.get("noConsecutiveSpaces").asBoolean()) {
+        if (rules.hasNonNull("noConsecutiveSpaces") && rules.get("noConsecutiveSpaces").asBoolean()) {
             if (rawValue.contains("  "))
                 errors.add(label + " must not contain consecutive spaces");
         }
-        if (rules.has("alphabetOnly") && rules.get("alphabetOnly").asBoolean()) {
+        if (rules.hasNonNull("alphabetOnly") && rules.get("alphabetOnly").asBoolean()) {
             if (!value.matches("^[A-Za-z\\s]+$"))
                 errors.add(label + " must contain only alphabetic characters");
         }
-        if (rules.has("alphanumericOnly") && rules.get("alphanumericOnly").asBoolean()) {
+        if (rules.hasNonNull("alphanumericOnly") && rules.get("alphanumericOnly").asBoolean()) {
             if (!value.matches("^[A-Za-z0-9\\s]+$"))
                 errors.add(label + " must contain only letters and numbers");
         }
-        if (rules.has("noSpecialCharacters") && rules.get("noSpecialCharacters").asBoolean()) {
+        if (rules.hasNonNull("noSpecialCharacters") && rules.get("noSpecialCharacters").asBoolean()) {
             if (!value.matches("^[A-Za-z0-9\\s]+$"))
                 errors.add(label + " must not contain special characters");
         }
-        if (rules.has("allowSpecificSpecialCharacters") && !rules.get("allowSpecificSpecialCharacters").asText().isEmpty()) {
+        if (rules.hasNonNull("allowSpecificSpecialCharacters") && !rules.get("allowSpecificSpecialCharacters").asText().isEmpty()) {
             String allowed = rules.get("allowSpecificSpecialCharacters").asText();
             String escapedAllowed = allowed.replaceAll("([\\[\\-\\\\])", "\\\\$1");
             String pattern = "^[A-Za-z0-9\\s" + escapedAllowed + "]+$";
@@ -182,7 +182,7 @@ public class ValidationService {
                         pattern);
             }
         }
-        if (rules.has("restrictSpecificSpecialCharacters") && !rules.get("restrictSpecificSpecialCharacters").asText().isEmpty()) {
+        if (rules.hasNonNull("restrictSpecificSpecialCharacters") && !rules.get("restrictSpecificSpecialCharacters").asText().isEmpty()) {
             String restricted = rules.get("restrictSpecificSpecialCharacters").asText();
             for (char c : restricted.toCharArray()) {
                 if (rawValue.indexOf(c) >= 0) {
@@ -191,21 +191,21 @@ public class ValidationService {
                 }
             }
         }
-        if (rules.has("emailFormat") && rules.get("emailFormat").asBoolean()) {
+        if (rules.hasNonNull("emailFormat") && rules.get("emailFormat").asBoolean()) {
             if (!isValidEmail(value))
                 errors.add(label + " must be a valid email address");
         }
-        if (rules.has("urlFormat") && rules.get("urlFormat").asBoolean()) {
+        if (rules.hasNonNull("urlFormat") && rules.get("urlFormat").asBoolean()) {
             if (!isValidUrl(value))
                 errors.add(label + " must be a valid URL");
         }
-        if (rules.has("passwordStrength") && rules.get("passwordStrength").asBoolean()) {
+        if (rules.hasNonNull("passwordStrength") && rules.get("passwordStrength").asBoolean()) {
             if (!validatePasswordStrength(value).isEmpty())
                 errors.add(label + " must contain uppercase, lowercase, digit, and special character");
         }
-        if (rules.has("customRegex")) {
+        if (rules.hasNonNull("customRegex")) {
             String regex = rules.get("customRegex").asText();
-            String customMessage = rules.has("message") ? rules.get("message").asText() : (label + " format is invalid");
+            String customMessage = rules.hasNonNull("message") ? rules.get("message").asText() : (label + " format is invalid");
             try {
                 if (!Pattern.compile(regex).matcher(value).find())
                     errors.add(customMessage);
@@ -213,8 +213,8 @@ public class ValidationService {
                 log.warn("Invalid regex pattern: {}", regex, e);
             }
         }
-        if (!rules.has("customRegex") && field.getValidationRegex() != null && !field.getValidationRegex().isBlank()) {
-            String customMessage = rules.has("message") ? rules.get("message").asText() : (label + " format is invalid");
+        if (!rules.hasNonNull("customRegex") && field.getValidationRegex() != null && !field.getValidationRegex().isBlank()) {
+            String customMessage = rules.hasNonNull("message") ? rules.get("message").asText() : (label + " format is invalid");
             try {
                 if (!Pattern.compile(field.getValidationRegex()).matcher(value).find())
                     errors.add(customMessage);
@@ -222,7 +222,7 @@ public class ValidationService {
                 log.warn("Invalid validationRegex for field {}: {}", field.getFieldKey(), field.getValidationRegex());
             }
         }
-        if (rules.has("unique") && rules.get("unique").asBoolean()) {
+        if (rules.hasNonNull("unique") && rules.get("unique").asBoolean()) {
             if (isDuplicate(tableName, field.getFieldKey(), value))
                 errors.add(label + " must be unique. This value already exists");
         }
@@ -243,23 +243,23 @@ public class ValidationService {
             return;
         }
 
-        if (rules.has("integerOnly") && rules.get("integerOnly").asBoolean()) {
+        if (rules.hasNonNull("integerOnly") && rules.get("integerOnly").asBoolean()) {
             if (numValue != Math.floor(numValue))
                 errors.add(label + " must be an integer");
         }
-        if (rules.has("decimalAllowed") && !rules.get("decimalAllowed").asBoolean()) {
+        if (rules.hasNonNull("decimalAllowed") && !rules.get("decimalAllowed").asBoolean()) {
             if (numValue != Math.floor(numValue))
                 errors.add(label + " must not contain decimal places");
         }
-        if (rules.has("positiveOnly") && rules.get("positiveOnly").asBoolean()) {
+        if (rules.hasNonNull("positiveOnly") && rules.get("positiveOnly").asBoolean()) {
             if (numValue <= 0)
                 errors.add(label + " must be positive");
         }
-        if (rules.has("negativeAllowed") && !rules.get("negativeAllowed").asBoolean()) {
+        if (rules.hasNonNull("negativeAllowed") && !rules.get("negativeAllowed").asBoolean()) {
             if (numValue < 0)
                 errors.add(label + " must not be negative");
         }
-        if (rules.has("zeroAllowed") && !rules.get("zeroAllowed").asBoolean()) {
+        if (rules.hasNonNull("zeroAllowed") && !rules.get("zeroAllowed").asBoolean()) {
             if (numValue == 0)
                 errors.add(label + " cannot be zero");
         }
@@ -267,60 +267,60 @@ public class ValidationService {
         // Range — support both "minValue"/"maxValue" (frontend) and "min"/"max"
         // (Postman/API)
         double min = Double.NaN;
-        if (rules.has("minValue"))
+        if (rules.hasNonNull("minValue"))
             min = rules.get("minValue").asDouble();
-        else if (rules.has("min"))
+        else if (rules.hasNonNull("min"))
             min = rules.get("min").asDouble();
         if (!Double.isNaN(min) && numValue < min)
             errors.add(label + " must be at least " + formatNumber(min));
 
         double max = Double.NaN;
-        if (rules.has("maxValue"))
+        if (rules.hasNonNull("maxValue"))
             max = rules.get("maxValue").asDouble();
-        else if (rules.has("max"))
+        else if (rules.hasNonNull("max"))
             max = rules.get("max").asDouble();
         if (!Double.isNaN(max) && numValue > max)
             errors.add(label + " must not exceed " + formatNumber(max));
 
-        if (rules.has("maxDigits")) {
+        if (rules.hasNonNull("maxDigits")) {
             int maxDigits = rules.get("maxDigits").asInt();
             String intPart = value.split("\\.")[0].replaceAll("-", "");
             if (intPart.length() > maxDigits)
                 errors.add(label + " must not have more than " + maxDigits + " digits");
         }
-        if (rules.has("maxDecimalPlaces")) {
+        if (rules.hasNonNull("maxDecimalPlaces")) {
             int maxDecimals = rules.get("maxDecimalPlaces").asInt();
             if (value.contains(".") && value.split("\\.")[1].length() > maxDecimals)
                 errors.add(label + " must not have more than " + maxDecimals + " decimal places");
         }
-        if (rules.has("noLeadingZero") && rules.get("noLeadingZero").asBoolean()) {
+        if (rules.hasNonNull("noLeadingZero") && rules.get("noLeadingZero").asBoolean()) {
             if (value.matches("^0[0-9]+.*"))
                 errors.add(label + " must not have leading zeros");
         }
-        if (rules.has("phoneNumberFormat") && rules.get("phoneNumberFormat").asBoolean()) {
+        if (rules.hasNonNull("phoneNumberFormat") && rules.get("phoneNumberFormat").asBoolean()) {
             if (!value.matches("^[0-9]{10}$"))
                 errors.add(label + " must be a valid 10-digit phone number");
         }
-        if (rules.has("otpFormat")) {
+        if (rules.hasNonNull("otpFormat")) {
             int length = rules.get("otpFormat").asInt();
             if (!value.matches("^[0-9]{" + length + "}$"))
                 errors.add(label + " must be a " + length + "-digit OTP");
         }
-        if (rules.has("ageValidation") && rules.get("ageValidation").asBoolean()) {
+        if (rules.hasNonNull("ageValidation") && rules.get("ageValidation").asBoolean()) {
             if (numValue < 18)
                 errors.add(label + " must be at least 18");
         }
-        if (rules.has("percentageRange") && rules.get("percentageRange").asBoolean()) {
+        if (rules.hasNonNull("percentageRange") && rules.get("percentageRange").asBoolean()) {
             if (numValue < 0 || numValue > 100)
                 errors.add(label + " must be between 0 and 100");
         }
-        if (rules.has("currencyFormat") && rules.get("currencyFormat").asBoolean()) {
+        if (rules.hasNonNull("currencyFormat") && rules.get("currencyFormat").asBoolean()) {
             if (numValue < 0)
                 errors.add(label + " must be a non-negative currency value");
             if (value.contains(".") && value.split("\\.")[1].length() > 2)
                 errors.add(label + " must have at most 2 decimal places for currency");
         }
-        if (rules.has("uniqueNumber") && rules.get("uniqueNumber").asBoolean()) {
+        if (rules.hasNonNull("uniqueNumber") && rules.get("uniqueNumber").asBoolean()) {
             if (isDuplicate(tableName, field.getFieldKey(), value))
                 errors.add(label + " must be unique. This value already exists");
         }
@@ -332,7 +332,7 @@ public class ValidationService {
 
     private void validateDateField(FormFieldEntity field, String value, JsonNode rules, List<String> errors) {
         String label = field.getLabel();
-        String customFormat = rules.has("customFormat") ? rules.get("customFormat").asText("YYYY-MM-DD") : "YYYY-MM-DD";
+        String customFormat = rules.hasNonNull("customFormat") ? rules.get("customFormat").asText("YYYY-MM-DD") : "YYYY-MM-DD";
 
         LocalDate date = null;
         if (value.matches("^\\d{4}-\\d{2}-\\d{2}$")) {
@@ -365,7 +365,7 @@ public class ValidationService {
 
         LocalDate today = LocalDate.now();
 
-        if (rules.has("minDate") && !rules.get("minDate").asText("").isEmpty()) {
+        if (rules.hasNonNull("minDate") && !rules.get("minDate").asText("").isEmpty()) {
             try {
                 LocalDate minD = LocalDate.parse(rules.get("minDate").asText());
                 if (date.isBefore(minD))
@@ -373,7 +373,7 @@ public class ValidationService {
             } catch (DateTimeParseException ignored) {
             }
         }
-        if (rules.has("maxDate") && !rules.get("maxDate").asText("").isEmpty()) {
+        if (rules.hasNonNull("maxDate") && !rules.get("maxDate").asText("").isEmpty()) {
             try {
                 LocalDate maxD = LocalDate.parse(rules.get("maxDate").asText());
                 if (date.isAfter(maxD))
@@ -381,25 +381,25 @@ public class ValidationService {
             } catch (DateTimeParseException ignored) {
             }
         }
-        if (rules.has("pastOnly") && rules.get("pastOnly").asBoolean()) {
+        if (rules.hasNonNull("pastOnly") && rules.get("pastOnly").asBoolean()) {
             if (!date.isBefore(today))
                 errors.add(label + " must be a past date");
         }
-        if (rules.has("futureOnly") && rules.get("futureOnly").asBoolean()) {
+        if (rules.hasNonNull("futureOnly") && rules.get("futureOnly").asBoolean()) {
             if (!date.isAfter(today))
                 errors.add(label + " must be a future date");
         }
-        if (rules.has("noWeekend") && rules.get("noWeekend").asBoolean()) {
+        if (rules.hasNonNull("noWeekend") && rules.get("noWeekend").asBoolean()) {
             if (date.getDayOfWeek().getValue() >= 6)
                 errors.add(label + " cannot be a Saturday or Sunday");
         }
-        if (rules.has("age18Plus") && !rules.get("age18Plus").asText("").isEmpty()) {
+        if (rules.hasNonNull("age18Plus") && !rules.get("age18Plus").asText("").isEmpty()) {
             int minAge = rules.get("age18Plus").asInt();
             int age = Period.between(date, today).getYears();
             if (age < minAge)
                 errors.add(label + " indicates age must be at least " + minAge + " years old");
         }
-        if (rules.has("notOlderThanXYears") && !rules.get("notOlderThanXYears").asText("").isEmpty()) {
+        if (rules.hasNonNull("notOlderThanXYears") && !rules.get("notOlderThanXYears").asText("").isEmpty()) {
             int maxYears = rules.get("notOlderThanXYears").asInt();
             int age = Period.between(date, today).getYears();
             if (age > maxYears)
@@ -430,7 +430,7 @@ public class ValidationService {
             return;
         }
 
-        if (rules.has("minTime") && !rules.get("minTime").asText("").isBlank()) {
+        if (rules.hasNonNull("minTime") && !rules.get("minTime").asText("").isBlank()) {
             try {
                 LocalTime min = LocalTime.parse(rules.get("minTime").asText());
                 if (time.isBefore(min)) {
@@ -440,7 +440,7 @@ public class ValidationService {
             }
         }
 
-        if (rules.has("maxTime") && !rules.get("maxTime").asText("").isBlank()) {
+        if (rules.hasNonNull("maxTime") && !rules.get("maxTime").asText("").isBlank()) {
             try {
                 LocalTime max = LocalTime.parse(rules.get("maxTime").asText());
                 if (time.isAfter(max)) {
@@ -451,10 +451,10 @@ public class ValidationService {
         }
 
         LocalTime now = LocalTime.now();
-        if (rules.has("pastOnly") && rules.get("pastOnly").asBoolean() && !time.isBefore(now)) {
+        if (rules.hasNonNull("pastOnly") && rules.get("pastOnly").asBoolean() && !time.isBefore(now)) {
             errors.add(label + " must be a past time");
         }
-        if (rules.has("futureOnly") && rules.get("futureOnly").asBoolean() && !time.isAfter(now)) {
+        if (rules.hasNonNull("futureOnly") && rules.get("futureOnly").asBoolean() && !time.isAfter(now)) {
             errors.add(label + " must be a future time");
         }
     }
@@ -474,7 +474,7 @@ public class ValidationService {
             return;
         }
 
-        if (rules.has("minDateTime") && !rules.get("minDateTime").asText("").isBlank()) {
+        if (rules.hasNonNull("minDateTime") && !rules.get("minDateTime").asText("").isBlank()) {
             try {
                 LocalDateTime min = LocalDateTime.parse(rules.get("minDateTime").asText().replace(" ", "T"));
                 if (dateTime.isBefore(min)) {
@@ -484,7 +484,7 @@ public class ValidationService {
             }
         }
 
-        if (rules.has("maxDateTime") && !rules.get("maxDateTime").asText("").isBlank()) {
+        if (rules.hasNonNull("maxDateTime") && !rules.get("maxDateTime").asText("").isBlank()) {
             try {
                 LocalDateTime max = LocalDateTime.parse(rules.get("maxDateTime").asText().replace(" ", "T"));
                 if (dateTime.isAfter(max)) {
@@ -495,10 +495,10 @@ public class ValidationService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        if (rules.has("pastOnly") && rules.get("pastOnly").asBoolean() && !dateTime.isBefore(now)) {
+        if (rules.hasNonNull("pastOnly") && rules.get("pastOnly").asBoolean() && !dateTime.isBefore(now)) {
             errors.add(label + " must be a past date-time");
         }
-        if (rules.has("futureOnly") && rules.get("futureOnly").asBoolean() && !dateTime.isAfter(now)) {
+        if (rules.hasNonNull("futureOnly") && rules.get("futureOnly").asBoolean() && !dateTime.isAfter(now)) {
             errors.add(label + " must be a future date-time");
         }
     }
@@ -513,7 +513,7 @@ public class ValidationService {
             errors.add(field.getLabel() + " must be accepted");
             return;
         }
-        if (rules.has("mustBeTrue") && rules.get("mustBeTrue").asBoolean() && !boolValue)
+        if (rules.hasNonNull("mustBeTrue") && rules.get("mustBeTrue").asBoolean() && !boolValue)
             errors.add(field.getLabel() + " must be accepted");
     }
 
@@ -565,7 +565,7 @@ public class ValidationService {
         }
 
         // 1. Reject placeholder / default text FIRST (before option validation)
-        if (rules.has("defaultNotAllowed") && !rules.get("defaultNotAllowed").asText("").isBlank()) {
+        if (rules.hasNonNull("defaultNotAllowed") && !rules.get("defaultNotAllowed").asText("").isBlank()) {
             String placeholder = rules.get("defaultNotAllowed").asText().trim();
             for (String sel : selected) {
                 if (sel.equals(placeholder)) {
@@ -577,7 +577,7 @@ public class ValidationService {
 
         // 2. optionExists — default TRUE (validates value exists in options list)
         // Only skip validation when admin explicitly sets optionExists = false
-        boolean optionExistsEnabled = !rules.has("optionExists") || rules.get("optionExists").asBoolean();
+        boolean optionExistsEnabled = !rules.hasNonNull("optionExists") || rules.get("optionExists").asBoolean();
         if (optionExistsEnabled && optionsJson != null && !optionsJson.isBlank()) {
             for (String sel : selected) {
                 if (!isValidOption(optionsJson, sel)) {
@@ -602,7 +602,7 @@ public class ValidationService {
         log.debug("validateRadio '{}' value='{}' hasOptions={}", field.getFieldKey(), value, optionsJson != null);
 
         // 1. requireSelection — must pick at least one option
-        if (rules.has("requireSelection") && rules.get("requireSelection").asBoolean()) {
+        if (rules.hasNonNull("requireSelection") && rules.get("requireSelection").asBoolean()) {
             if (value == null || value.isBlank()) {
                 errors.add(label + " — please select an option");
                 return;
@@ -611,7 +611,7 @@ public class ValidationService {
 
         // 2. validateSelectedOption — default TRUE — ensure value exists in options
         // list
-        boolean validateEnabled = !rules.has("validateSelectedOption")
+        boolean validateEnabled = !rules.hasNonNull("validateSelectedOption")
                 || rules.get("validateSelectedOption").asBoolean();
         if (validateEnabled && optionsJson != null && !optionsJson.isBlank()) {
             if (!isValidOption(optionsJson, value)) {
@@ -664,7 +664,7 @@ public class ValidationService {
 
         // 1. Required / requireSelection check
         boolean isRequired = field.isRequired()
-                || (rules.has("requireSelection") && rules.get("requireSelection").asBoolean());
+                || (rules.hasNonNull("requireSelection") && rules.get("requireSelection").asBoolean());
         if (selected.isEmpty()) {
             if (isRequired)
                 errors.add(label + " — please select at least one option");
@@ -673,7 +673,7 @@ public class ValidationService {
 
         // 2. validateSelectedOption — default TRUE — each selected value must exist in
         // options
-        boolean validateEnabled = !rules.has("validateSelectedOption")
+        boolean validateEnabled = !rules.hasNonNull("validateSelectedOption")
                 || rules.get("validateSelectedOption").asBoolean();
         if (validateEnabled && optionsJson != null && !optionsJson.isBlank()) {
             for (String sel : selected) {
@@ -707,23 +707,23 @@ public class ValidationService {
         int minScale = 1;
         int maxScale = 5;
 
-        if (rules.has("minScale")) {
+        if (rules.hasNonNull("minScale")) {
             minScale = rules.get("minScale").asInt(1);
         } else if (field.getUiConfigJson() != null) {
             try {
                 JsonNode uiConfig = objectMapper.readTree(field.getUiConfigJson());
-                if (uiConfig.has("scaleMin"))
+                if (uiConfig.hasNonNull("scaleMin"))
                     minScale = uiConfig.get("scaleMin").asInt(1);
             } catch (JsonProcessingException ignored) {
             }
         }
 
-        if (rules.has("maxScale")) {
+        if (rules.hasNonNull("maxScale")) {
             maxScale = rules.get("maxScale").asInt(5);
         } else if (field.getUiConfigJson() != null) {
             try {
                 JsonNode uiConfig = objectMapper.readTree(field.getUiConfigJson());
-                if (uiConfig.has("scaleMax"))
+                if (uiConfig.hasNonNull("scaleMax"))
                     maxScale = uiConfig.get("scaleMax").asInt(5);
             } catch (JsonProcessingException ignored) {
             }
@@ -753,7 +753,7 @@ public class ValidationService {
         }
 
         // Check if multiple files are allowed
-        boolean singleOnly = rules.has("singleOrMultiple") && "single".equals(rules.get("singleOrMultiple").asText());
+        boolean singleOnly = rules.hasNonNull("singleOrMultiple") && "single".equals(rules.get("singleOrMultiple").asText());
         if (singleOnly && fileList.size() > 1) {
             errors.add(label + " only allows a single file upload");
         }
@@ -769,7 +769,7 @@ public class ValidationService {
             
             totalSize += fileSize;
 
-            if (rules.has("allowedExtensions")) {
+            if (rules.hasNonNull("allowedExtensions")) {
                 String allowedText = rules.get("allowedExtensions").asText();
                 if (!allowedText.isBlank()) {
                     String[] allowed = allowedText.split(",");
@@ -779,7 +779,7 @@ public class ValidationService {
                         errors.add(label + ": '" + filename + "' must be one of: " + allowedText);
                 }
             }
-            if (rules.has("mimeTypeValidation")) {
+            if (rules.hasNonNull("mimeTypeValidation")) {
                 String mimeText = rules.get("mimeTypeValidation").asText();
                 if (!mimeText.isBlank()) {
                     String[] allowedMimes = mimeText.split(",");
@@ -789,46 +789,46 @@ public class ValidationService {
                         errors.add(label + ": '" + filename + "' has an invalid MIME type");
                 }
             }
-            if (rules.has("maxFileSize")) {
+            if (rules.hasNonNull("maxFileSize")) {
                 long maxSize = rules.get("maxFileSize").asLong() * 1024 * 1024;
                 if (fileSize > maxSize)
                     errors.add(label + ": '" + filename + "' exceeds maximum size of " + rules.get("maxFileSize").asLong() + " MB");
             }
-            if (rules.has("minFileSize")) {
+            if (rules.hasNonNull("minFileSize")) {
                 long minSize = rules.get("minFileSize").asLong() * 1024;
                 if (fileSize < minSize)
                     errors.add(label + ": '" + filename + "' is smaller than minimum size of " + rules.get("minFileSize").asLong() + " KB");
             }
-            if (rules.has("imageDimensionCheck")) {
+            if (rules.hasNonNull("imageDimensionCheck")) {
                 try {
                     BufferedImage image = ImageIO.read(file.getInputStream());
                     if (image != null) {
                         JsonNode dim = rules.get("imageDimensionCheck");
-                        if (dim.has("minWidth") && dim.get("minWidth").asInt() > 0 && image.getWidth() < dim.get("minWidth").asInt())
+                        if (dim.hasNonNull("minWidth") && dim.get("minWidth").asInt() > 0 && image.getWidth() < dim.get("minWidth").asInt())
                             errors.add(label + ": '" + filename + "' width must be at least " + dim.get("minWidth").asInt() + " pixels");
-                        if (dim.has("maxWidth") && dim.get("maxWidth").asInt() > 0 && image.getWidth() > dim.get("maxWidth").asInt())
+                        if (dim.hasNonNull("maxWidth") && dim.get("maxWidth").asInt() > 0 && image.getWidth() > dim.get("maxWidth").asInt())
                             errors.add(label + ": '" + filename + "' width must not exceed " + dim.get("maxWidth").asInt() + " pixels");
-                        if (dim.has("minHeight") && dim.get("minHeight").asInt() > 0 && image.getHeight() < dim.get("minHeight").asInt())
+                        if (dim.hasNonNull("minHeight") && dim.get("minHeight").asInt() > 0 && image.getHeight() < dim.get("minHeight").asInt())
                             errors.add(label + ": '" + filename + "' height must be at least " + dim.get("minHeight").asInt() + " pixels");
-                        if (dim.has("maxHeight") && dim.get("maxHeight").asInt() > 0 && image.getHeight() > dim.get("maxHeight").asInt())
+                        if (dim.hasNonNull("maxHeight") && dim.get("maxHeight").asInt() > 0 && image.getHeight() > dim.get("maxHeight").asInt())
                             errors.add(label + ": '" + filename + "' height must not exceed " + dim.get("maxHeight").asInt() + " pixels");
                     }
                 } catch (IOException e) {
                     log.warn("Failed to read image dimensions for field {}", field.getFieldKey(), e);
                 }
             }
-            if (rules.has("fileNameValidation") && rules.get("fileNameValidation").asBoolean()) {
+            if (rules.hasNonNull("fileNameValidation") && rules.get("fileNameValidation").asBoolean()) {
                 if (filename != null && !filename.matches("^[A-Za-z0-9._-]+$"))
                     errors.add(label + ": '" + filename + "' contains invalid characters");
             }
-            if (rules.has("duplicateFilePrevention") && rules.get("duplicateFilePrevention").asBoolean()) {
+            if (rules.hasNonNull("duplicateFilePrevention") && rules.get("duplicateFilePrevention").asBoolean()) {
                 if (filename != null && isDuplicate(tableName, field.getFieldKey(), filename))
                     errors.add(label + ": a file named '" + filename + "' already exists");
             }
         }
 
         // Aggregate rules
-        if (rules.has("totalSizeLimit")) {
+        if (rules.hasNonNull("totalSizeLimit")) {
             long maxTotal = rules.get("totalSizeLimit").asLong() * 1024 * 1024;
             if (totalSize > maxTotal)
                 errors.add(label + " exceeds total maximum size of " + rules.get("totalSizeLimit").asLong() + " MB");
@@ -877,17 +877,17 @@ public class ValidationService {
         if (optionsJson != null && !optionsJson.isBlank()) {
             try {
                 JsonNode grid = objectMapper.readTree(optionsJson);
-                if (grid.has("rows"))
+                if (grid.hasNonNull("rows"))
                     rows = parseJsonNodeArray(grid.get("rows"));
-                if (grid.has("columns"))
+                if (grid.hasNonNull("columns"))
                     columns = parseJsonNodeArray(grid.get("columns"));
             } catch (Exception e) {
                 log.warn("Failed to parse grid options_json for field '{}': {}", field.getFieldKey(), optionsJson);
             }
         }
 
-        boolean required = field.isRequired() || (rules.has("required") && rules.get("required").asBoolean());
-        boolean eachRowRequired = rules.has("eachRowRequired") && rules.get("eachRowRequired").asBoolean();
+        boolean required = field.isRequired() || (rules.hasNonNull("required") && rules.get("required").asBoolean());
+        boolean eachRowRequired = rules.hasNonNull("eachRowRequired") && rules.get("eachRowRequired").asBoolean();
 
         if (selections.isEmpty()) {
             if (required)
@@ -973,19 +973,19 @@ public class ValidationService {
         if (optionsJson != null && !optionsJson.isBlank()) {
             try {
                 JsonNode grid = objectMapper.readTree(optionsJson);
-                if (grid.has("rows"))
+                if (grid.hasNonNull("rows"))
                     rows = parseJsonNodeArray(grid.get("rows"));
-                if (grid.has("columns"))
+                if (grid.hasNonNull("columns"))
                     columns = parseJsonNodeArray(grid.get("columns"));
             } catch (Exception e) {
                 log.warn("Failed to parse checkbox_grid options_json for '{}': {}", field.getFieldKey(), optionsJson);
             }
         }
 
-        boolean required = field.isRequired() || (rules.has("required") && rules.get("required").asBoolean());
-        boolean eachRowRequired = rules.has("eachRowRequired") && rules.get("eachRowRequired").asBoolean();
-        int minPerRow = rules.has("minPerRow") ? rules.get("minPerRow").asInt(0) : 0;
-        int maxPerRow = rules.has("maxPerRow") ? rules.get("maxPerRow").asInt(Integer.MAX_VALUE) : Integer.MAX_VALUE;
+        boolean required = field.isRequired() || (rules.hasNonNull("required") && rules.get("required").asBoolean());
+        boolean eachRowRequired = rules.hasNonNull("eachRowRequired") && rules.get("eachRowRequired").asBoolean();
+        int minPerRow = rules.hasNonNull("minPerRow") ? rules.get("minPerRow").asInt(0) : 0;
+        int maxPerRow = rules.hasNonNull("maxPerRow") ? rules.get("maxPerRow").asInt(Integer.MAX_VALUE) : Integer.MAX_VALUE;
 
         boolean anySelected = selections.values().stream().anyMatch(list -> !list.isEmpty());
 

@@ -202,7 +202,7 @@ public class SubmissionService {
             if (value instanceof String && field.getValidationJson() != null) {
                 try {
                     JsonNode rules = objectMapper.readTree(field.getValidationJson());
-                    if (rules.has("trimWhitespace") && rules.get("trimWhitespace").asBoolean()) {
+                    if (rules.hasNonNull("trimWhitespace") && rules.get("trimWhitespace").asBoolean()) {
                         value = ((String) value).trim();
                         if (data != null) data.put(field.getFieldKey(), value);
                     }
