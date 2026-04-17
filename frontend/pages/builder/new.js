@@ -196,8 +196,8 @@ export default function NewBuilderPage() {
                                         <Type size={28} />
                                     </div>
                                     <div>
-                                        <h4 className="builder-new-feature-title">Master Brand Identity</h4>
-                                        <p className="builder-new-feature-text">The definitive name for your vault entry.</p>
+                                        <h4 className="builder-new-feature-title">Form Name</h4>
+                                        <p className="builder-new-feature-text">The display name for your form.</p>
                                     </div>
                                 </div>
                                 <div className="builder-new-feature-item">
@@ -205,8 +205,8 @@ export default function NewBuilderPage() {
                                         <Code size={28} />
                                     </div>
                                     <div>
-                                        <h4 className="builder-new-feature-title">Semantic Routing Key</h4>
-                                        <p className="builder-new-feature-text">A unique lowercase key for database mapping.</p>
+                                        <h4 className="builder-new-feature-title">Form Code</h4>
+                                        <p className="builder-new-feature-text">A unique identifier for your form.</p>
                                     </div>
                                 </div>
                             </div>
@@ -217,7 +217,7 @@ export default function NewBuilderPage() {
                     <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.7, delay: 0.1 }} className="builder-new-form-wrap">
                         <form onSubmit={handleCreate} className="builder-new-form-card">
                             <div>
-                                <label className="builder-new-field-group-label">Identity Hub</label>
+                                <label className="builder-new-field-group-label">Basic Information</label>
 
                                 <div className={`builder-new-input-shell ${nameError ? 'is-error' : ''}`}>
                                     <Type size={22} className={`builder-new-input-icon ${nameError ? 'is-error' : ''}`} />
@@ -253,11 +253,11 @@ export default function NewBuilderPage() {
                             </div>
 
                             <div>
-                                <label className="builder-new-field-group-label">Narrative Focus</label>
+                                <label className="builder-new-field-group-label">Description</label>
                                 <div className="builder-new-textarea-shell">
                                     <FileText size={22} className="builder-new-input-icon with-offset" />
                                     <textarea
-                                        placeholder="Define the primary intent of this project..."
+                                        placeholder="What is this form for? (optional)"
                                         rows={3}
                                         value={formDescription}
                                         onChange={(e) => setFormDescription(e.target.value)}
@@ -267,7 +267,7 @@ export default function NewBuilderPage() {
                             </div>
 
                             <button type="submit" disabled={saving || !isFormValid} className="builder-new-submit-btn">
-                                {saving ? <Loader2 className="animate-spin" size={24} /> : <>Initialize Workspace <ArrowRight size={20} /></>}
+                                {saving ? <Loader2 className="animate-spin" size={24} /> : <>Create Form <ArrowRight size={20} /></>}
                             </button>
                         </form>
                     </motion.div>

@@ -38,7 +38,6 @@ import java.util.*;
 @RestController
 @RequestMapping(AppConstants.API_USERS)
 @RequiredArgsConstructor
-@RequirePermission("MANAGE")
 public class UserController {
 
     private final UserRoleService userRoleService;
@@ -52,6 +51,7 @@ public class UserController {
      * If the requesting user is a Role Administrator (not Admin),
      * also excludes users who have the Admin role.
      */
+    @RequirePermission("MANAGE")
     @GetMapping
     public ResponseEntity<?> getAllUsers(
             Authentication auth,
@@ -92,9 +92,25 @@ public class UserController {
     /**
      * Returns a single RBAC user by ID with roles and permissions.
      */
+    @RequirePermission("MANAGE")
     @GetMapping(AppConstants.BY_ID)
     public ResponseEntity<?> getUserById(@PathVariable("id") Integer id) {
         User user = userRoleService.getUserById(id);
+        return ResponseEntity.ok(toUserResponse(user));
+    }
+
+    // ── GET /api/users/by-username/{username} ────────────────────────────
+    /**
+     * Returns a single RBAC user by username with roles and permissions.
+     */
+    @RequirePermission("READ")
+    @GetMapping("/by-username/{username}")
+    public ResponseEntity<?> getUserByUsername(@PathVariable("username") String username) {
+        User user = userRoleService.getUserByUsername(username);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "User not found: " + username));
+        }
         return ResponseEntity.ok(toUserResponse(user));
     }
 
@@ -114,6 +130,7 @@ public class UserController {
      * }
      * </pre>
      */
+    @RequirePermission("MANAGE")
     @PostMapping
     public ResponseEntity<?> createUser(@RequestBody CreateUserRequest body) {
 
@@ -141,6 +158,7 @@ public class UserController {
      * }
      * </pre>
      */
+    @RequirePermission("MANAGE")
     @PutMapping(AppConstants.BY_ID)
     public ResponseEntity<?> updateUser(@PathVariable("id") Integer id,
                                         @RequestBody UpdateUserRequest body) {
@@ -155,6 +173,7 @@ public class UserController {
     /**
      * Deletes an RBAC user profile. CASCADE in DB handles user_roles cleanup.
      */
+    @RequirePermission("MANAGE")
     @DeleteMapping(AppConstants.BY_ID)
     public ResponseEntity<?> deleteUser(@PathVariable("id") Integer id,
                                         Authentication auth,
@@ -212,6 +231,7 @@ public class UserController {
      * Uses INSERT INTO user_roles(user_id, role_id) VALUES (?, ?)
      * ON CONFLICT DO NOTHING — idempotent.
      */
+    @RequirePermission("MANAGE")
     @PostMapping(AppConstants.BY_ID_ROLES)
     public ResponseEntity<?> assignRole(@PathVariable("id") Integer id,
                                         @RequestBody AssignRoleRequest body,
@@ -263,6 +283,7 @@ public class UserController {
     /**
      * Removes a role from a user.
      */
+    @RequirePermission("MANAGE")
     @DeleteMapping(AppConstants.BY_ID_ROLE_BY_ID)
     public ResponseEntity<?> removeRole(@PathVariable("id") Integer id,
                                         @PathVariable("roleId") Integer roleId,
@@ -301,6 +322,7 @@ public class UserController {
      * }
      * </pre>
      */
+    @RequirePermission("MANAGE")
     @GetMapping(AppConstants.BY_ID_PERMISSIONS)
     public ResponseEntity<?> getUserPermissions(@PathVariable("id") Integer id) {
 

@@ -172,7 +172,6 @@ export default function FormsTrashPage() {
                                     <span className="bulk-count">{selectedForms.size} selected</span>
                                     <button className="sb-btn sb-btn-ghost" onClick={clearSelection}>✕ Clear</button>
                                     <button className="sb-btn sb-btn-success" onClick={() => setBulkRestoreModal(true)} disabled={bulkActioning}>↶ Restore {selectedForms.size}</button>
-                                    <button className="sb-btn sb-btn-danger" onClick={() => setBulkPurgeModal(true)} disabled={bulkActioning}>🗑 Delete {selectedForms.size}</button>
                                 </div>
                             )}
                         </div>
@@ -243,13 +242,6 @@ export default function FormsTrashPage() {
                                                         onClick={(e) => { e.stopPropagation(); setRestoreTarget(form); }}
                                                     >
                                                         <RotateCcw size={16} />
-                                                    </button>
-                                                    <button
-                                                        className="btn btn-danger btn-sm"
-                                                        title="Permanent Delete"
-                                                        onClick={(e) => { e.stopPropagation(); setPurgeTarget(form); }}
-                                                    >
-                                                        ✕
                                                     </button>
                                                 </div>
                                             </div>

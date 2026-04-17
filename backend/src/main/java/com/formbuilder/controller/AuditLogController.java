@@ -39,12 +39,12 @@ public class AuditLogController {
     @GetMapping(AppConstants.LOGS_ADMIN)
     public ResponseEntity<?> getAdminLogs(
             Authentication auth,
-            @RequestParam(required = false) String action,
-            @RequestParam(required = false) String user,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
-            @RequestParam(defaultValue = "0") Integer page,
-            @RequestParam(defaultValue = "10") Integer size) {
+            @RequestParam(name = "action", required = false) String action,
+            @RequestParam(name = "user", required = false) String user,
+            @RequestParam(name = "fromDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(name = "toDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(name = "page", defaultValue = "0") Integer page,
+            @RequestParam(name = "size", defaultValue = "10") Integer size) {
 
         // Use a more robust check for Admin role
         boolean isAdmin = userRoleService.userHasRole(auth.getName(), "Admin");
@@ -68,12 +68,12 @@ public class AuditLogController {
     @GetMapping(AppConstants.LOGS_ROLE_ASSIGNMENTS)
     public ResponseEntity<?> getRoleAssignmentLogs(
             Authentication auth,
-            @RequestParam(required = false) Integer roleId,
-            @RequestParam(required = false) String user,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
-            @RequestParam(defaultValue = "0") Integer page,
-            @RequestParam(defaultValue = "10") Integer size) {
+            @RequestParam(name = "roleId", required = false) Integer roleId,
+            @RequestParam(name = "user", required = false) String user,
+            @RequestParam(name = "fromDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(name = "toDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(name = "page", defaultValue = "0") Integer page,
+            @RequestParam(name = "size", defaultValue = "10") Integer size) {
 
         boolean isAdmin = userRoleService.userHasRole(auth.getName(), "Admin");
         boolean isRoleAdmin = userRoleService.userHasRole(auth.getName(), "Role Administrator");

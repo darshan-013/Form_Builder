@@ -56,6 +56,12 @@ public class UserRoleService {
                 .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
     }
 
+    /** Returns a single user by username with roles + permissions eagerly loaded. */
+    public User getUserByUsername(String username) {
+        return userRepo.findByUsernameWithRolesAndPermissions(username)
+                .orElse(null);
+    }
+
     /**
      * Creates a new RBAC user profile with credentials.
      * If password is null/empty, a random password is generated

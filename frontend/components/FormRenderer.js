@@ -77,6 +77,8 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
   const [submitted, setSubmitted] = useState(false);
   const [lastSaved, setLastSaved] = useState(null); // timestamp of last autosave
   const [saving, setSaving] = useState(false);
+  const [submissionId, setSubmissionId] = useState(null); // Track draft submission ID
+  const justSubmitted = useRef(false);
 
   // ── Wizard (multi-step) state ──────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(0);
@@ -168,21 +170,29 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
 
   // ── Draft Retrieval ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (isPreview || !form?.id) return;
+    if (isPreview || !form?.id || justSubmitted.current) return;
 
     async function fetchDraft() {
       try {
-        const draft = await getDraft(form.id);
-        if (draft && Object.keys(draft).length > 0) {
-          // Merge draft values with initial values (in case form schema changed)
+        const result = await getDraft(form.id);
+        
+        // Typed status handling from backend (SubmissionController / DraftResult)
+        if (result?.status === 'DISCARDED') {
+          showWarning(result.message || 'Your previous draft was discarded because the form was updated to a new version.');
+          localStorage.removeItem(`draft_form_${form.id}`);
+          return;
+        }
+
+        if (result && result.status === 'DRAFT') {
+          // Merge draft values with initial values
           const draftValues = { ...valuesRef.current };
           for (const field of fields) {
-            if (draft[field.fieldKey] !== undefined && draft[field.fieldKey] !== null) {
-              draftValues[field.fieldKey] = draft[field.fieldKey];
+            if (result[field.fieldKey] !== undefined && result[field.fieldKey] !== null) {
+              draftValues[field.fieldKey] = result[field.fieldKey];
             }
           }
 
-          // Re-apply rules and calculations based on draft data
+          // Re-apply rules and calculations
           const states = RuleEngine.applyRules(fields, draftValues);
           let calculated = draftValues;
           try {
@@ -195,62 +205,51 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
           setValues(calculated);
           valuesRef.current = calculated;
           setFieldStates(finalStates);
-          setLastSaved(new Date(draft.updated_at || Date.now()));
           
-          // Ensure flag is set if we successfully loaded a draft
-          localStorage.setItem(`draft_form_${form.id}`, 'true');
-        } else {
-          // No draft returned from backend. Check if we EXPECTED one (F2 requirement)
-          const hadDraft = localStorage.getItem(`draft_form_${form.id}`);
-          if (hadDraft) {
-            showWarning('Your previous draft was discarded because the form was updated to a new version. Please review the fields.');
-            localStorage.removeItem(`draft_form_${form.id}`);
+          if (result.submissionId) {
+            setSubmissionId(result.submissionId);
           }
+
+          localStorage.setItem(`draft_form_${form.id}`, 'true');
         }
       } catch (err) {
-        if (err?.status === 404) {
-           const hadDraft = localStorage.getItem(`draft_form_${form.id}`);
-           if (hadDraft) {
-             showWarning('Your previous draft was discarded because the form was updated to a new version.');
-             localStorage.removeItem(`draft_form_${form.id}`);
-           }
-        }
         console.warn('Failed to fetch draft:', err);
       }
     }
     fetchDraft();
   }, [form?.id, isPreview, form?.formVersionId]);
 
-  // ── Autosave Logic ───────────────────────────────────────────────────────
+  // ── Autosave Logic (debounced — saves 1.5s after user stops typing) ─────
   const lastSavedValuesRef = useRef(values);
 
   useEffect(() => {
     if (isPreview || submitted || !form?.id) return;
 
-    const timer = setInterval(async () => {
-      const currentValues = valuesRef.current;
-      // Only save if data has actually changed
-      if (JSON.stringify(currentValues) === JSON.stringify(lastSavedValuesRef.current)) {
-        return;
-      }
+    const currentValues = valuesRef.current;
+    // Skip if nothing has changed since last save
+    if (JSON.stringify(currentValues) === JSON.stringify(lastSavedValuesRef.current)) return;
 
+    const timer = setTimeout(async () => {
+      const snapshot = valuesRef.current;
       setSaving(true);
       try {
-        // [F3] Compliance: formVersionId from React state (form object) only
-        await saveDraft(form.id, currentValues, null, form.formVersionId);
+        const response = await saveDraft(form.id, snapshot, submissionId, form.formVersionId);
         setLastSaved(new Date());
-        lastSavedValuesRef.current = currentValues;
-        // Signal that a draft now exists for this form
+        lastSavedValuesRef.current = snapshot;
+        // Capture submissionId from response if this was the first save
+        if (response?.submissionId && !submissionId) {
+          setSubmissionId(response.submissionId);
+        }
         localStorage.setItem(`draft_form_${form.id}`, 'true');
       } catch (err) {
         console.warn('Autosave failed:', err);
       } finally {
         setSaving(false);
       }
-    }, 10000); // 10 seconds
+    }, 1500); // 1.5 seconds after last change
 
-    return () => clearInterval(timer);
-  }, [form?.id, isPreview, submitted]);
+    return () => clearTimeout(timer);
+  }, [values, form?.id, isPreview, submitted, submissionId]);
 
   // Handle manual save on page navigate away
   useEffect(() => {
@@ -260,14 +259,14 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
       const currentValues = valuesRef.current;
       if (JSON.stringify(currentValues) !== JSON.stringify(lastSavedValuesRef.current)) {
         // [F3] Compliance: formVersionId from React state only
-        saveDraft(form.id, currentValues, null, form.formVersionId).catch(() => { });
+        saveDraft(form.id, currentValues, submissionId, form.formVersionId).catch(() => { });
         localStorage.setItem(`draft_form_${form.id}`, 'true');
       }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [form?.id, isPreview, submitted]);
+  }, [form?.id, isPreview, submitted, submissionId]);
 
   // ── onChange — live validation + rule re-evaluation on every keystroke ─────
   function handleChange(field, value) {
@@ -474,6 +473,7 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
         await onSubmit(currentValues);
       }
 
+      justSubmitted.current = true;
       setSubmitted(true);
       localStorage.removeItem(`draft_form_${form.id}`); // Requirement [E9]
     } catch (err) {
@@ -543,6 +543,10 @@ export default function FormRenderer({ form, isPreview = false, onSubmit }) {
               setErrors({});
               setTouched({});
               setFieldStates(RuleEngine.applyRules(fields, fresh));
+              setSubmissionId(null); // Clear submissionId to allow new draft
+              setLastSaved(null); // Clear last saved timestamp
+              localStorage.removeItem(`draft_form_${form.id}`); // Clear draft flag
+              justSubmitted.current = false;
               setSubmitted(false);
             }}
           >

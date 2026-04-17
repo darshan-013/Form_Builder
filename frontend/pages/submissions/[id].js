@@ -316,10 +316,11 @@ export default function SubmissionsPage() {
             .filter(f => !['section_header', 'label_text', 'description_block', 'page_break'].includes(f.fieldType))
             .sort((a, b) => (a.fieldOrder ?? 0) - (b.fieldOrder ?? 0));
         const showTs = form?.showTimestamp ?? true;
-        const headers = ['#', 'Submission ID', 'Status', ...dynFields.map(f => f.label || f.fieldKey), ...(showTs ? ['Submitted At'] : [])];
+        const headers = ['#', 'Submission ID', 'Submitted By', 'Status', ...dynFields.map(f => f.label || f.fieldKey), ...(showTs ? ['Submitted At'] : [])];
         const rows = submissions.map((sub, i) => [
             i + 1,
             sub.id || '',
+            sub.submitted_by || 'Anonymous',
             sub.status || 'SUBMITTED',
             ...dynFields.map(f => formatCellValue(f, sub[f.fieldKey])),
             ...(showTs ? [sub.created_at ? new Date(sub.created_at).toLocaleString('en-IN') : ''] : []),
@@ -692,6 +693,16 @@ export default function SubmissionsPage() {
                     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
                 }) : '—'
             }] : []),
+            {
+                key: 'submitted_by',
+                label: 'Submitted By',
+                sortable: true,
+                render: (value) => (
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                        👤 {value || 'Anonymous'}
+                    </span>
+                )
+            },
             {
                 key: 'status',
                 label: 'Status',
@@ -1598,6 +1609,12 @@ export default function SubmissionsPage() {
                                     </div>
                                 </div>
                             )}
+                            <div className="form-group">
+                                <label className="form-label">Submitted By</label>
+                                <div className="sub-readonly-field">
+                                    👤 {selectedSubmission.submitted_by || 'Anonymous'}
+                                </div>
+                            </div>
                             <div className="sub-divider" />
                             {form?.fields?.map((field) => (
                                 <div key={field.fieldKey} className="form-group">

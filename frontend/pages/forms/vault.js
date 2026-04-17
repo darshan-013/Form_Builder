@@ -213,8 +213,8 @@ export default function FormVaultPage() {
                 </div>
 
                 <div className="card-primary-actions">
-                    {/* EDIT button - Admins and Builders only (not Viewers) */}
-                    {(isAdmin || (!isViewer && form.status === 'DRAFT')) && (
+                    {/* EDIT button - controlled by backend flag */}
+                    {form.canEdit && (
                         <button
                             className="btn-edit-main"
                             onClick={() => router.push(`/builder/${form.id}`)}
@@ -223,9 +223,9 @@ export default function FormVaultPage() {
                             EDIT
                         </button>
                     )}
-
-                    {/* Published form - show DATA button */}
-                    {isPublished ? (
+                    
+                    {/* DATA (Submissions) button - controlled by backend flag */}
+                    {isPublished && form.canViewSubmissions && (
                         <button 
                             className="btn-data-main"
                             onClick={() => router.push(`/submissions/${form.id}`)}
@@ -233,20 +233,10 @@ export default function FormVaultPage() {
                             <BarChart3 size={16} />
                             DATA
                         </button>
-                    ) :
-                    /* Assigned to current builder - show INITIATE button */
-                    (form.status === 'ASSIGNED' && user?.username === form.assignedBuilderUsername) ? (
-                        <button
-                            className="btn-data-main initiate-btn-vault"
-                            onClick={() => router.push(`/workflows/create/${form.id}`)}
-                            style={{ background: 'rgba(34, 197, 94, 0.12)', color: '#86EFAC', border: '1px solid rgba(34, 197, 94, 0.3)' }}
-                        >
-                            <CheckCircle2 size={16} />
-                            INITIATE
-                        </button>
-                    ) :
-                    /* Admin or Viewer in DRAFT/REJECTED - show ASSIGN button */
-                    (isAdmin || isViewer) && (form.status === 'DRAFT' || isRejected) ? (
+                    )}
+
+                    {/* ASSIGN button - prioritized for Viewers who own the draft */}
+                    {isViewer && (form.status === 'DRAFT' || isRejected) && (
                         <button
                             className="btn-data-main assign-btn-vault"
                             onClick={() => router.push(`/workflows/create/${form.id}`)}
@@ -255,9 +245,22 @@ export default function FormVaultPage() {
                             <UserPlus size={16} />
                             ASSIGN
                         </button>
-                    ) :
-                    /* Form in progress - show PROGRESS button */
-                    form.workflow ? (
+                    )}
+
+                    {/* INITIATE button - for assigned Builders and Admins */}
+                    {form.status === 'ASSIGNED' && (isAdmin || user?.username === form.assignedBuilderUsername) && (
+                        <button
+                            className="btn-data-main initiate-btn-vault"
+                            onClick={() => router.push(`/workflows/create/${form.id}`)}
+                            style={{ background: 'rgba(34, 197, 94, 0.12)', color: '#86EFAC', border: '1px solid rgba(34, 197, 94, 0.3)' }}
+                        >
+                            <CheckCircle2 size={16} />
+                            INITIATE
+                        </button>
+                    )}
+
+                    {/* PROGRESS button - for active workflows */}
+                    {form.workflow && form.status !== 'PUBLISHED' && !isViewer && (
                         <button
                             className="btn-data-main progress-btn-vault"
                             onClick={() => router.push(`/workflows/status?workflowId=${form.workflow.id}`)}
@@ -266,10 +269,13 @@ export default function FormVaultPage() {
                             <BarChart3 size={16} />
                             PROGRESS
                         </button>
-                    ) : (
+                    )}
+
+                    {/* PUBLISH button - if allowed and not already published/assigned */}
+                    {form.canPublish && !isPublished && form.status !== 'ASSIGNED' && (
                         <button 
                             className="btn-data-main publish-btn"
-                            disabled={busy || form.status === 'ASSIGNED' || isViewer}
+                            disabled={busy}
                             onClick={() => handlePublish(form.id, form.name)}
                         >
                             {busy ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : <><BarChart3 size={16} /> PUBLISH</>}

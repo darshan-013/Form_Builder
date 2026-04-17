@@ -14,6 +14,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
+import com.formbuilder.repository.FormJpaRepository;
+import com.formbuilder.service.DynamicTableService;
+import com.formbuilder.service.SchemaManager;
 
 /**
  * Runs idempotent DB cleanup/migration on every startup.
@@ -31,8 +34,9 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
 
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
-    private final com.formbuilder.repository.FormJpaRepository formRepo;
-    private final com.formbuilder.service.DynamicTableService dynamicTableService;
+    private final FormJpaRepository formRepo;
+    private final DynamicTableService dynamicTableService;
+    private final SchemaManager schemaManager;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -407,7 +411,7 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
             FormVersionEntity version = publishedVersion.get();
             String tableName = dynamicTableService.generateTableName(form.getCode());
             try {
-                dynamicTableService.validateSchema(tableName, version.getId());
+                schemaManager.validateSchema(tableName, version.getId());
                 log.info("Schema OK for form: {}", form.getCode());
             } catch (SchemaDriftException drift) {
                 String firstMismatch = drift.getDriftErrors().isEmpty()

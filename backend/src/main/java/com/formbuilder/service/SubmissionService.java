@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -37,6 +38,7 @@ public class SubmissionService {
     private final DynamicTableService dynamicTableService;
     private final com.formbuilder.repository.CustomValidationRuleRepository customValidationRepo;
     private final ExpressionEvaluatorService expressionEvaluator;
+    private final SchemaManager schemaManager;
 
     // ─────────────────────────────────────────────────────────────────────────
     // METADATA & STATUS
@@ -63,20 +65,35 @@ public class SubmissionService {
     }
 
     /**
-     * Requirement 3.2: Drop all existing drafts for the previous version
+     * Requirement 3.2: Drop all existing drafts for a specific version
      * upon new version activation (publication).
      */
     @Transactional
-    public void clearRespondentDrafts(UUID formId) {
+    public int clearRespondentDrafts(UUID formId, UUID versionId) {
         try {
             String tableName = getTableName(formId);
-            // 1. Clear from dynamic data table
-            jdbc.update("DELETE FROM " + tableName + " WHERE is_draft = true");
-            // 2. Clear from meta-index
-            jdbc.update("DELETE FROM form_submission_meta WHERE form_id = ? AND status = 'DRAFT'", formId);
-            log.info("Requirement 3.2: Cleared respondent drafts for form {}.", formId);
+            
+            // 1. Fetch IDs of drafts for this specific version
+            List<UUID> draftRowIds = jdbc.queryForList(
+                "SELECT submission_row_id FROM form_submission_meta WHERE form_id = ? AND form_version_id = ? AND status = 'DRAFT'",
+                UUID.class, formId, versionId);
+            
+            if (draftRowIds.isEmpty()) return 0;
+
+            // 2. Delete from dynamic data table first (Child data)
+            String sqlDeleteDynamic = String.format("DELETE FROM \"%s\" WHERE id IN (%s)", 
+                tableName, draftRowIds.stream().map(id -> "?").collect(Collectors.joining(",")));
+            jdbc.update(sqlDeleteDynamic, draftRowIds.toArray());
+
+            // 3. Delete from meta-index (Parent entry)
+            int affected = jdbc.update("DELETE FROM form_submission_meta WHERE form_id = ? AND form_version_id = ? AND status = 'DRAFT'", 
+                formId, versionId);
+            
+            log.info("Requirement 3.2: Cleared {} respondent drafts for form {} (version {}).", affected, formId, versionId);
+            return affected;
         } catch (Exception e) {
-            log.warn("Failed to clear respondent drafts for form {}: {}", formId, e.getMessage());
+            log.error("Failed to clear respondent drafts for form {}: {}", formId, e.getMessage());
+            return 0;
         }
     }
 
@@ -126,7 +143,7 @@ public class SubmissionService {
         }
 
         // SRS Decision 4.3: Fast-fail Drift Detection
-        dynamicTableService.validateSchema(tableName, versionId);
+        schemaManager.validateSchema(tableName, versionId);
 
         // Fetch ALL groups for this SPECIFIC version
         List<Map<String, Object>> groupRows = jdbc.queryForList(
@@ -296,23 +313,54 @@ public class SubmissionService {
         dynamicTableService.ensureTableExists(tableName, formId);
         dynamicTableService.addDraftColumnsIfMissing(tableName);
 
+        // Resolve authenticated user if not provided explicitly
+        if (userId == null && SecurityContextHolder.getContext().getAuthentication() != null) {
+            userId = SecurityContextHolder.getContext().getAuthentication().getName();
+        }
+
         UUID versionId;
         if (submissionId == null) {
-            // PATH A — New submission/draft: resolve authoritative active version
+            // PATH A — New draft: resolve current active version
             versionId = resolveVersionForNewSubmission(formId);
+            
+            // SRS Decision 4.3: Validate schema BEFORE saving even a draft
+            schemaManager.checkDrift(formId);
 
             submissionId = UUID.randomUUID();
-            // R6: Meta-index record must exist BEFORE data table insert
-            jdbc.update("INSERT INTO form_submission_meta (id, form_id, form_version_id, submitted_by, status, submission_table, submission_row_id) VALUES (?, ?, ?, ?, 'DRAFT', ?, ?)",
-                    submissionId, formId, versionId, userId, tableName, submissionId);
+            // Use UPSERT logic via ON CONFLICT if we had a natural key, but here we use manual check + atomic meta insert
+            // Actually, the unique constraint uq_draft_per_user_form allows us to use ON CONFLICT now
+            
+            String insertMeta = "INSERT INTO form_submission_meta (id, form_id, form_version_id, submitted_by, status, submission_table, submission_row_id, is_soft_deleted) " +
+                                "VALUES (?, ?, ?, ?, 'DRAFT', ?, ?, FALSE) " +
+                                "ON CONFLICT (form_id, submitted_by) WHERE status = 'DRAFT' " +
+                                "DO UPDATE SET form_version_id = EXCLUDED.form_version_id, " +
+                                "is_soft_deleted = FALSE, updated_at = NOW() RETURNING id";
+            
+            // If user already had a draft for this form, this will return the EXISTING submissionId instead of using the new one
+            List<UUID> existingIds = jdbc.queryForList(insertMeta, UUID.class, submissionId, formId, versionId, userId, tableName, submissionId);
+            if (!existingIds.isEmpty()) {
+                submissionId = existingIds.get(0);
+            }
 
-            insertDynamicRow(tableName, submissionId, versionId, userId, data);
+            // Ensure dynamic row exists or update it
+            insertOrUpdateDynamicRow(tableName, submissionId, versionId, userId, data);
         } else {
             // PATH B — Draft resumption: resolve version from meta-index
             versionId = resolveVersionForDraftResumption(submissionId);
+            schemaManager.checkDrift(formId);
             updateDynamicRow(tableName, submissionId, versionId, data, false);
         }
         return submissionId;
+    }
+
+    private void insertOrUpdateDynamicRow(String tableName, UUID id, UUID versionId, String userId, Map<String, Object> data) {
+        // Find if row exists in dynamic table
+        Integer count = jdbc.queryForObject(String.format("SELECT COUNT(*) FROM \"%s\" WHERE id = ?", tableName), Integer.class, id);
+        if (count != null && count > 0) {
+            updateDynamicRow(tableName, id, versionId, data, false);
+        } else {
+            insertDynamicRow(tableName, id, versionId, userId, data);
+        }
     }
 
     private UUID resolveVersionForNewSubmission(UUID formId) {
@@ -383,6 +431,8 @@ public class SubmissionService {
             cols.add("user_id");
             vals.add(userId);
         }
+        cols.add("is_soft_deleted");
+        vals.add(false);
 
         for (Map<String, Object> row : fieldRows) {
             String key = (String) row.get("field_key");
@@ -426,12 +476,15 @@ public class SubmissionService {
             if ("file".equals(type) || "field_group".equals(type))
                 continue;
             
-            // For updates, we only update fields that were either calculated OR passed in data
-            if (Boolean.TRUE.equals(row.get("is_calculated")) || (data != null && data.containsKey(key))) {
+            // For drafts (isFinal=false): always write ALL fields so the row is fully populated.
+            // For final submission: only write fields that were actually submitted to avoid overwriting
+            // with nulls when partial data is re-processed.
+            if (!isFinal || Boolean.TRUE.equals(row.get("is_calculated")) || (data != null && data.containsKey(key))) {
                 setClauses.add("\"" + key + "\" = ?");
                 vals.add(convertValue(workingValues.get(key), type));
             }
         }
+        setClauses.add("is_soft_deleted = FALSE");
         setClauses.add("updated_at = NOW()");
         vals.add(id);
 
@@ -455,7 +508,7 @@ public class SubmissionService {
         UUID versionId = resolveVersionForNewSubmission(formId);
 
         // SRS Decision 4.3: Startup/Submission-time drift detection
-        dynamicTableService.validateSchema(tableName, versionId);
+        schemaManager.checkDrift(formId);
 
         // Fetch all field metadata including calculated-field columns
         List<Map<String, Object>> fieldRows = jdbc.queryForList(
@@ -512,31 +565,47 @@ public class SubmissionService {
 
     @Transactional
     public void finalizeSubmission(UUID submissionId, String userId, Map<String, Object> data) {
-        // B3: Concurrency Guard - SELECT FOR UPDATE on meta-index
-        Map<String, Object> meta = jdbc.queryForMap(
-                "SELECT form_id, form_version_id, status FROM form_submission_meta WHERE id = ? FOR UPDATE",
-                submissionId);
-
-        if (!"DRAFT".equals(meta.get("status"))) {
-            // Already submitted or in restricted state
-            throw new IllegalStateException("SUBMISSION_ALREADY_FINALIZED");
+        // Resolve authenticated user if not provided explicitly
+        if (userId == null && SecurityContextHolder.getContext().getAuthentication() != null) {
+            userId = SecurityContextHolder.getContext().getAuthentication().getName();
         }
+
+        // B3: Concurrency Guard + Atomic Status Change
+        // Attempt to update status to SUBMITTED ONLY if it is currently DRAFT
+        int affected = jdbc.update(
+            "UPDATE form_submission_meta SET status = 'SUBMITTED', submitted_by = ?, submitted_at = NOW() " +
+            "WHERE id = ? AND status = 'DRAFT' AND submitted_by = ?",
+            userId, submissionId, userId);
+
+        if (affected == 0) {
+            // Could be: already submitted, different user, or draft does not exist
+            throw new IllegalStateException("SUBMISSION_ALREADY_FINALIZED_OR_PERMISSION_DENIED");
+        }
+
+        // Re-fetch meta for versionId and formId
+        Map<String, Object> meta = jdbc.queryForMap(
+                "SELECT form_id, form_version_id FROM form_submission_meta WHERE id = ?",
+                submissionId);
 
         UUID formId = (UUID) meta.get("form_id");
         UUID versionId = (UUID) meta.get("form_version_id");
         String tableName = getTableName(formId);
 
-        // SRS Decision 4.3: Submission-time drift detection
-        dynamicTableService.validateSchema(tableName, versionId);
+        // Requirement 3.1: Finalize blocked if version is inactive
+        boolean isActive = versionRepo.findById(versionId)
+                .map(com.formbuilder.entity.FormVersionEntity::isActive)
+                .orElse(false);
+        if (!isActive) {
+            throw new com.formbuilder.exception.NoActiveVersionException("Cannot finalize submission for an inactive form version.");
+        }
 
-        // Update Dynamic Data - Mark as final (isFinal = true) to trigger fail-fast for recalculation
+        // SRS Decision 4.3: Submission-time drift detection
+        schemaManager.checkDrift(formId);
+
+        // Update Dynamic Data - Mark as final (isFinal = true)
         updateDynamicRow(tableName, submissionId, versionId, data, true);
         jdbc.update(String.format("UPDATE \"%s\" SET is_draft = FALSE, updated_at = NOW() WHERE id = ?", tableName),
                 submissionId);
-
-        // Update Meta Status
-        jdbc.update("UPDATE form_submission_meta SET status = 'SUBMITTED', submitted_by = ?, submitted_at = NOW() WHERE id = ?",
-                userId, submissionId);
 
         log.info("B3: Submission {} finalized under version {}.", submissionId, versionId);
     }
@@ -545,32 +614,65 @@ public class SubmissionService {
     // READ
     // ─────────────────────────────────────────────────────────────────────────
 
-    public Map<String, Object> findDraft(UUID formId, String userId) {
+    public com.formbuilder.dto.DraftResult findDraft(UUID formId, String userId) {
         String tableName = getTableName(formId);
         dynamicTableService.ensureTableExists(tableName, formId);
         dynamicTableService.addDraftColumnsIfMissing(tableName);
 
-        // Fetch from meta-index first (the authority)
+        // Resolve current active version for this form
+        UUID currentVersionId = versionRepo.findByFormIdAndIsActiveTrue(formId)
+                .map(com.formbuilder.entity.FormVersionEntity::getId)
+                .orElse(null);
+
+        // Fetch from meta-index first (Filter by is_soft_deleted = FALSE)
         List<Map<String, Object>> metaRows = jdbc.queryForList(
-                "SELECT id, form_version_id FROM form_submission_meta WHERE form_id = ? AND submitted_by = ? AND status = 'DRAFT' ORDER BY created_at DESC LIMIT 1",
+                "SELECT id, form_version_id FROM form_submission_meta WHERE form_id = ? AND submitted_by = ? AND status = 'DRAFT' AND is_soft_deleted = FALSE",
                 formId, userId);
 
-        if (metaRows.isEmpty())
-            return null;
+        if (metaRows.isEmpty()) {
+            return com.formbuilder.dto.DraftResult.builder().status(com.formbuilder.dto.DraftResult.Status.NOT_FOUND).build();
+        }
 
         UUID submissionId = (UUID) metaRows.get(0).get("id");
-        UUID versionId = (UUID) metaRows.get(0).get("form_version_id");
+        UUID draftVersionId = (UUID) metaRows.get(0).get("form_version_id");
+
+        if (currentVersionId != null && !draftVersionId.equals(currentVersionId)) {
+            log.info("Draft version mismatch for form {}: DraftV={}, CurrentV={}. Discarding stale draft {}.", 
+                formId, draftVersionId, currentVersionId, submissionId);
+            // Cleanup stale draft in the correct order
+            jdbc.update(String.format("DELETE FROM \"%s\" WHERE id = ?", tableName), submissionId);
+            jdbc.update("DELETE FROM form_submission_meta WHERE id = ?", submissionId);
+            
+            return com.formbuilder.dto.DraftResult.builder()
+                .status(com.formbuilder.dto.DraftResult.Status.DISCARDED)
+                .message("Your previous draft was discarded because the form was updated.")
+                .build();
+        }
 
         List<Map<String, Object>> rows = jdbc.queryForList(
                 String.format("SELECT * FROM \"%s\" WHERE id = ?", tableName), submissionId);
 
-        if (rows.isEmpty())
-            return null;
+        if (rows.isEmpty()) {
+             return com.formbuilder.dto.DraftResult.builder().status(com.formbuilder.dto.DraftResult.Status.NOT_FOUND).build();
+        }
 
-        Map<String, Object> draft = new LinkedHashMap<>(rows.get(0));
-        draft.put("submissionId", submissionId);
-        draft.put("formVersionId", versionId);
-        return draft;
+        Map<String, Object> draftData = new LinkedHashMap<>(rows.get(0));
+        // Remove system columns from data map
+        draftData.remove("id");
+        draftData.remove("form_version_id");
+        draftData.remove("created_at");
+        draftData.remove("updated_at");
+        draftData.remove("is_draft");
+        draftData.remove("is_soft_deleted");
+        draftData.remove("deleted_at");
+        draftData.remove("user_id");
+
+        return com.formbuilder.dto.DraftResult.builder()
+            .status(com.formbuilder.dto.DraftResult.Status.FOUND)
+            .submissionId(submissionId.toString())
+            .formVersionId(draftVersionId.toString())
+            .data(draftData)
+            .build();
     }
 
     public List<Map<String, Object>> getSubmissions(UUID formId, boolean activeOnly, UUID versionId) {
@@ -583,7 +685,7 @@ public class SubmissionService {
 
         if (versionId != null) {
             return jdbc.queryForList(
-                    String.format("SELECT * FROM \"%s\" WHERE is_soft_deleted = FALSE AND form_version_id = ? ORDER BY created_at DESC",
+                    String.format("SELECT * FROM \"%s\" WHERE is_soft_deleted = FALSE AND is_draft = FALSE AND form_version_id = ? ORDER BY created_at DESC",
                             tableName), versionId);
         }
 
@@ -592,7 +694,7 @@ public class SubmissionService {
                     .map(com.formbuilder.entity.FormVersionEntity::getId);
             if (activeVersionId.isPresent()) {
                 return jdbc.queryForList(
-                        String.format("SELECT * FROM \"%s\" WHERE is_soft_deleted = FALSE AND form_version_id = ? ORDER BY created_at DESC",
+                        String.format("SELECT * FROM \"%s\" WHERE is_soft_deleted = FALSE AND is_draft = FALSE AND form_version_id = ? ORDER BY created_at DESC",
                                 tableName), activeVersionId.get());
             }
             // If no active version, but activeOnly is true, return empty list (or all?)
@@ -601,7 +703,7 @@ public class SubmissionService {
         }
 
         return jdbc.queryForList(
-                String.format("SELECT * FROM \"%s\" WHERE is_soft_deleted = FALSE ORDER BY created_at DESC",
+                String.format("SELECT * FROM \"%s\" WHERE is_soft_deleted = FALSE AND is_draft = FALSE ORDER BY created_at DESC",
                         tableName));
     }
 
@@ -617,14 +719,13 @@ public class SubmissionService {
             orderBy = "m.submitted_at DESC NULLS LAST, m.created_at DESC";
         }
 
-        String where = " WHERE m.form_id = ? ";
+        String where = " WHERE m.form_id = ? AND m.status = 'SUBMITTED' ";
         List<Object> params = new ArrayList<>();
         params.add(formId);
 
         if (filter != null && !filter.isBlank()) {
-            where += " AND (CAST(m.status AS TEXT) ILIKE ? OR COALESCE(m.submitted_by, '') ILIKE ?) ";
+            where += " AND (COALESCE(m.submitted_by, '') ILIKE ?) ";
             String like = "%" + filter.trim() + "%";
-            params.add(like);
             params.add(like);
         }
 
@@ -848,10 +949,11 @@ public class SubmissionService {
         try {
             return switch (fieldType) {
                 case "number" -> {
+                    // Always use Double to match the NUMERIC column type — avoids integer overflow
                     try {
-                        yield Integer.parseInt(s);
-                    } catch (NumberFormatException e) {
                         yield Double.parseDouble(s);
+                    } catch (NumberFormatException e) {
+                        yield null;
                     }
                 }
                 case "linear_scale", "star_rating" -> {

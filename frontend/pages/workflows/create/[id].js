@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Navbar from '../../../components/Navbar';
 import WorkflowHeader from '../../../components/workflows/WorkflowHeader';
 import WorkflowDiagram from '../../../components/workflows/WorkflowDiagram';
-import { assignBuilder, getForm, getWorkflowCandidates, initiateWorkflow } from '../../../services/api';
+import { assignBuilder, getForm, getWorkflowCandidates, initiateWorkflow, getUserByUsername } from '../../../services/api';
 import { toastError, toastSuccess } from '../../../services/toast';
 import { useAuth } from '../../../context/AuthContext';
 
@@ -21,6 +21,7 @@ export default function CreateWorkflowPage() {
     const [form, setForm] = useState(null);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [creatorRoles, setCreatorRoles] = useState([]);
 
     const [builders, setBuilders] = useState([]);
     const [authorities, setAuthorities] = useState([]);
@@ -39,10 +40,14 @@ export default function CreateWorkflowPage() {
     const isViewer = hasRole('Viewer');
     const isBuilder = hasRole('Builder');
     
-    // Decoupled logic: 
+    // Check if form creator is a Viewer
+    const creatorIsViewer = creatorRoles.includes('Viewer');
+
+    // Decoupled logic:
     // - Assignment Mode is for Viewers/Admins when form is NOT yet assigned or was rejected.
+    // - Only forms created by Viewer role can have builder assignment (unless user is Admin)
     // - Initiation Mode (isAssignMode=false) is for the assigned Builder to pick levels.
-    const isAssignMode = (isViewer || isAdmin) && (form?.status !== 'ASSIGNED');
+    const isAssignMode = (isViewer || isAdmin) && (form?.status !== 'ASSIGNED') && (isAdmin || creatorIsViewer);
     const viewerReassignBlocked = isViewer && !!form?.assignedBuilderId && form?.status !== 'REJECTED';
 
     useEffect(() => {
@@ -50,13 +55,25 @@ export default function CreateWorkflowPage() {
 
         let mounted = true;
         Promise.all([getForm(id), getWorkflowCandidates()])
-            .then(([formRes, candidateRes]) => {
+            .then(async ([formRes, candidateRes]) => {
                 if (!mounted) return;
                 setForm(formRes);
                 setBuilders(Array.isArray(candidateRes?.builders) ? candidateRes.builders : []);
                 setAuthorities(Array.isArray(candidateRes?.authorities) ? candidateRes.authorities : []);
                 if (formRes?.assignedBuilderId) {
                     setTargetBuilderId(String(formRes.assignedBuilderId));
+                }
+
+                // Fetch creator roles if form has createdBy field
+                if (formRes?.createdBy) {
+                    try {
+                        const creatorData = await getUserByUsername(formRes.createdBy);
+                        const roles = creatorData?.roles?.map(r => r.roleName) || [];
+                        setCreatorRoles(roles);
+                    } catch (err) {
+                        console.warn('Failed to fetch creator roles:', err.message);
+                        setCreatorRoles([]);
+                    }
                 }
             })
             .catch((err) => toastError(err.message || 'Failed to load workflow setup data.'))

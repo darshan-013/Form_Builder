@@ -16,6 +16,7 @@ import { ThemeProvider } from '../context/ThemeContext';
 import { AuthProvider } from '../context/AuthContext';
 import LocalToast from '../components/LocalToast';
 import SmoothScroll from '../components/landing/SmoothScroll';
+import SessionTimeoutManager from '../components/SessionTimeoutManager';
 
 function routeRank(path) {
   if (!path) return 0;
@@ -93,6 +94,7 @@ export default function App({ Component, pageProps }) {
   const content = (
     <>
       <LocalToast />
+      <SessionTimeoutManager />
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={router.asPath}

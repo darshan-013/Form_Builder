@@ -16,7 +16,9 @@ import { translateApiError } from '../services/errorTranslator';
 
 export default function DashboardPage() {
     const router = useRouter();
-    const { user, loading: authLoading } = useAuth();
+    const { user, hasRole, loading: authLoading } = useAuth();
+    const isAdmin = hasRole('Admin') || user?.role === 'Admin';
+    const isBuilder = hasRole('Builder') || user?.role === 'Builder';
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState(null);
 
@@ -79,9 +81,16 @@ export default function DashboardPage() {
                 <div className="row-actions-wrap">
                     <div className="row-date">{formatRelativeOrDate(form.updatedAt || form.createdAt)}</div>
                     <div className="row-toolbar">
-                        <button className="row-icon-btn" title="Edit Form" onClick={() => router.push(`/builder/${form.id}`)}>
-                            <Edit3 size={16} />
-                        </button>
+                        {(isAdmin || user?.username === form.createdBy || user?.username === form.assignedBuilderUsername) && (
+                            <button className="row-icon-btn" title="Edit Form" onClick={() => router.push(`/builder/${form.id}`)}>
+                                <Edit3 size={16} />
+                            </button>
+                        )}
+                        {status === 'ASSIGNED' && (isAdmin || user?.username === form.assignedBuilderUsername) && (
+                            <button className="row-icon-btn" title="Initiate Workflow" onClick={() => router.push(`/workflows/create/${form.id}`)} style={{ color: '#10B981' }}>
+                                <CheckCircle size={16} />
+                            </button>
+                        )}
                         {isPublished && (
                             <>
                                 <button className="row-icon-btn" title="Submissions" onClick={() => router.push(`/submissions/${form.id}`)}>

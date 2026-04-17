@@ -156,6 +156,14 @@ public class WorkflowService {
             throw new IllegalStateException("Only Viewer or Admin can assign a Builder");
         }
 
+        // Check if form was created by a Viewer
+        Set<String> creatorRoles = getRoleNames(form.getCreatedBy());
+        boolean creatorIsViewer = creatorRoles.contains("Viewer");
+        
+        if (!isAdmin && !creatorIsViewer) {
+            throw new IllegalStateException("Builder assignment is only allowed for forms created by Viewer role");
+        }
+
         // Viewer can assign once; reassignment is allowed only if REJECTED or for Admin.
         if (!isAdmin && form.getAssignedBuilderId() != null && form.getStatus() != FormEntity.FormStatus.REJECTED) {
             throw new IllegalStateException("Assignment already exists. Only Admins can reassign unless the form was REJECTED.");

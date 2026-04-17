@@ -427,7 +427,7 @@ export default function SubmitPage() {
                 {/* F2: Draft discarded warning banner */}
                 {draftDiscarded && (
                     <div style={{
-                        maxWidth: 700, margin: '0 auto 14px',
+                        maxWidth: 700, margin: '0 auto 14px auto',
                         padding: '12px 20px', borderRadius: 12,
                         background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)',
                         color: '#FBBF24', fontSize: 13, fontWeight: 500, display: 'flex', gap: 10, alignItems: 'center',
@@ -450,7 +450,7 @@ export default function SubmitPage() {
                 {/* Single-submission notice */}
                 {!form.allowMultipleSubmissions && (
                     <div style={{
-                        maxWidth: 700, margin: '0 auto 14px',
+                        maxWidth: 700, margin: '0 auto 14px auto',
                         padding: '10px 18px', borderRadius: 10,
                         background: 'rgba(245,158,11,0.10)',
                         border: '1px solid rgba(245,158,11,0.25)',

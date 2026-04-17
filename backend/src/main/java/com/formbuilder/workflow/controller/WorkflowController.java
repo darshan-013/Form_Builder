@@ -42,9 +42,9 @@ public class WorkflowController {
             Authentication auth,
             HttpSession session) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
-        if (!(roles.contains("Builder") || roles.contains("Admin"))) {
+        if (!(roles.contains("Builder") || roles.contains("Admin") || roles.contains("Viewer"))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Only Builder or Admin can initiate a workflow"));
+                    .body(Map.of("error", "Only Viewer, Builder or Admin can initiate a workflow"));
         }
 
         WorkflowInstance instance = workflowService.initiate(

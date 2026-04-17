@@ -45,7 +45,7 @@ public class SharedOptionsController {
      * Get a shared_options row by id.
      */
     @GetMapping("/{id}")
-    public ResponseEntity<SharedOptionsEntity> getById(@PathVariable UUID id) {
+    public ResponseEntity<SharedOptionsEntity> getById(@PathVariable("id") UUID id) {
         return formService.getSharedOptions(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -58,7 +58,7 @@ public class SharedOptionsController {
      * Body: { "optionsJson": "[{\"label\":\"A\",\"value\":\"A\"},...]" }
      */
     @PutMapping("/{id}")
-    public ResponseEntity<SharedOptionsEntity> update(@PathVariable UUID id,
+    public ResponseEntity<SharedOptionsEntity> update(@PathVariable("id") UUID id,
                                                        @RequestBody Map<String, String> body) {
         String optionsJson = body.get("optionsJson");
         if (optionsJson == null || optionsJson.isBlank()) {

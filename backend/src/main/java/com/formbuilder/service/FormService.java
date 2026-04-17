@@ -42,6 +42,7 @@ public class FormService {
     private EntityManager entityManager;
     private final ObjectMapper objectMapper;
     private final SubmissionService submissionService;
+    private final SchemaManager schemaManager;
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
@@ -571,7 +572,7 @@ public class FormService {
         FormVersionEntity draftVersion = draftOpt.get();
 
         // SRS Decision 4.3: Block publish if drift is detected.
-        dynamicTable.validateSchema(getSubmissionTableName(form), draftVersion.getId());
+        schemaManager.validateSchema(getSubmissionTableName(form), draftVersion.getId());
 
         // Permission checks
         boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
@@ -592,22 +593,33 @@ public class FormService {
         }
 
         // 1. Archive current active version if it exists (Single Active Version Constraint)
-        form.getVersions().stream()
+        // AND Clear respondent drafts for those versions (Requirement 3.2)
+        List<FormVersionEntity> previouslyActive = form.getVersions().stream()
                 .filter(FormVersionEntity::isActive)
-                .forEach(v -> {
-                    v.setActive(false);
-                    versionRepo.save(v);
-                });
+                .toList();
+
+        for (FormVersionEntity v : previouslyActive) {
+            log.info("Deactivating version v{} (id: {})", v.getVersionNumber(), v.getId());
+            v.setActive(false);
+            // Removed redundant versionRepo.save(v) to avoid premature flushes
+            int discarded = submissionService.clearRespondentDrafts(form.getId(), v.getId());
+            log.info("Requirement 3.2: Discarded {} drafts for deactivated version v{} of form '{}'", 
+                discarded, v.getVersionNumber(), form.getName());
+        }
 
         // 2. Promote DRAFT to PUBLISHED
+        log.info("Promoting draft version {} (id: {}) to PUBLISHED", draftVersion.getVersionNumber(), draftVersion.getId());
         draftVersion.setActive(true);
-        versionRepo.save(draftVersion);
+        // Removed redundant versionRepo.save(draftVersion) - handled by cascade
+        
+        log.info("Updating definition snapshot for version {}", draftVersion.getVersionNumber());
         updateDefinitionJson(draftVersion);
 
         // 4. Update Form Global Status
+        log.info("Setting form status to PUBLISHED for form '{}'", form.getName());
         form.setStatus(FormEntity.FormStatus.PUBLISHED);
 
-        log.info("B1: Form '{}' version {} activated and status set to PUBLISHED.", form.getName(), draftVersion.getVersionNumber());
+        log.info("B1: Form '{}' version {} activated and status set to PUBLISHED. Saving form...", form.getName(), draftVersion.getVersionNumber());
         return formRepo.save(form);
     }
 
@@ -627,7 +639,7 @@ public class FormService {
         }
 
         // SRS Decision 4.3: Block publish if drift is detected.
-        dynamicTable.validateSchema(getSubmissionTableName(form), targetVersion.getId());
+        schemaManager.validateSchema(getSubmissionTableName(form), targetVersion.getId());
 
         // Permission checks
         boolean creatorIsBuilder = form.getCreatedBy() != null && userRepo.findByUsernameWithRolesAndPermissions(form.getCreatedBy())
@@ -648,22 +660,33 @@ public class FormService {
         }
 
         // 1. Current active version becomes DRAFT
-        form.getVersions().stream()
+        // AND Clear respondent drafts (Requirement 3.2)
+        List<FormVersionEntity> previouslyActive = form.getVersions().stream()
                 .filter(FormVersionEntity::isActive)
-                .forEach(v -> {
-                    v.setActive(false);
-                    versionRepo.save(v);
-                });
+                .toList();
+
+        for (FormVersionEntity v : previouslyActive) {
+            log.info("Deactivating version v{} (id: {})", v.getVersionNumber(), v.getId());
+            v.setActive(false);
+            // Removed redundant versionRepo.save(v)
+            int discarded = submissionService.clearRespondentDrafts(form.getId(), v.getId());
+            log.info("Requirement 3.2: Discarded {} drafts for deactivated version v{} of form '{}'", 
+                discarded, v.getVersionNumber(), form.getName());
+        }
 
         // 2. Promote target to PUBLISHED
+        log.info("Promoting target version v{} (id: {}) to PUBLISHED", targetVersion.getVersionNumber(), targetVersion.getId());
         targetVersion.setActive(true);
-        versionRepo.save(targetVersion);
+        // Removed redundant versionRepo.save(targetVersion)
+        
+        log.info("Updating definition snapshot for version {}", targetVersion.getVersionNumber());
         updateDefinitionJson(targetVersion);
 
         // 3. Update Form Global Status
+        log.info("Setting form status to PUBLISHED for form '{}'", form.getName());
         form.setStatus(FormEntity.FormStatus.PUBLISHED);
 
-        log.info("Form '{}' version {} activated and status set to PUBLISHED.", form.getName(), targetVersion.getVersionNumber());
+        log.info("B2: Form version activated and status set to PUBLISHED. Saving form entity...");
         return formRepo.save(form);
     }
 
@@ -1022,7 +1045,8 @@ public class FormService {
 
             String json = objectMapper.writeValueAsString(snapshot);
             version.setDefinitionJson(json);
-            versionRepo.save(version);
+            // Removed internal save() to allow outer transaction to control flushes.
+            // This prevents duplicate key violations (uk_forms_code) during intermediate flushes.
             log.debug("Updated definition_json snapshot for version {}", version.getVersionNumber());
         } catch (Exception e) {
             log.error("Failed to serialize form definition for version {}: {}",
@@ -1053,6 +1077,8 @@ public class FormService {
 
     public boolean canViewSubmissions(FormEntity f, String username, Set<String> roleNames) {
         if (roleNames.contains("Admin") || roleNames.contains("Role Administrator") || roleNames.contains("Manager")) return true;
+        // Viewer is not allowed to view submissions, even if they are the creator
+        if (roleNames.contains("Viewer")) return false;
         if (username.equalsIgnoreCase(f.getCreatedBy())) return true;
         return false;
     }

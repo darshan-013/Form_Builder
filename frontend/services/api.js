@@ -28,6 +28,24 @@ function extractContent(data) {
     return [];
 }
 
+// -- Activity Tracking ----------------------------------------------------------
+
+let activityListeners = [];
+
+/** Register a listener that is called on every successful internal API request. */
+export function onActivity(callback) {
+    activityListeners.push(callback);
+    return () => {
+        activityListeners = activityListeners.filter(l => l !== callback);
+    };
+}
+
+function notifyActivity() {
+    activityListeners.forEach(listener => {
+        try { listener(); } catch (e) { console.error('Activity listener error', e); }
+    });
+}
+
 // -- Core fetch helper ----------------------------------------------------------
 
 async function request(method, path, body) {
@@ -40,7 +58,6 @@ async function request(method, path, body) {
     if (body !== undefined) {
         if (body instanceof FormData) {
             opts.body = body;
-            // Browser sets multipart boundary for FormData.
         } else {
             opts.headers['Content-Type'] = 'application/json';
             opts.body = JSON.stringify(body);
@@ -49,7 +66,21 @@ async function request(method, path, body) {
 
     const res = await fetch(`${BASE}${path}`, opts);
 
-    if (res.status === 204) return null;
+    // If we're not authenticated (401), force redirect to login
+    // unless we are already ON the login page or registering.
+    if (res.status === 401 && typeof window !== 'undefined') {
+        const pathMatch = window.location.pathname;
+        if (!pathMatch.startsWith('/login') && !pathMatch.startsWith('/register') && path !== '/auth/me') {
+            window.location.href = `/login?expired=true`;
+            // Return a promise that never resolves/rejects to stop further processing
+            return new Promise(() => {});
+        }
+    }
+
+    if (res.status === 204) {
+        notifyActivity();
+        return null;
+    }
 
     const data = await res.json().catch(() => ({ error: res.statusText }));
 
@@ -62,35 +93,8 @@ async function request(method, path, body) {
         throw err;
     }
 
+    notifyActivity();
     return data;
-}
-
-// -- Global session expiry handler (client-side routing) ----------------------
-
-// Detect session expiry from 401 responses and redirect to login
-if (typeof window !== 'undefined') {
-    // Store original request function
-    const originalRequest = request;
-    
-    // Wrap request to handle 401 with session expiry detection
-    const wrappedRequest = async (method, path, body) => {
-        try {
-            return await originalRequest(method, path, body);
-        } catch (err) {
-            if (err.status === 401) {
-                // Check if this looks like a session expiry (not just missing auth)
-                const isSessionExpiry = (err.message === 'Authentication required' || 
-                                        err.details?.error === 'Authentication required');
-                if (isSessionExpiry && typeof window !== 'undefined') {
-                    // Only redirect if not already on login page
-                    if (!window.location.pathname.startsWith('/login')) {
-                        window.location.href = '/login?expired=true';
-                    }
-                }
-            }
-            throw err;
-        }
-    };
 }
 
 // -- Auth ----------------------------------------------------------------------
@@ -233,8 +237,8 @@ export async function submitForm(formId, data, submissionId = null, formVersionI
 export const getDraft = (formId) =>
     request('GET', `/runtime/forms/${formId}/draft`);
 
-export const saveDraft = (formId, data, submissionId = null) =>
-    request('POST', `/runtime/forms/${formId}/draft`, { data, submissionId });
+export const saveDraft = (formId, data, submissionId = null, formVersionId = null) =>
+    request('POST', `/runtime/forms/${formId}/draft`, { data, submissionId, formVersionId });
 
 export const getSubmissions = (formId, versionId = null) =>
     request('GET', `/runtime/${formId}/submissions${versionId ? `?versionId=${versionId}` : ''}`);
@@ -350,6 +354,9 @@ export const getUsers = async (params = null) => {
 
 export const getUser = (id) =>
     request('GET', `/users/${id}`);
+
+export const getUserByUsername = (username) =>
+    request('GET', `/users/by-username/${username}`);
 
 export const createUser = (username, name, email) =>
     request('POST', '/users', { username, name, email });

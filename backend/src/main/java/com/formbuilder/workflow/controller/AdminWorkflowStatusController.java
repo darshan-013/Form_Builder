@@ -29,11 +29,11 @@ public class AdminWorkflowStatusController {
 
     @GetMapping("/status")
     public ResponseEntity<?> status(Authentication auth,
-                                    @RequestParam(required = false) String creator,
-                                    @RequestParam(required = false) String status,
-                                    @RequestParam(required = false) Integer step,
-                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fromDate,
-                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime toDate) {
+                                    @RequestParam(name = "creator", required = false) String creator,
+                                    @RequestParam(name = "status", required = false) String status,
+                                    @RequestParam(name = "step", required = false) Integer step,
+                                    @RequestParam(name = "fromDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fromDate,
+                                    @RequestParam(name = "toDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime toDate) {
         Set<String> roles = userRoleService.getUserRoleNames(auth.getName());
         if (!roles.contains("Admin")) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)

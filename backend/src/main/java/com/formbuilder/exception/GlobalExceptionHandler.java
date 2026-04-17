@@ -108,7 +108,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
-        log.error("Data integrity violation: {}", ex.getMessage());
+        String specificCause = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : "No specific cause";
+        log.error("Data integrity violation: {} - Specific cause: {}", ex.getMessage(), specificCause);
+        
         String message = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
         if (message != null) {
             String lower = message.toLowerCase();
@@ -116,10 +118,10 @@ public class GlobalExceptionHandler {
                 return ResponseEntity.badRequest().body(new ErrorResponse(
                         "VALIDATION_ERROR",
                         "Validation failed",
-                        List.of(new com.formbuilder.dto.ValidationError("code", "Code already exists."))));
+                        List.of(new com.formbuilder.dto.ValidationError("code", "Code already exists or duplicate detected: " + specificCause))));
             }
         }
-        return ResponseEntity.badRequest().body(new ErrorResponse("DATABASE_ERROR", "A database constraint was violated.", List.of()));
+        return ResponseEntity.badRequest().body(new ErrorResponse("DATABASE_ERROR", "A database constraint was violated: " + specificCause, List.of()));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
