@@ -31,6 +31,7 @@ public class FormVersionEntity {
     @Column(name = "is_active", nullable = false)
     private boolean isActive;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "definition_json", nullable = false, columnDefinition = "JSONB")
     @Builder.Default
     private String definitionJson = "{}";

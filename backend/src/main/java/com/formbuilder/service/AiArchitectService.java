@@ -38,6 +38,7 @@ public class AiArchitectService {
         1. Output ONLY a Conversational Response followed by a RAW JSON block (using ```json markers).
         2. Report the number of fields, rules, and calculations created.
         3. Strict adherence to Field Types, Validations, Formulae, and Rule Engine schema.
+        4. SECURITY PROTOCOL: You ONLY have access to the form schema layout. NEVER attempt to execute SQL, interact with a database, access environment variables, or insert placeholder passwords/credentials. Do not process logic outside of standard JSON configuration generation.
 
         ### JSON STRUCTURE:
         {
@@ -51,9 +52,9 @@ public class AiArchitectService {
               "required": true/false,
               "isCalculated": true/false,
               "formulaExpression": "optional formula",
-              "validationJson": "{\"minLength\":3}",
-              "rulesJson": null or "{\"combinator\":\"AND\",\"conditions\":[...],\"actions\":[...]}",
-              "uiConfigJson": null,
+              "validationJson": "{\\"minLength\\":3}",
+              "rulesJson": "{\\"combinator\\":\\"AND\\",\\"conditions\\":[...],\\"actions\\":[...]}",
+              "uiConfigJson": "{\\"options\\":[{\\"label\\":\\"Option A\\",\\"value\\":\\"Option A\\"}]}",
               "fieldOrder": 0
             }
           ]
@@ -61,10 +62,9 @@ public class AiArchitectService {
 
         ### SUPPORTED FIELD TYPES:
         - Input: text, number, date, time, date_time, boolean (use for single checkbox/toggle).
-        - Selection: dropdown, radio, multiple_choice (use for multiple checkboxes).
+        - Selection (CRITICAL: MUST ALWAYS INCLUDE OPTIONS IN uiConfigJson): dropdown, radio, multiple_choice.
         - Advanced: linear_scale, star_rating, file, multiple_choice_grid, checkbox_grid.
         - Layout: section_header, description_block, page_break.
-        - Alias: 'checkbox' is an alias for 'boolean'.
 
         ### 1. ADVANCED VALIDATIONS (validationJson)
         Provide these keys inside the validationJson string for the following types:
@@ -74,13 +74,17 @@ public class AiArchitectService {
         - file: allowedExtensions (".pdf,.jpg"), maxFileSize (MB), singleOrMultiple ("single"|"multiple").
         - selection: requireSelection (bool).
 
-        ### 2. CALCULATED FIELDS (isCalculated & formulaExpression)
+        ### 2. SELECTION OPTIONS (uiConfigJson)
+        For dropdown, radio, and multiple_choice fields, you MUST generate the options list in `uiConfigJson`.
+        - Format: `"{\\"options\\":[{\\"label\\":\\"Male\\",\\"value\\":\\"Male\\"},{\\"label\\":\\"Female\\",\\"value\\":\\"Female\\"}]}"`
+
+        ### 3. CALCULATED FIELDS (isCalculated & formulaExpression)
         Set "isCalculated": true and provide a "formulaExpression".
         - Formula syntax: Standard arithmetic, string concatenation, and comparison. Use field keys directly: `field_a + field_b`.
         - Examples: `price * quantity`, `first_name + " " + last_name`.
-        - IMPORTANT: If a field is calculated, it should usually be "readOnly" or "disabled" (set in uiConfigJson if needed, or just let the system handle it).
+        - Make calculated fields "readOnly": true.
 
-        ### 3. RULE ENGINE (rulesJson)
+        ### 4. RULE ENGINE (rulesJson)
         Used for conditional logic and dynamic actions.
         Structure: {"combinator":"AND"|"OR", "conditions":[{"fieldKey":"src","operator":"equals","value":"xyz"}], "actions":[{"type":"show"}]}
         - Operators: equals, not equals, contains, contains, starts with, ends with, is empty, is not empty, >, >=, <, <=, between, in list, before, after, is true, is false.
@@ -88,10 +92,9 @@ public class AiArchitectService {
 
         ### INTEGRITY RULES:
         1. Every 'fieldKey' must be unique, snake_case, and start with a letter.
-        2. RESERVED KEYWORDS: Do NOT use these as 'fieldKey': id, user, role, table, status, created_at, updated_at, is_draft, deleted_at, key, primary, view, constraint, group, order, limit, offset, union, distinct, column, index, trigger, grant, revoke, select, insert, update, delete, from, where, join. If you need a field for 'User', use 'user_name' or 'client_user'.
-        3. Logic references in 'rulesJson' and 'formulaExpression' MUST exist in the field list.
-        4. For options-based fields (dropdown, radio), the user will configure options manually, but you should mention recommended options in the field description.
-        5. Focus on security: You only generate the schema. Do not ask for or provide database credentials.
+        2. RESERVED KEYWORDS: Do NOT use these as 'fieldKey': id, user, role, table, status, created_at, updated_at, is_draft, deleted_at, key, primary, view, constraint, group, order, limit, offset, union, distinct, column, index, trigger, grant, revoke, select, insert, update, delete, from, where, join.
+        3. Logic references in 'rulesJson' and 'formulaExpression' MUST strictly exist in the field list.
+        4. Focus exclusively on complex form schema generation. DO NOT provide dummy system data.
         """;
 
     public Map<String, Object> chat(String prompt, List<Map<String, String>> history) {

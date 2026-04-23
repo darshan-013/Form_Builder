@@ -374,8 +374,8 @@ public class SubmissionController {
     @GetMapping(AppConstants.BY_ID_SUBMISSIONS)
     public ResponseEntity<List<Map<String, Object>>> getSubmissions(
             @PathVariable("id") UUID id,
-            @RequestParam(required = false, defaultValue = "true") boolean activeOnly,
-            @RequestParam(required = false) UUID versionId,
+            @RequestParam(name = "activeOnly", required = false, defaultValue = "true") boolean activeOnly,
+            @RequestParam(name = "versionId", required = false) UUID versionId,
             Authentication auth) {
         formService.getFormForAction(id, auth.getName(), isAdmin(auth));
         return ResponseEntity.ok(submissionService.getSubmissions(id, activeOnly, versionId));
